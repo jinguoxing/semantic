@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Database, Search, ChevronRight, Cpu, CheckCircle, Star, Tag, FileText, Layers, ShieldCheck, Activity, ArrowLeft, Table, Clock, Server } from 'lucide-react';
+import { Database, Search, ChevronRight, Cpu, CheckCircle, Star, Tag, FileText, Layers, ShieldCheck, Activity, ArrowLeft, Table, Clock, Server, RefreshCw, X, AlertCircle, Settings, AlertTriangle, Share2 } from 'lucide-react';
 
 interface DataSemanticUnderstandingViewProps {
     scanResults: any[];
@@ -17,14 +17,28 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
     // Detail View State
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [editMode, setEditMode] = useState(false);
+    const [detailTab, setDetailTab] = useState<'fields' | 'graph'>('fields');
     const [semanticProfile, setSemanticProfile] = useState<{
+        analysisStep: 'idle' | 'analyzing' | 'done';
+        gateResult: 'PASS' | 'REJECT' | 'REVIEW';
+        gateDetail?: { t01: string, t02: string, t03: string, t04: string };
+        finalScore: number;
+        aiScore: number;
+        ruleScore: number;
+        aiEvidence?: string[];
         businessName: string;
         description: string;
         scenarios: string[];
         coreFields: { field: string; reason: string }[];
         qualityScore: number;
         privacyLevel: string;
+        relationships?: { targetTable: string; type: string; key: string; description: string }[];
     }>({
+        analysisStep: 'idle',
+        gateResult: 'PASS',
+        finalScore: 0,
+        aiScore: 0,
+        ruleScore: 0,
         businessName: '',
         description: '',
         scenarios: [],
@@ -92,20 +106,40 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
         const asset = assets.find(a => a.table === tableId);
         if (asset?.semanticAnalysis) {
             setSemanticProfile({
-                businessName: asset.semanticAnalysis.chineseName || '',
+                analysisStep: asset.semanticAnalysis.analysisStep || 'done',
+                gateResult: asset.semanticAnalysis.gateResult || 'PASS',
+                gateDetail: asset.semanticAnalysis.gateDetail,
+                finalScore: asset.semanticAnalysis.finalScore ?? 0.85,
+                aiScore: asset.semanticAnalysis.aiScore ?? 0.9,
+                ruleScore: asset.semanticAnalysis.ruleScore ?? 0.8,
+                aiEvidence: asset.semanticAnalysis.aiEvidence,
+                businessName: asset.semanticAnalysis.businessName || asset.semanticAnalysis.chineseName || '',
                 description: asset.semanticAnalysis.description || '',
-                scenarios: asset.semanticAnalysis.scenarios?.map((s: any) => s.type) || [],
+                scenarios: (asset.semanticAnalysis.scenarios || []).map((s: any) => typeof s === 'string' ? s : s.type),
                 coreFields: asset.semanticAnalysis.coreFields || [],
                 qualityScore: asset.semanticAnalysis.qualityScore || 85,
-                privacyLevel: asset.semanticAnalysis.privacyLevel || 'L2'
+                privacyLevel: asset.semanticAnalysis.privacyLevel || 'L2',
+                relationships: asset.semanticAnalysis.relationships || []
             });
-            setEditMode(false);
+            // If already analyzed (done), start in View mode (editMode = false). If not using semantic analysis, start in Edit mode.
+            setEditMode(asset.semanticAnalysis.analysisStep !== 'done');
         } else {
+            // New / Unanalyzed
             setSemanticProfile({
-                businessName: '', description: '', scenarios: [], coreFields: [],
-                qualityScore: 0, privacyLevel: 'L1'
+                analysisStep: 'idle',
+                gateResult: 'PASS',
+                finalScore: 0,
+                aiScore: 0,
+                ruleScore: 0,
+                businessName: '',
+                description: '',
+                scenarios: [],
+                coreFields: [],
+                qualityScore: 0,
+                privacyLevel: 'L1',
+                relationships: []
             });
-            setEditMode(true); // Default to edit mode if not analyzed
+            setEditMode(true);
         }
 
         setViewMode('detail');
@@ -119,22 +153,58 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
     const handleAnalyze = () => {
         if (!selectedTable) return;
         setIsAnalyzing(true);
+        // Reset state for new analysis
+        setSemanticProfile(prev => ({ ...prev, analysisStep: 'analyzing', gateResult: 'PASS' }));
 
         setTimeout(() => {
-            // Mock AI Analysis
+            // Mock AI Analysis Result
+            const isLogTable = selectedTable.table.toLowerCase().includes('log');
+
             const result = {
+                analysisStep: 'done' as const,
+                gateResult: isLogTable ? 'REJECT' as const : 'PASS' as const,
+                gateDetail: {
+                    t01: isLogTable ? 'fail' : 'pass',
+                    t02: 'pass',
+                    t03: 'pass',
+                    t04: isLogTable ? 'fail' : 'pass',
+                },
+                finalScore: isLogTable ? 0.35 : 0.88,
+                aiScore: isLogTable ? 0.2 : 0.92,
+                ruleScore: 0.85,
+                aiEvidence: isLogTable ? ['Table name contains "log"', 'High density of timestamp fields'] : ['Naming matches entity pattern', 'Primary key identified', 'Rich business attributes'],
+
                 businessName: selectedTable.table.replace('t_', '').replace(/_/g, ' '),
                 description: `AI 智能分析：该数据实体主要用于存储和管理 ${selectedTable.table.split('_')[1] || '业务'} 相关信息。`,
                 scenarios: ['业务查询', '统计报表', '数据归档'],
                 coreFields: (selectedTable.fields || []).slice(0, 3).map((f: any) => ({ field: f.name, reason: '高频查询字段' })),
                 qualityScore: Math.floor(Math.random() * 15) + 80,
-                privacyLevel: ['L1', 'L2', 'L3'][Math.floor(Math.random() * 3)]
+                privacyLevel: ['L1', 'L2', 'L3'][Math.floor(Math.random() * 3)],
+                // Preserve existing relationships or mock new ones if empty
+                relationships: semanticProfile.relationships && semanticProfile.relationships.length > 0
+                    ? semanticProfile.relationships
+                    : selectedTable.table === 't_order_main' ? [
+                        { targetTable: 't_user_profile', type: 'Many-to-One', key: 'user_id' },
+                        { targetTable: 't_order_item', type: 'One-to-Many', key: 'order_id' },
+                        { targetTable: 't_pay_flow', type: 'One-to-One', key: 'pay_id' }
+                    ] : []
             };
 
             setSemanticProfile(result as any);
             setIsAnalyzing(false);
-            setEditMode(true);
+            setEditMode(true); // Allow review/edit after analysis
         }, 1500);
+    };
+
+    const handleIgnore = () => {
+        if (!selectedTable) return;
+        setScanResults((prev: any[]) => prev.map((item: any) =>
+            item.table === selectedTable.table
+                ? { ...item, status: 'ignored' }
+                : item
+        ));
+        setViewMode('list');
+        setSelectedTableId(null);
     };
 
     const handleSaveToMetadata = () => {
@@ -204,7 +274,7 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                 <h3 className="font-bold text-slate-800 text-lg">逻辑视图列表</h3>
                                 <p className="text-xs text-slate-500 mt-1">
                                     {selectedDataSourceId
-                                        ? `当前筛选: ${dataSources.find((d: any) => d.id === selectedDataSourceId)?.name}`
+                                        ? `当前筛选: ${(dataSources.find((d: any) => d.id === selectedDataSourceId) as any)?.name}`
                                         : '显示所有已扫描的物理资产'}
                                 </p>
                             </div>
@@ -302,174 +372,308 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                 <div>
                                     <div className="flex items-center gap-3">
                                         <h2 className="text-xl font-bold text-slate-800">{selectedTable.table}</h2>
-                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${typeConfig[selectedTable.sourceType]?.bgColor} ${typeConfig[selectedTable.sourceType]?.color}`}>
+                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${typeConfig[selectedTable.sourceType]?.bgColor || 'bg-slate-100'} ${typeConfig[selectedTable.sourceType]?.color || 'text-slate-600'}`}>
                                             {selectedTable.sourceType}
                                         </span>
+                                        {/* Analysis Status Badge */}
+                                        {semanticProfile.analysisStep === 'done' ? (
+                                            <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-xs font-bold border border-emerald-100 flex items-center gap-1">
+                                                <CheckCircle size={10} /> 语义分析完成
+                                            </span>
+                                        ) : (
+                                            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs border border-slate-200">
+                                                未分析
+                                            </span>
+                                        )}
                                     </div>
                                     <p className="text-slate-500 text-sm mt-1">{selectedTable.comment || '暂无物理表注释'}</p>
-                                    <div className="flex items-center gap-4 mt-2 text-xs text-slate-400">
-                                        <span className="flex items-center gap-1"><Server size={12} /> {selectedTable.sourceName}</span>
-                                        <span className="flex items-center gap-1"><Clock size={12} /> 最后更新: {selectedTable.updateTime || 'Unknown'}</span>
-                                    </div>
                                 </div>
                             </div>
                             <div className="flex gap-2">
                                 <button onClick={handleBackToList} className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50">
                                     返回列表
                                 </button>
-                                <button onClick={handleAnalyze} disabled={isAnalyzing}
-                                    className="px-4 py-1.5 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 shadow-sm shadow-emerald-200 flex items-center gap-2">
-                                    <Cpu size={14} className={isAnalyzing ? "animate-spin" : ""} />
-                                    {isAnalyzing ? '分析中...' : 'AI 语义重分析'}
+                                <button
+                                    onClick={handleAnalyze}
+                                    disabled={isAnalyzing || semanticProfile.analysisStep === 'done'}
+                                    className={`px-4 py-1.5 rounded-lg text-sm shadow-sm flex items-center gap-2 text-white transition-all ${isAnalyzing ? 'bg-slate-400 cursor-not-allowed' :
+                                        semanticProfile.analysisStep === 'done' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
+                                        }`}
+                                >
+                                    {isAnalyzing ? (
+                                        <><RefreshCw size={14} className="animate-spin" /> 分析计算中...</>
+                                    ) : semanticProfile.analysisStep === 'done' ? (
+                                        <><RefreshCw size={14} /> 重新分析</>
+                                    ) : (
+                                        <><Cpu size={14} /> 开始语义识别</>
+                                    )}
                                 </button>
                             </div>
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                {/* Left: Semantic Definition */}
-                                <div className="lg:col-span-2 space-y-6">
-                                    {/* Semantic Info Card */}
-                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-                                        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                            <FileText size={18} className="text-blue-500" />
-                                            业务语义定义
+
+                            {/* Analysis Progress / Result Area */}
+                            {(isAnalyzing || semanticProfile.analysisStep !== 'idle') && (
+                                <div className="mb-6 space-y-6">
+
+                                    {/* Stage 1: Gate Check */}
+                                    <div className={`p-4 rounded-xl border transition-all duration-300 ${semanticProfile.gateResult === 'REJECT' ? 'bg-red-50 border-red-100' : 'bg-white border-slate-200'}`}>
+                                        <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+                                            <ShieldCheck size={18} className={semanticProfile.gateResult === 'PASS' ? "text-emerald-500" : "text-slate-400"} />
+                                            第一阶段：规则门控 (Gate Keepers)
                                         </h3>
-                                        <div className="grid grid-cols-1 gap-4">
-                                            <div>
-                                                <label className="block text-xs font-medium text-slate-500 mb-1">业务名称</label>
-                                                <input
-                                                    type="text"
-                                                    value={semanticProfile.businessName}
-                                                    onChange={e => setSemanticProfile({ ...semanticProfile, businessName: e.target.value })}
-                                                    disabled={!editMode}
-                                                    placeholder="请输入业务名称"
-                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-medium text-slate-500 mb-1">详细描述</label>
-                                                <textarea
-                                                    value={semanticProfile.description}
-                                                    onChange={e => setSemanticProfile({ ...semanticProfile, description: e.target.value })}
-                                                    disabled={!editMode}
-                                                    rows={3}
-                                                    placeholder="业务描述..."
-                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 resize-none"
-                                                />
-                                            </div>
+                                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                            {[
+                                                { code: 'T-01', name: '表名语义', status: semanticProfile.gateDetail?.t01 },
+                                                { code: 'T-02', name: '主键校验', status: semanticProfile.gateDetail?.t02 },
+                                                { code: 'T-03', name: '生命周期', status: semanticProfile.gateDetail?.t03 },
+                                                { code: 'T-04', name: '排除列表', status: semanticProfile.gateDetail?.t04 },
+                                            ].map((rule) => (
+                                                <div key={rule.code} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                                    <div>
+                                                        <div className="text-xs text-slate-400 font-mono">{rule.code}</div>
+                                                        <div className="text-sm font-medium text-slate-700">{rule.name}</div>
+                                                    </div>
+                                                    {rule.status === 'pass' && <CheckCircle size={16} className="text-emerald-500" />}
+                                                    {rule.status === 'fail' && <X size={16} className="text-red-500" />}
+                                                    {rule.status === 'pending' && <div className="w-4 h-4 rounded-full border-2 border-slate-200 border-t-blue-500 animate-spin" />}
+                                                </div>
+                                            ))}
                                         </div>
+                                        {semanticProfile.gateResult === 'REJECT' && (
+                                            <div className="mt-3 text-red-600 text-sm flex items-center gap-2">
+                                                <AlertCircle size={14} />
+                                                此表被规则引擎识别为非业务实体（如日志/临时表），建议跳过建模。
+                                            </div>
+                                        )}
                                     </div>
 
-                                    {/* Field List Card */}
-                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                                        <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                                            <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                                                <Table size={18} className="text-slate-500" />
-                                                字段结构
-                                            </h3>
-                                            <span className="text-xs text-slate-500">{selectedTable.fields?.length || 0} 个字段</span>
-                                        </div>
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-sm text-left">
-                                                <thead className="bg-slate-50 text-slate-500 border-b border-slate-100">
-                                                    <tr>
-                                                        <th className="px-5 py-2 w-10">#</th>
-                                                        <th className="px-5 py-2">字段名</th>
-                                                        <th className="px-5 py-2">类型</th>
-                                                        <th className="px-5 py-2">注释</th>
-                                                        <th className="px-5 py-2">AI 建议</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-50">
-                                                    {selectedTable.fields?.map((field: any, idx: number) => (
-                                                        <tr key={idx} className="hover:bg-slate-50">
-                                                            <td className="px-5 py-2 text-slate-400 text-xs font-mono">{idx + 1}</td>
-                                                            <td className="px-5 py-2 font-mono text-slate-700">{field.name}</td>
-                                                            <td className="px-5 py-2 text-xs text-slate-500 max-w-[100px] truncate">{field.type}</td>
-                                                            <td className="px-5 py-2 text-slate-600 truncate max-w-[150px]">{field.comment || '-'}</td>
-                                                            <td className="px-5 py-2">
-                                                                {field.suggestion ? (
-                                                                    <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-100">{field.suggestion}</span>
-                                                                ) : '-'}
-                                                            </td>
-                                                        </tr>
+                                    {/* Stage 2 & 3 - Only show if Gate Passed */}
+                                    {semanticProfile.gateResult === 'PASS' && semanticProfile.analysisStep === 'done' && (
+                                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in-up">
+
+                                            {/* Score Card */}
+                                            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                                                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                                    <Activity size={18} className="text-blue-500" />
+                                                    第二阶段：混合评分
+                                                </h3>
+                                                <div className="flex items-end justify-between mb-4">
+                                                    <div className="text-center">
+                                                        <div className="text-3xl font-bold text-slate-800">{semanticProfile.finalScore}</div>
+                                                        <div className="text-xs text-slate-500">最终置信度</div>
+                                                    </div>
+                                                    <div className="text-2xl font-light text-slate-300">=</div>
+                                                    <div className="text-center">
+                                                        <div className="text-xl font-semibold text-blue-600">0.55 × {semanticProfile.aiScore}</div>
+                                                        <div className="text-xs text-slate-500">AI 评分</div>
+                                                    </div>
+                                                    <div className="text-2xl font-light text-slate-300">+</div>
+                                                    <div className="text-center">
+                                                        <div className="text-xl font-semibold text-purple-600">0.45 × {semanticProfile.ruleScore}</div>
+                                                        <div className="text-xs text-slate-500">规则加权</div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-2 pt-4 border-t border-slate-100">
+                                                    <div className="text-xs font-medium text-slate-500">AI 判定依据 (Evidence):</div>
+                                                    {semanticProfile.aiEvidence?.map((e: string, i: number) => (
+                                                        <div key={i} className="text-xs text-slate-600 flex gap-2">
+                                                            <span className="text-blue-500">•</span> {e}
+                                                        </div>
                                                     ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Right: AI Insights */}
-                                <div className="space-y-6">
-                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                                        <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                            <Activity size={18} className="text-emerald-500" />
-                                            AI 质量评估
-                                        </h4>
-                                        <div className="space-y-4">
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-sm text-slate-600">质量得分</span>
-                                                <span className="text-xl font-bold text-emerald-600">{semanticProfile.qualityScore}</span>
-                                            </div>
-                                            <div className="w-full bg-slate-100 rounded-full h-2">
-                                                <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${semanticProfile.qualityScore}%` }}></div>
-                                            </div>
-
-                                            <div className="pt-4 border-t border-slate-100">
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <span className="text-sm text-slate-600">隐私等级</span>
-                                                    <span className={`text-xs px-2 py-0.5 rounded font-bold ${semanticProfile.privacyLevel.includes('L3') || semanticProfile.privacyLevel.includes('L4') ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
-                                                        {semanticProfile.privacyLevel}
-                                                    </span>
                                                 </div>
-                                                <p className="text-xs text-slate-400 leading-relaxed">
-                                                    {semanticProfile.privacyLevel.includes('L3') || semanticProfile.privacyLevel.includes('L4')
-                                                        ? '包含敏感个人信息，建议开启字段级加密。'
-                                                        : '低敏感数据，可作为一般业务实体使用。'}
-                                                </p>
+                                            </div>
+
+                                            {/* AI Suggestion */}
+                                            <div className="lg:col-span-2 bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                                                <div>
+                                                    <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                                        <Cpu size={18} className="text-purple-500" />
+                                                        语义结论建议
+                                                    </h3>
+                                                    <div className="grid grid-cols-2 gap-6">
+                                                        <div>
+                                                            <label className="text-xs text-slate-500 block mb-1">建议业务名称</label>
+                                                            <div className="flex items-center gap-2">
+                                                                {editMode ? (
+                                                                    <input
+                                                                        type="text"
+                                                                        value={semanticProfile.businessName}
+                                                                        onChange={(e) => setSemanticProfile({ ...semanticProfile, businessName: e.target.value })}
+                                                                        className="text-lg font-bold text-slate-800 border-b border-blue-300 focus:outline-none focus:border-blue-500 bg-transparent w-full"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="text-lg font-bold text-slate-800">{semanticProfile.businessName}</div>
+                                                                )}
+                                                                <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded border border-blue-100 pointer-events-none whitespace-nowrap">AI 生成</span>
+                                                            </div>
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-xs text-slate-500 block mb-1">识别业务域</label>
+                                                            <div className="flex gap-2">
+                                                                {semanticProfile.scenarios.map((s, i) => (
+                                                                    <span key={i} className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs">{s}</span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                        <div className="col-span-2">
+                                                            <label className="text-xs text-slate-500 block mb-1">业务描述</label>
+                                                            {editMode ? (
+                                                                <textarea
+                                                                    value={semanticProfile.description}
+                                                                    onChange={(e) => setSemanticProfile({ ...semanticProfile, description: e.target.value })}
+                                                                    className="w-full text-sm text-slate-600 leading-relaxed bg-white p-2 rounded border border-slate-200 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none resize-none h-24"
+                                                                />
+                                                            ) : (
+                                                                <p className="text-sm text-slate-600 leading-relaxed bg-slate-50 p-2 rounded border border-slate-100">
+                                                                    {semanticProfile.description}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-slate-100">
+                                                    <button onClick={handleIgnore} className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 hover:text-red-500 hover:border-red-200 transition-colors">忽略此对象</button>
+                                                    <button onClick={handleSaveToMetadata} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 shadow-sm flex items-center gap-2 transition-transform active:scale-95">
+                                                        <CheckCircle size={16} /> 确认并生成逻辑实体
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-
-                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                                        <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                            <Star size={18} className="text-amber-500" />
-                                            核心字段
-                                        </h4>
-                                        <div className="space-y-2">
-                                            {semanticProfile.coreFields.map((cf, i) => (
-                                                <div key={i} className="text-sm border-l-2 border-amber-400 pl-3 py-1">
-                                                    <div className="font-mono font-medium text-slate-700">{cf.field}</div>
-                                                    <div className="text-xs text-slate-400">{cf.reason}</div>
-                                                </div>
-                                            ))}
-                                            {semanticProfile.coreFields.length === 0 && <p className="text-xs text-slate-400">暂无核心字段</p>}
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                                        <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                            <Tag size={18} className="text-slate-500" />
-                                            场景标签
-                                        </h4>
-                                        <div className="flex flex-wrap gap-2">
-                                            {semanticProfile.scenarios.map((s, i) => (
-                                                <span key={i} className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs">
-                                                    {s}
-                                                </span>
-                                            ))}
-                                            {editMode && <button className="px-2 py-1 border border-dashed border-slate-300 rounded text-xs text-slate-400 hover:text-slate-600 hover:border-slate-400">+ Tag</button>}
-                                        </div>
-                                    </div>
-
-                                    {editMode && (
-                                        <button onClick={handleSaveToMetadata} className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-sm transition-colors flex items-center justify-center gap-2">
-                                            <CheckCircle size={16} /> 保存配置
-                                        </button>
                                     )}
                                 </div>
+                            )}
+
+                            {/* Field List & Relationships (Tabs) */}
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                <div className="border-b border-slate-100 bg-slate-50 flex items-center px-2">
+                                    <button
+                                        onClick={() => setDetailTab('fields')}
+                                        className={`px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors ${detailTab === 'fields' ? 'border-blue-500 text-blue-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'}`}
+                                    >
+                                        <Table size={16} /> 字段结构 ({selectedTable.fields?.length || 0})
+                                    </button>
+                                    <button
+                                        onClick={() => setDetailTab('graph')}
+                                        className={`px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors ${detailTab === 'graph' ? 'border-blue-500 text-blue-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'}`}
+                                    >
+                                        <Share2 size={16} /> 关系图谱 ({semanticProfile.relationships?.length || 0})
+                                    </button>
+                                </div>
+
+                                {/* Relationships View (Simple Visualization) */}
+                                {detailTab === 'graph' ? (
+                                    semanticProfile.relationships && semanticProfile.relationships.length > 0 ? (
+                                        <div className="p-6 bg-slate-50/30 min-h-[400px]">
+                                            <div className="flex items-center justify-center py-8">
+                                                {/* Star Topology Visualization */}
+                                                <div className="relative flex items-center">
+                                                    {/* Center Node */}
+                                                    <div className="z-10 w-32 h-32 rounded-full bg-blue-600 text-white flex flex-col items-center justify-center p-2 text-center shadow-lg border-4 border-blue-100 animate-pulse-subtle">
+                                                        <Database size={24} className="mb-1 opacity-80" />
+                                                        <div className="text-xs font-bold truncate w-full px-2">{selectedTable.table}</div>
+                                                        <div className="text-[10px] opacity-80">当前实体</div>
+                                                    </div>
+
+                                                    {/* Connected Nodes */}
+                                                    {semanticProfile.relationships.map((rel, idx) => {
+                                                        // Calculate position in a circle
+                                                        const angle = (idx * (360 / semanticProfile.relationships!.length)) * (Math.PI / 180);
+                                                        const radius = 180;
+                                                        const x = Math.cos(angle) * radius;
+                                                        const y = Math.sin(angle) * radius;
+
+                                                        return (
+                                                            <div key={idx} className="absolute flex flex-col items-center group" style={{ transform: `translate(${x}px, ${y}px)` }}>
+                                                                {/* Connection Line */}
+                                                                <div className="absolute top-1/2 left-1/2 -z-10 w-[180px] h-[2px] bg-slate-300 origin-center"
+                                                                    style={{
+                                                                        transform: `translate(-50%, -50%) rotate(${angle * (180 / Math.PI) + 180}deg)`,
+                                                                        width: `${radius}px`,
+                                                                        left: `${-x / 2}px`,
+                                                                        top: `${-y / 2}px`
+                                                                    }}>
+                                                                </div>
+
+                                                                <div className="w-24 h-24 rounded-full bg-white border-2 border-slate-200 shadow-sm flex flex-col items-center justify-center p-2 text-center z-10 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer">
+                                                                    <div className="text-[10px] font-bold text-slate-500 mb-1">{rel.type}</div>
+                                                                    <div className="text-xs font-bold text-slate-700 break-all leading-tight">{rel.targetTable}</div>
+                                                                    <div className="mt-1 text-[9px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full">{rel.key}</div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="p-12 text-center text-slate-400 min-h-[400px] flex flex-col items-center justify-center">
+                                            <Share2 size={48} className="opacity-20 mb-4" />
+                                            <p>暂无关联关系数据</p>
+                                        </div>
+                                    )
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm text-left">
+                                            <thead className="bg-slate-50 text-slate-500 border-b border-slate-100">
+                                                <tr>
+                                                    <th className="px-5 py-2 w-10">#</th>
+                                                    <th className="px-5 py-2">物理字段</th>
+                                                    <th className="px-5 py-2">类型</th>
+                                                    <th className="px-5 py-2">
+                                                        <span className="flex items-center gap-1 text-purple-600"><Settings size={12} /> 规则判定</span>
+                                                    </th>
+                                                    <th className="px-5 py-2">
+                                                        <span className="flex items-center gap-1 text-blue-600"><Cpu size={12} /> AI 建议</span>
+                                                    </th>
+                                                    <th className="px-5 py-2 text-center">状态</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-50">
+                                                {selectedTable.fields?.map((field: any, idx: number) => {
+                                                    // Mock determination just for display
+                                                    const ruleRole = field.name.endsWith('_id') ? 'Identifier' : field.name.includes('time') ? 'EventHint' : 'BusAttr';
+                                                    const aiRole = field.suggestion ? field.suggestion : ruleRole;
+                                                    const hasConflict = ruleRole !== aiRole && aiRole !== 'unknown';
+
+                                                    return (
+                                                        <tr key={idx} className={`hover:bg-slate-50 ${hasConflict ? 'bg-amber-50/50' : ''}`}>
+                                                            <td className="px-5 py-2 text-slate-400 text-xs font-mono">{idx + 1}</td>
+                                                            <td className="px-5 py-2 font-mono text-slate-700">{field.name}</td>
+                                                            <td className="px-5 py-2 text-xs text-slate-500">{field.type}</td>
+                                                            <td className="px-5 py-2">
+                                                                <span className="px-2 py-0.5 rounded text-xs border border-purple-100 bg-purple-50 text-purple-700 font-mono">
+                                                                    {ruleRole}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-5 py-2">
+                                                                {isAnalyzing ? (
+                                                                    <span className="animate-pulse bg-slate-200 h-4 w-12 rounded inline-block"></span>
+                                                                ) : (
+                                                                    <span className="px-2 py-0.5 rounded text-xs border border-blue-100 bg-blue-50 text-blue-700 font-mono">
+                                                                        {aiRole}
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-5 py-2 text-center">
+                                                                {hasConflict && !isAnalyzing && (
+                                                                    <div className="flex justify-center group relative">
+                                                                        <AlertTriangle size={16} className="text-amber-500 cursor-help" />
+                                                                        <div className="absolute bottom-full mb-2 hidden group-hover:block w-48 bg-slate-800 text-white text-xs p-2 rounded z-10">
+                                                                            规则判定为 {ruleRole}，但 AI 建议为 {aiRole}，请确认。
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

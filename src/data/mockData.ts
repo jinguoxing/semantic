@@ -502,7 +502,12 @@ export const mockScanResults = [
             scenarios: ['交易分析'],
             coreFields: [{ field: 'order_id', reason: '订单主键' }],
             qualityScore: 85,
-            privacyLevel: 'L2'
+            privacyLevel: 'L2',
+            relationships: [
+                { targetTable: 't_user_profile', type: 'Many-to-One', key: 'user_id' },
+                { targetTable: 't_order_item', type: 'One-to-Many', key: 'order_id' },
+                { targetTable: 't_pay_flow', type: 'One-to-One', key: 'pay_id' }
+            ]
         },
         fields: [
             { name: 'order_id', type: 'varchar(32)', comment: '订单号' },
