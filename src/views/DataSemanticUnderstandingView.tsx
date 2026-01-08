@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Database, Search, ChevronRight, Cpu, CheckCircle, Star, Tag, FileText, Layers, ShieldCheck, Activity, ArrowLeft, Table, Clock, Server, RefreshCw, X, AlertCircle, Settings, AlertTriangle, Share2 } from 'lucide-react';
+import { Database, Search, ChevronRight, Cpu, CheckCircle, Star, Tag, FileText, Layers, ShieldCheck, Activity, ArrowLeft, Table, Clock, Server, RefreshCw, X, AlertCircle, Settings, AlertTriangle, Share2, Shield } from 'lucide-react';
 
 interface DataSemanticUnderstandingViewProps {
     scanResults: any[];
@@ -17,7 +17,8 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
     // Detail View State
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [editMode, setEditMode] = useState(false);
-    const [detailTab, setDetailTab] = useState<'fields' | 'graph'>('fields');
+    const [detailTab, setDetailTab] = useState<'fields' | 'graph' | 'dimensions' | 'quality'>('fields');
+    const [expandedFields, setExpandedFields] = useState<string[]>([]);
     const [semanticProfile, setSemanticProfile] = useState<{
         analysisStep: 'idle' | 'analyzing' | 'done';
         gateResult: 'PASS' | 'REJECT' | 'REVIEW';
@@ -561,43 +562,43 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                     >
                                         <Share2 size={16} /> 关系图谱 ({semanticProfile.relationships?.length || 0})
                                     </button>
+                                    <button
+                                        onClick={() => setDetailTab('dimensions')}
+                                        className={`px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors ${detailTab === 'dimensions' ? 'border-blue-500 text-blue-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'}`}
+                                    >
+                                        <Layers size={16} /> 语义维度
+                                    </button>
+                                    <button
+                                        onClick={() => setDetailTab('quality')}
+                                        className={`px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors ${detailTab === 'quality' ? 'border-blue-500 text-blue-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'}`}
+                                    >
+                                        <Activity size={16} /> 质量概览
+                                    </button>
                                 </div>
 
                                 {/* Relationships View (Simple Visualization) */}
+                                {/* Tab Content Rendering */}
                                 {detailTab === 'graph' ? (
+                                    // Graph Tab
                                     semanticProfile.relationships && semanticProfile.relationships.length > 0 ? (
                                         <div className="p-6 bg-slate-50/30 min-h-[400px]">
                                             <div className="flex items-center justify-center py-8">
-                                                {/* Star Topology Visualization */}
                                                 <div className="relative flex items-center">
-                                                    {/* Center Node */}
-                                                    <div className="z-10 w-32 h-32 rounded-full bg-blue-600 text-white flex flex-col items-center justify-center p-2 text-center shadow-lg border-4 border-blue-100 animate-pulse-subtle">
+                                                    <div className="z-10 w-32 h-32 rounded-full bg-blue-600 text-white flex flex-col items-center justify-center p-2 text-center shadow-lg border-4 border-blue-100">
                                                         <Database size={24} className="mb-1 opacity-80" />
                                                         <div className="text-xs font-bold truncate w-full px-2">{selectedTable.table}</div>
                                                         <div className="text-[10px] opacity-80">当前实体</div>
                                                     </div>
-
-                                                    {/* Connected Nodes */}
                                                     {semanticProfile.relationships.map((rel, idx) => {
-                                                        // Calculate position in a circle
                                                         const angle = (idx * (360 / semanticProfile.relationships!.length)) * (Math.PI / 180);
                                                         const radius = 180;
                                                         const x = Math.cos(angle) * radius;
                                                         const y = Math.sin(angle) * radius;
-
                                                         return (
-                                                            <div key={idx} className="absolute flex flex-col items-center group" style={{ transform: `translate(${x}px, ${y}px)` }}>
-                                                                {/* Connection Line */}
-                                                                <div className="absolute top-1/2 left-1/2 -z-10 w-[180px] h-[2px] bg-slate-300 origin-center"
-                                                                    style={{
-                                                                        transform: `translate(-50%, -50%) rotate(${angle * (180 / Math.PI) + 180}deg)`,
-                                                                        width: `${radius}px`,
-                                                                        left: `${-x / 2}px`,
-                                                                        top: `${-y / 2}px`
-                                                                    }}>
-                                                                </div>
-
-                                                                <div className="w-24 h-24 rounded-full bg-white border-2 border-slate-200 shadow-sm flex flex-col items-center justify-center p-2 text-center z-10 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer">
+                                                            <div key={idx} className="absolute flex flex-col items-center" style={{ transform: `translate(${x}px, ${y}px)` }}>
+                                                                <div className="absolute top-1/2 left-1/2 -z-10 h-[2px] bg-slate-300 origin-center"
+                                                                    style={{ transform: `translate(-50%, -50%) rotate(${angle * (180 / Math.PI) + 180}deg)`, width: `${radius}px`, left: `${-x / 2}px`, top: `${-y / 2}px` }} />
+                                                                <div className="w-24 h-24 rounded-full bg-white border-2 border-slate-200 shadow-sm flex flex-col items-center justify-center p-2 text-center z-10 hover:border-blue-400 transition-all cursor-pointer">
                                                                     <div className="text-[10px] font-bold text-slate-500 mb-1">{rel.type}</div>
                                                                     <div className="text-xs font-bold text-slate-700 break-all leading-tight">{rel.targetTable}</div>
                                                                     <div className="mt-1 text-[9px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full">{rel.key}</div>
@@ -614,41 +615,297 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                             <p>暂无关联关系数据</p>
                                         </div>
                                     )
+                                ) : detailTab === 'dimensions' ? (
+                                    // Dimensions Tab - Seven Dimension Accordion View
+                                    <div className="p-4 space-y-2 max-h-[500px] overflow-y-auto">
+                                        <div className="flex justify-between items-center mb-3">
+                                            <span className="text-sm text-slate-500">共 {selectedTable.fields?.length || 0} 个字段</span>
+                                            <button
+                                                onClick={() => setExpandedFields(expandedFields.length === selectedTable.fields?.length ? [] : selectedTable.fields?.map((f: any) => f.name) || [])}
+                                                className="text-xs text-blue-600 hover:text-blue-700"
+                                            >
+                                                {expandedFields.length === selectedTable.fields?.length ? '全部折叠' : '全部展开'}
+                                            </button>
+                                        </div>
+                                        {selectedTable.fields?.map((field: any, idx: number) => {
+                                            const isExpanded = expandedFields.includes(field.name);
+                                            // Semantic calculations
+                                            const ruleRole = field.name.endsWith('_id') ? 'Identifier' :
+                                                field.name.includes('time') ? 'EventHint' :
+                                                    field.name.includes('status') ? 'Status' : 'BusAttr';
+                                            const getSensitivity = (name: string): 'L1' | 'L2' | 'L3' | 'L4' => {
+                                                if (name.includes('id_card') || name.includes('bank')) return 'L4';
+                                                if (name.includes('mobile') || name.includes('phone') || name.includes('name') || name.includes('address')) return 'L3';
+                                                if (name.includes('user') || name.includes('employee')) return 'L2';
+                                                return 'L1';
+                                            };
+                                            const sensitivity = getSensitivity(field.name);
+                                            const getValueDomain = (type: string): string => {
+                                                if (type.includes('tinyint') || type.includes('enum')) return '枚举型';
+                                                if (type.includes('decimal') || type.includes('int')) return '范围型';
+                                                if (type.includes('varchar') && type.includes('18')) return '格式型';
+                                                return '自由文本';
+                                            };
+                                            const valueDomain = getValueDomain(field.type);
+                                            const nullRate = Math.floor(Math.random() * 10);
+                                            const uniqueness = field.name.includes('id') ? 100 : Math.floor(Math.random() * 50) + 50;
+
+                                            return (
+                                                <div key={idx} className="border border-slate-200 rounded-lg overflow-hidden">
+                                                    <button
+                                                        onClick={() => setExpandedFields(isExpanded
+                                                            ? expandedFields.filter(f => f !== field.name)
+                                                            : [...expandedFields, field.name]
+                                                        )}
+                                                        className="w-full px-4 py-3 bg-white hover:bg-slate-50 flex items-center justify-between transition-colors"
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <ChevronRight size={16} className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                                            <span className="font-mono font-medium text-slate-700">{field.name}</span>
+                                                            <span className="text-xs text-slate-400">({field.type})</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-600">{ruleRole}</span>
+                                                            <span className={`px-2 py-0.5 rounded text-xs ${sensitivity === 'L4' ? 'bg-red-50 text-red-600' : sensitivity === 'L3' ? 'bg-orange-50 text-orange-600' : 'bg-slate-100 text-slate-500'}`}>{sensitivity}</span>
+                                                        </div>
+                                                    </button>
+                                                    {isExpanded && (
+                                                        <div className="bg-slate-50 px-4 py-3 border-t border-slate-100 grid grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-01 语义角色</div>
+                                                                <div className="font-medium text-slate-700">{ruleRole}</div>
+                                                                <div className="text-xs text-slate-400 mt-1">置信度: 95%</div>
+                                                            </div>
+                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-02 类型语义</div>
+                                                                <div className="font-medium text-slate-700">{field.type}</div>
+                                                                <div className="text-xs text-slate-400 mt-1">推断: {field.comment || '未知'}</div>
+                                                            </div>
+                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-03 值域特征</div>
+                                                                <div className="font-medium text-slate-700">{valueDomain}</div>
+                                                            </div>
+                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-04 敏感等级</div>
+                                                                <div className={`font-medium ${sensitivity === 'L4' ? 'text-red-600' : sensitivity === 'L3' ? 'text-orange-600' : 'text-slate-700'}`}>
+                                                                    {sensitivity === 'L4' ? 'L4 高敏' : sensitivity === 'L3' ? 'L3 敏感' : sensitivity === 'L2' ? 'L2 内部' : 'L1 公开'}
+                                                                </div>
+                                                            </div>
+                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-05 业务名称</div>
+                                                                <input
+                                                                    type="text"
+                                                                    defaultValue={field.comment || ''}
+                                                                    placeholder="输入业务名称..."
+                                                                    className="w-full text-sm font-medium text-slate-700 border-b border-slate-200 focus:border-blue-400 outline-none bg-transparent"
+                                                                />
+                                                            </div>
+                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-06 质量信号</div>
+                                                                <div className="text-xs text-slate-600">
+                                                                    空值率: <span className={nullRate > 5 ? 'text-amber-600' : 'text-emerald-600'}>{nullRate}%</span> |
+                                                                    唯一性: <span className="text-slate-700">{uniqueness}%</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="bg-white p-3 rounded-lg border border-slate-100 col-span-2 lg:col-span-3">
+                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-07 关联性</div>
+                                                                <div className="text-sm text-slate-600">
+                                                                    {field.name.endsWith('_id') ? (
+                                                                        <span className="flex items-center gap-2">
+                                                                            <Share2 size={12} className="text-blue-500" />
+                                                                            推断关联: <span className="font-mono text-blue-600">t_{field.name.replace('_id', '')}</span>
+                                                                        </span>
+                                                                    ) : '无关联'}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ) : detailTab === 'quality' ? (
+                                    // Quality Overview Tab
+                                    <div className="p-6 space-y-6">
+                                        {/* Overall Grade */}
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="text-lg font-bold text-slate-800">数据质量总览</h3>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm text-slate-500">综合评级:</span>
+                                                <span className="px-3 py-1 text-lg font-bold bg-emerald-100 text-emerald-700 rounded-lg">B+</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Quality Metrics Grid */}
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                            {/* Completeness */}
+                                            <div className="bg-white p-4 rounded-xl border border-slate-200">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <span className="font-medium text-slate-700">完整性 (非空率)</span>
+                                                    <span className="text-lg font-bold text-emerald-600">82%</span>
+                                                </div>
+                                                <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                                                    <div className="bg-emerald-500 h-3 rounded-full transition-all duration-500" style={{ width: '82%' }}></div>
+                                                </div>
+                                                <div className="mt-2 text-xs text-slate-500">
+                                                    问题字段: <span className="text-amber-600 font-medium">description (空值率 35%)</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Consistency */}
+                                            <div className="bg-white p-4 rounded-xl border border-slate-200">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <span className="font-medium text-slate-700">一致性 (格式符合率)</span>
+                                                    <span className="text-lg font-bold text-blue-600">95%</span>
+                                                </div>
+                                                <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                                                    <div className="bg-blue-500 h-3 rounded-full transition-all duration-500" style={{ width: '95%' }}></div>
+                                                </div>
+                                                <div className="mt-2 text-xs text-slate-500">
+                                                    问题字段: <span className="text-amber-600 font-medium">mobile (5% 格式异常)</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Uniqueness */}
+                                            <div className="bg-white p-4 rounded-xl border border-slate-200">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <span className="font-medium text-slate-700">唯一性 (主键/标识字段)</span>
+                                                    <span className="text-lg font-bold text-purple-600">100%</span>
+                                                </div>
+                                                <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                                                    <div className="bg-purple-500 h-3 rounded-full transition-all duration-500" style={{ width: '100%' }}></div>
+                                                </div>
+                                                <div className="mt-2 text-xs text-slate-500">
+                                                    <span className="text-emerald-600">✓ 无重复主键</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Timeliness */}
+                                            <div className="bg-white p-4 rounded-xl border border-slate-200">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <span className="font-medium text-slate-700">时效性 (数据新鲜度)</span>
+                                                    <span className="text-lg font-bold text-orange-600">72%</span>
+                                                </div>
+                                                <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                                                    <div className="bg-orange-500 h-3 rounded-full transition-all duration-500" style={{ width: '72%' }}></div>
+                                                </div>
+                                                <div className="mt-2 text-xs text-slate-500">
+                                                    最后更新: <span className="text-slate-700">2024-05-21 02:00:00</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Sensitivity Distribution */}
+                                        <div className="bg-white p-4 rounded-xl border border-slate-200">
+                                            <h4 className="font-medium text-slate-700 mb-4">敏感字段分布</h4>
+                                            <div className="flex items-end gap-4 h-32">
+                                                {(() => {
+                                                    const fields = selectedTable.fields || [];
+                                                    const getSensitivity = (name: string): 'L1' | 'L2' | 'L3' | 'L4' => {
+                                                        if (name.includes('id_card') || name.includes('bank')) return 'L4';
+                                                        if (name.includes('mobile') || name.includes('phone') || name.includes('name') || name.includes('address')) return 'L3';
+                                                        if (name.includes('user') || name.includes('employee')) return 'L2';
+                                                        return 'L1';
+                                                    };
+                                                    const counts = { L1: 0, L2: 0, L3: 0, L4: 0 };
+                                                    fields.forEach((f: any) => counts[getSensitivity(f.name)]++);
+                                                    const maxCount = Math.max(...Object.values(counts), 1);
+                                                    const config = [
+                                                        { level: 'L1', label: '公开', color: 'bg-slate-300', count: counts.L1 },
+                                                        { level: 'L2', label: '内部', color: 'bg-blue-400', count: counts.L2 },
+                                                        { level: 'L3', label: '敏感', color: 'bg-orange-400', count: counts.L3 },
+                                                        { level: 'L4', label: '高敏', color: 'bg-red-500', count: counts.L4 },
+                                                    ];
+                                                    return config.map((item, i) => (
+                                                        <div key={i} className="flex-1 flex flex-col items-center">
+                                                            <div className={`w-full ${item.color} rounded-t-lg transition-all duration-500`}
+                                                                style={{ height: `${(item.count / maxCount) * 100}%`, minHeight: item.count > 0 ? '8px' : '0' }}>
+                                                            </div>
+                                                            <div className="mt-2 text-center">
+                                                                <div className="text-lg font-bold text-slate-700">{item.count}</div>
+                                                                <div className="text-xs text-slate-500">{item.level}</div>
+                                                                <div className="text-[10px] text-slate-400">{item.label}</div>
+                                                            </div>
+                                                        </div>
+                                                    ));
+                                                })()}
+                                            </div>
+                                        </div>
+
+                                        {/* Problem Fields Summary */}
+                                        <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
+                                            <h4 className="font-medium text-amber-800 mb-3 flex items-center gap-2">
+                                                <AlertTriangle size={16} /> 质量问题字段 ({Math.min(2, selectedTable.fields?.length || 0)})
+                                            </h4>
+                                            <div className="space-y-2">
+                                                <div className="flex items-center justify-between bg-white px-3 py-2 rounded-lg text-sm">
+                                                    <span className="font-mono text-slate-700">description</span>
+                                                    <span className="text-amber-600">空值率过高 (35%)</span>
+                                                </div>
+                                                <div className="flex items-center justify-between bg-white px-3 py-2 rounded-lg text-sm">
+                                                    <span className="font-mono text-slate-700">remark</span>
+                                                    <span className="text-amber-600">字段未使用 (100% 空值)</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 ) : (
+                                    // Fields Tab (default)
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-sm text-left">
                                             <thead className="bg-slate-50 text-slate-500 border-b border-slate-100">
                                                 <tr>
-                                                    <th className="px-5 py-2 w-10">#</th>
-                                                    <th className="px-5 py-2">物理字段</th>
-                                                    <th className="px-5 py-2">类型</th>
-                                                    <th className="px-5 py-2">
+                                                    <th className="px-4 py-2 w-10">#</th>
+                                                    <th className="px-4 py-2">物理字段</th>
+                                                    <th className="px-4 py-2">类型</th>
+                                                    <th className="px-4 py-2">
                                                         <span className="flex items-center gap-1 text-purple-600"><Settings size={12} /> 规则判定</span>
                                                     </th>
-                                                    <th className="px-5 py-2">
+                                                    <th className="px-4 py-2">
                                                         <span className="flex items-center gap-1 text-blue-600"><Cpu size={12} /> AI 建议</span>
                                                     </th>
-                                                    <th className="px-5 py-2 text-center">状态</th>
+                                                    <th className="px-4 py-2">
+                                                        <span className="flex items-center gap-1 text-orange-600"><Shield size={12} /> 敏感等级</span>
+                                                    </th>
+                                                    <th className="px-4 py-2 text-center w-20">冲突</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-50">
                                                 {selectedTable.fields?.map((field: any, idx: number) => {
-                                                    // Mock determination just for display
-                                                    const ruleRole = field.name.endsWith('_id') ? 'Identifier' : field.name.includes('time') ? 'EventHint' : 'BusAttr';
+                                                    // Semantic role determination
+                                                    const ruleRole = field.name.endsWith('_id') ? 'Identifier' :
+                                                        field.name.includes('time') ? 'EventHint' :
+                                                            field.name.includes('status') ? 'Status' : 'BusAttr';
                                                     const aiRole = field.suggestion ? field.suggestion : ruleRole;
                                                     const hasConflict = ruleRole !== aiRole && aiRole !== 'unknown';
 
+                                                    // Sensitivity level inference
+                                                    const getSensitivity = (name: string, type: string): 'L1' | 'L2' | 'L3' | 'L4' => {
+                                                        if (name.includes('id_card') || name.includes('sfz') || name.includes('bank')) return 'L4';
+                                                        if (name.includes('mobile') || name.includes('phone') || name.includes('name') || name.includes('address')) return 'L3';
+                                                        if (name.includes('user') || name.includes('employee')) return 'L2';
+                                                        return 'L1';
+                                                    };
+                                                    const sensitivity = getSensitivity(field.name, field.type);
+
+                                                    const sensitivityConfig: Record<string, { bg: string, text: string, label: string }> = {
+                                                        'L1': { bg: 'bg-slate-100', text: 'text-slate-600', label: 'L1 公开' },
+                                                        'L2': { bg: 'bg-blue-50', text: 'text-blue-600', label: 'L2 内部' },
+                                                        'L3': { bg: 'bg-orange-50', text: 'text-orange-600', label: 'L3 敏感' },
+                                                        'L4': { bg: 'bg-red-50', text: 'text-red-600', label: 'L4 高敏' },
+                                                    };
+
                                                     return (
                                                         <tr key={idx} className={`hover:bg-slate-50 ${hasConflict ? 'bg-amber-50/50' : ''}`}>
-                                                            <td className="px-5 py-2 text-slate-400 text-xs font-mono">{idx + 1}</td>
-                                                            <td className="px-5 py-2 font-mono text-slate-700">{field.name}</td>
-                                                            <td className="px-5 py-2 text-xs text-slate-500">{field.type}</td>
-                                                            <td className="px-5 py-2">
+                                                            <td className="px-4 py-2.5 text-slate-400 text-xs font-mono">{idx + 1}</td>
+                                                            <td className="px-4 py-2.5 font-mono text-slate-700 font-medium">{field.name}</td>
+                                                            <td className="px-4 py-2.5 text-xs text-slate-500">{field.type}</td>
+                                                            <td className="px-4 py-2.5">
                                                                 <span className="px-2 py-0.5 rounded text-xs border border-purple-100 bg-purple-50 text-purple-700 font-mono">
                                                                     {ruleRole}
                                                                 </span>
                                                             </td>
-                                                            <td className="px-5 py-2">
+                                                            <td className="px-4 py-2.5">
                                                                 {isAnalyzing ? (
                                                                     <span className="animate-pulse bg-slate-200 h-4 w-12 rounded inline-block"></span>
                                                                 ) : (
@@ -657,12 +914,40 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                                     </span>
                                                                 )}
                                                             </td>
-                                                            <td className="px-5 py-2 text-center">
+                                                            <td className="px-4 py-2.5">
+                                                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${sensitivityConfig[sensitivity].bg} ${sensitivityConfig[sensitivity].text}`}>
+                                                                    {sensitivityConfig[sensitivity].label}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-center">
                                                                 {hasConflict && !isAnalyzing && (
-                                                                    <div className="flex justify-center group relative">
-                                                                        <AlertTriangle size={16} className="text-amber-500 cursor-help" />
-                                                                        <div className="absolute bottom-full mb-2 hidden group-hover:block w-48 bg-slate-800 text-white text-xs p-2 rounded z-10">
-                                                                            规则判定为 {ruleRole}，但 AI 建议为 {aiRole}，请确认。
+                                                                    <div className="relative inline-block group">
+                                                                        <button className="p-1 hover:bg-amber-100 rounded transition-colors">
+                                                                            <AlertTriangle size={16} className="text-amber-500" />
+                                                                        </button>
+                                                                        {/* Enhanced Conflict Resolution Popover */}
+                                                                        <div className="absolute right-0 bottom-full mb-2 hidden group-hover:block w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-20 p-3 text-left">
+                                                                            <div className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1">
+                                                                                <AlertTriangle size={14} className="text-amber-500" /> 判定冲突
+                                                                            </div>
+                                                                            <div className="space-y-2 mb-3">
+                                                                                <div className="flex justify-between items-center text-xs">
+                                                                                    <span className="text-slate-500">规则判定:</span>
+                                                                                    <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-700 font-mono">{ruleRole}</span>
+                                                                                </div>
+                                                                                <div className="flex justify-between items-center text-xs">
+                                                                                    <span className="text-slate-500">AI 建议:</span>
+                                                                                    <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-mono">{aiRole}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="border-t border-slate-100 pt-2 flex gap-1">
+                                                                                <button className="flex-1 px-2 py-1.5 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors">
+                                                                                    采用规则
+                                                                                </button>
+                                                                                <button className="flex-1 px-2 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">
+                                                                                    采用AI
+                                                                                </button>
+                                                                            </div>
                                                                         </div>
                                                                     </div>
                                                                 )}
