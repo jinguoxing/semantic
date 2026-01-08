@@ -500,6 +500,8 @@ export default function SemanticLayerApp() {
             case 'bu_candidates': return <CandidateGenerationView scanResults={scanResults} setScanResults={setScanResults} onAddBusinessObject={handleAddBusinessObject} />;
             case 'governance': return <ConflictDetectionView />;
             case 'smart_data': return <SmartDataHubView />;
+            case 'ee_api': return <ApiGatewayView businessObjects={businessObjects} />;
+            case 'ee_cache': return <CacheStrategyView />;
             default: return <DashboardView setActiveModule={setActiveModule} />;
         }
     };
@@ -2721,254 +2723,460 @@ const BookIcon = ({ size, className }: any) => (
 );
 
 // ------------------------------------------------------------------
-// 视图: 数据语义理解 (BU-03)
+// 视图: 逻辑视图 (BU-03) - Enhanced with AI Semantic Analysis
 // ------------------------------------------------------------------
 const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: { scanResults: any[], setScanResults: any }) => {
-    const [selectedTable, setSelectedTable] = useState<any>(null);
+    // State
+    const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const [analysisFilter, setAnalysisFilter] = useState('all');
+    const [editMode, setEditMode] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [expandedTypes, setExpandedTypes] = useState<string[]>(['MySQL', 'Oracle', 'PostgreSQL']);
 
-    // 场景类型配置
-    const scenarioTypes = [
-        { id: 'person', label: '人员信息', icon: Users, color: 'text-blue-600', bgColor: 'bg-blue-100' },
-        { id: 'transaction', label: '交易记录', icon: ArrowRight, color: 'text-emerald-600', bgColor: 'bg-emerald-100' },
-        { id: 'master', label: '主数据', icon: Database, color: 'text-purple-600', bgColor: 'bg-purple-100' },
-        { id: 'event', label: '事件日志', icon: Activity, color: 'text-orange-600', bgColor: 'bg-orange-100' },
-        { id: 'config', label: '配置信息', icon: Settings, color: 'text-slate-600', bgColor: 'bg-slate-100' }
-    ];
-
-    // 获取扫描结果用于语义理解
-    const assets = scanResults.filter(r => r.status === 'scanned' || r.status === 'analyzed');
-
-    // 过滤资产
-    const filteredAssets = assets.filter(a => {
-        if (analysisFilter === 'all') return true;
-        if (analysisFilter === 'analyzed') return a.semanticAnalysis;
-        if (analysisFilter === 'pending') return !a.semanticAnalysis;
-        return true;
+    // Semantic profile state
+    const [semanticProfile, setSemanticProfile] = useState<{
+        businessName: string;
+        description: string;
+        scenarios: string[];
+        coreFields: { field: string; reason: string }[];
+    }>({
+        businessName: '',
+        description: '',
+        scenarios: [],
+        coreFields: []
     });
 
-    // 模拟AI语义分析
-    const handleAnalyze = (asset: any) => {
+    // Get assets from scan results
+    const assets = scanResults.filter(r => r.status === 'scanned' || r.status === 'analyzed');
+    const selectedTable = assets.find(a => a.table === selectedTableId);
+
+    // Type config for grouping
+    const typeConfig: Record<string, { color: string; bgColor: string; icon: any }> = {
+        MySQL: { color: 'text-blue-600', bgColor: 'bg-blue-100', icon: Database },
+        Oracle: { color: 'text-orange-600', bgColor: 'bg-orange-100', icon: Database },
+        PostgreSQL: { color: 'text-emerald-600', bgColor: 'bg-emerald-100', icon: Database }
+    };
+
+    // Group assets by source type
+    const groupedAssets = assets.reduce((acc: Record<string, any[]>, asset) => {
+        const type = asset.sourceType || 'MySQL';
+        if (!acc[type]) acc[type] = [];
+        if (searchTerm === '' ||
+            asset.table.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (asset.aiSuggestion || '').toLowerCase().includes(searchTerm.toLowerCase())) {
+            acc[type].push(asset);
+        }
+        return acc;
+    }, {});
+
+    // Toggle type expansion
+    const toggleType = (type: string) => {
+        setExpandedTypes(prev =>
+            prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+        );
+    };
+
+    // Load semantic profile when table selected
+    const handleSelectTable = (tableName: string) => {
+        setSelectedTableId(tableName);
+        const asset = assets.find(a => a.table === tableName);
+        if (asset?.semanticAnalysis) {
+            setSemanticProfile({
+                businessName: asset.semanticAnalysis.chineseName || '',
+                description: asset.semanticAnalysis.description || '',
+                scenarios: asset.semanticAnalysis.scenarios?.map((s: any) => s.type) || [],
+                coreFields: asset.semanticAnalysis.coreFields || []
+            });
+            setEditMode(false);
+        } else {
+            setSemanticProfile({
+                businessName: '',
+                description: '',
+                scenarios: [],
+                coreFields: []
+            });
+            setEditMode(true);
+        }
+    };
+
+    // AI Analysis simulation
+    const handleAnalyze = () => {
+        if (!selectedTable) return;
         setIsAnalyzing(true);
-        setSelectedTable(asset);
 
         setTimeout(() => {
-            const chineseNames: Record<string, string> = {
-                't_user_profile': '用户画像表',
-                't_order_main': '订单主表',
-                't_order_item': '订单明细表',
-                't_customer_profile': '客户档案表'
+            const mockResults: Record<string, any> = {
+                't_user_profile': {
+                    businessName: '用户画像表',
+                    description: '记录用户基础画像信息，包含用户ID、姓名、联系方式等核心属性，用于用户中心和画像分析场景。',
+                    scenarios: ['用户管理', '画像分析', '主数据'],
+                    coreFields: [
+                        { field: 'user_id', reason: '用户唯一标识' },
+                        { field: 'name', reason: '用户姓名' },
+                        { field: 'phone', reason: '联系方式' }
+                    ]
+                },
+                't_order_main': {
+                    businessName: '订单主表',
+                    description: '存储订单核心交易信息，包含订单号、金额、状态等，是订单管理和交易分析的核心数据表。',
+                    scenarios: ['订单管理', '交易分析', '报表统计'],
+                    coreFields: [
+                        { field: 'order_id', reason: '订单唯一标识' },
+                        { field: 'amount', reason: '订单金额' },
+                        { field: 'status', reason: '订单状态' }
+                    ]
+                }
             };
 
-            const scenarios: Record<string, { type: string; confidence: number; description: string }[]> = {
-                't_user_profile': [
-                    { type: 'person', confidence: 95, description: '包含用户基础信息，适用于用户中心场景' },
-                    { type: 'master', confidence: 80, description: '可作为用户主数据使用' }
-                ],
-                't_order_main': [
-                    { type: 'transaction', confidence: 98, description: '订单核心交易数据' },
-                    { type: 'event', confidence: 60, description: '可追溯订单状态变更' }
-                ],
-                't_order_item': [
-                    { type: 'transaction', confidence: 95, description: '订单商品明细' }
-                ],
-                't_customer_profile': [
-                    { type: 'person', confidence: 92, description: '客户基础档案信息' },
-                    { type: 'master', confidence: 88, description: '客户主数据' }
-                ]
+            const result = mockResults[selectedTable.table] || {
+                businessName: selectedTable.table.replace('t_', '').replace(/_/g, ' ') + '表',
+                description: `基于表 ${selectedTable.table} 的AI语义分析结果。该表包含 ${selectedTable.fields?.length || 0} 个字段，建议用于业务数据管理场景。`,
+                scenarios: ['数据管理', '业务分析'],
+                coreFields: selectedTable.fields?.slice(0, 3).map((f: any) => ({
+                    field: f.name,
+                    reason: f.suggestion || f.name
+                })) || []
             };
 
-            const analysis = {
-                chineseName: chineseNames[asset.table] || `${asset.table.replace('t_', '').replace(/_/g, '')}表`,
-                scenarios: scenarios[asset.table] || [{ type: 'master', confidence: 75, description: '通用数据表' }],
-                businessDomain: asset.table.includes('order') ? '订单管理' : asset.table.includes('user') || asset.table.includes('customer') ? '客户管理' : '基础数据',
-                dataQuality: Math.floor(Math.random() * 20) + 80,
-                suggestedBOName: asset.aiSuggestion?.split(': ')[1] || asset.table.replace('t_', ''),
-                analyzedAt: new Date().toLocaleString('zh-CN')
-            };
-
-            setScanResults((prev: any[]) => prev.map((r: any) =>
-                r.table === asset.table ? { ...r, semanticAnalysis: analysis, status: 'analyzed' } : r
-            ));
+            setSemanticProfile(result);
+            setEditMode(true);
             setIsAnalyzing(false);
-        }, 2000);
+        }, 1500);
     };
 
-    // 批量分析
-    const handleBatchAnalyze = () => {
-        const pendingAssets = assets.filter(a => !a.semanticAnalysis);
-        if (pendingAssets.length === 0) return;
-
-        setIsAnalyzing(true);
-        let index = 0;
-
-        const analyzeNext = () => {
-            if (index >= pendingAssets.length) {
-                setIsAnalyzing(false);
-                return;
-            }
-            handleAnalyze(pendingAssets[index]);
-            index++;
-            setTimeout(analyzeNext, 500);
-        };
-
-        analyzeNext();
+    // Toggle core field
+    const toggleCoreField = (fieldName: string, defaultReason: string) => {
+        const exists = semanticProfile.coreFields.find(cf => cf.field === fieldName);
+        if (exists) {
+            setSemanticProfile(prev => ({
+                ...prev,
+                coreFields: prev.coreFields.filter(cf => cf.field !== fieldName)
+            }));
+        } else {
+            setSemanticProfile(prev => ({
+                ...prev,
+                coreFields: [...prev.coreFields, { field: fieldName, reason: defaultReason || '关键业务属性' }]
+            }));
+        }
     };
 
+    // Save to metadata
+    const handleSaveToMetadata = () => {
+        if (!selectedTable) return;
+
+        setScanResults((prev: any[]) => prev.map((r: any) =>
+            r.table === selectedTable.table
+                ? {
+                    ...r,
+                    status: 'analyzed',
+                    semanticAnalysis: {
+                        chineseName: semanticProfile.businessName,
+                        description: semanticProfile.description,
+                        scenarios: semanticProfile.scenarios.map(s => ({ type: s, confidence: 90, description: s })),
+                        coreFields: semanticProfile.coreFields,
+                        analyzedAt: new Date().toLocaleString('zh-CN')
+                    }
+                }
+                : r
+        ));
+        setEditMode(false);
+    };
+
+    // Stats
     const analyzedCount = assets.filter(a => a.semanticAnalysis).length;
     const pendingCount = assets.filter(a => !a.semanticAnalysis).length;
 
     return (
-        <div className="space-y-6 max-w-7xl mx-auto animate-fade-in">
+        <div className="h-full flex flex-col animate-fade-in">
             {/* Header */}
-            <div className="flex justify-between items-start">
+            <div className="flex justify-between items-center mb-4 shrink-0">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-800">数据语义理解</h2>
-                    <p className="text-slate-500 mt-1">基于AI分析物理表的业务含义，识别中文名称与适用场景</p>
+                    <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                        <Cpu className="text-pink-500" size={24} />
+                        逻辑视图
+                    </h2>
+                    <p className="text-slate-500 mt-1">基于AI分析物理表的业务含义，构建逻辑模型</p>
                 </div>
-                <button
-                    onClick={handleBatchAnalyze}
-                    disabled={pendingCount === 0 || isAnalyzing}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white transition-all ${pendingCount > 0 && !isAnalyzing
-                        ? 'bg-emerald-600 hover:bg-emerald-700 shadow-sm'
-                        : 'bg-slate-300 cursor-not-allowed'
-                        }`}
-                >
-                    {isAnalyzing ? <RefreshCw size={16} className="animate-spin" /> : <Cpu size={16} />}
-                    {isAnalyzing ? '分析中...' : `批量分析 (${pendingCount})`}
-                </button>
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex items-center gap-4">
-                    <div className="p-3 bg-blue-100 text-blue-600 rounded-lg"><Database size={20} /></div>
-                    <div>
-                        <div className="text-2xl font-bold text-slate-800">{assets.length}</div>
-                        <div className="text-xs text-slate-500">已扫描资产</div>
-                    </div>
-                </div>
-                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex items-center gap-4">
-                    <div className="p-3 bg-emerald-100 text-emerald-600 rounded-lg"><CheckCircle size={20} /></div>
-                    <div>
-                        <div className="text-2xl font-bold text-slate-800">{analyzedCount}</div>
-                        <div className="text-xs text-slate-500">已完成分析</div>
-                    </div>
-                </div>
-                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex items-center gap-4">
-                    <div className="p-3 bg-amber-100 text-amber-600 rounded-lg"><Clock size={20} /></div>
-                    <div>
-                        <div className="text-2xl font-bold text-slate-800">{pendingCount}</div>
-                        <div className="text-xs text-slate-500">待分析</div>
-                    </div>
-                </div>
-                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex items-center gap-4">
-                    <div className="p-3 bg-purple-100 text-purple-600 rounded-lg"><Layers size={20} /></div>
-                    <div>
-                        <div className="text-2xl font-bold text-slate-800">{scenarioTypes.length}</div>
-                        <div className="text-xs text-slate-500">场景类型</div>
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 text-sm">
+                        <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-lg font-medium">{analyzedCount} 已分析</span>
+                        <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-lg font-medium">{pendingCount} 待分析</span>
                     </div>
                 </div>
             </div>
 
-            {/* Filter Bar */}
-            <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-200">
-                <span className="text-sm text-slate-500">筛选:</span>
-                {[{ id: 'all', label: '全部' }, { id: 'analyzed', label: '已分析' }, { id: 'pending', label: '待分析' }].map(filter => (
-                    <button
-                        key={filter.id}
-                        onClick={() => setAnalysisFilter(filter.id)}
-                        className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${analysisFilter === filter.id ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                            }`}
-                    >
-                        {filter.label}
-                    </button>
-                ))}
-            </div>
+            {/* Three-panel layout */}
+            <div className="flex-1 flex gap-4 overflow-hidden">
+                {/* Left: Data Source Tree */}
+                <div className="w-72 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden shrink-0">
+                    <div className="p-3 border-b border-slate-100 bg-slate-50">
+                        <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2">
+                            <Database size={14} className="text-blue-500" />
+                            物理资产
+                        </h3>
+                        <div className="relative mt-2">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                            <input
+                                type="text"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                placeholder="搜索表..."
+                                className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-400"
+                            />
+                        </div>
+                    </div>
 
-            {/* Asset Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {filteredAssets.length > 0 ? filteredAssets.map((asset, idx) => {
-                    const analysis = asset.semanticAnalysis;
-                    const isSelected = selectedTable?.table === asset.table;
+                    <div className="flex-1 overflow-y-auto p-2">
+                        {Object.entries(groupedAssets).map(([type, items]) => (
+                            <div key={type} className="mb-2">
+                                <button
+                                    onClick={() => toggleType(type)}
+                                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 transition-colors"
+                                >
+                                    <ChevronRight
+                                        size={14}
+                                        className={`text-slate-400 transition-transform ${expandedTypes.includes(type) ? 'rotate-90' : ''}`}
+                                    />
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${typeConfig[type]?.bgColor || 'bg-slate-100'} ${typeConfig[type]?.color || 'text-slate-600'}`}>
+                                        {type}
+                                    </span>
+                                    <span className="text-xs text-slate-400 ml-auto">{items.length}</span>
+                                </button>
 
-                    return (
-                        <div key={idx} className={`bg-white rounded-xl border-2 overflow-hidden transition-all ${isSelected ? 'border-emerald-500 shadow-md' : 'border-slate-100 hover:border-slate-300'}`}>
-                            <div className="p-4 border-b border-slate-100 flex items-start justify-between">
-                                <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <Database size={16} className="text-slate-400" />
-                                        <span className="font-mono text-sm text-slate-600">{asset.table}</span>
+                                {expandedTypes.includes(type) && (
+                                    <div className="ml-4 mt-1 space-y-0.5">
+                                        {items.map((asset: any) => (
+                                            <button
+                                                key={asset.table}
+                                                onClick={() => handleSelectTable(asset.table)}
+                                                className={`w-full flex items-center gap-2 px-2 py-2 rounded text-left text-xs transition-all ${selectedTableId === asset.table
+                                                    ? 'bg-pink-50 text-pink-700 border border-pink-200'
+                                                    : 'text-slate-600 hover:bg-slate-50 border border-transparent'
+                                                    }`}
+                                            >
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="font-mono truncate">{asset.table}</div>
+                                                    {asset.semanticAnalysis && (
+                                                        <div className="text-[10px] text-pink-500 truncate">{asset.semanticAnalysis.chineseName}</div>
+                                                    )}
+                                                </div>
+                                                {asset.semanticAnalysis ? (
+                                                    <CheckCircle size={12} className="text-emerald-500 shrink-0" />
+                                                ) : (
+                                                    <div className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                                                )}
+                                            </button>
+                                        ))}
                                     </div>
-                                    {analysis ? (
-                                        <h3 className="text-lg font-bold text-slate-800">{analysis.chineseName}</h3>
-                                    ) : (
-                                        <h3 className="text-lg font-medium text-slate-400 italic">待分析...</h3>
-                                    )}
-                                </div>
-                                {!analysis ? (
-                                    <button onClick={() => handleAnalyze(asset)} disabled={isAnalyzing} className="px-3 py-1.5 bg-emerald-500 text-white text-xs rounded-lg hover:bg-emerald-600 disabled:bg-slate-300">
-                                        {isAnalyzing && isSelected ? <RefreshCw size={12} className="animate-spin" /> : 'AI分析'}
-                                    </button>
-                                ) : (
-                                    <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-lg flex items-center gap-1"><CheckCircle size={12} /> 已分析</span>
                                 )}
                             </div>
-                            {analysis && (
-                                <div className="p-4 bg-slate-50/50 space-y-4">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs text-slate-500">业务领域:</span>
-                                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">{analysis.businessDomain}</span>
-                                    </div>
-                                    <div>
-                                        <div className="text-xs text-slate-500 mb-2">适用场景:</div>
-                                        <div className="space-y-2">
-                                            {analysis.scenarios.map((scenario: any, sIdx: number) => {
-                                                const scenarioInfo = scenarioTypes.find(s => s.id === scenario.type);
-                                                const ScenarioIcon = scenarioInfo?.icon || Layers;
-                                                return (
-                                                    <div key={sIdx} className="flex items-center gap-3 bg-white rounded-lg p-2 border border-slate-200">
-                                                        <div className={`p-1.5 rounded ${scenarioInfo?.bgColor || 'bg-slate-100'}`}>
-                                                            <ScenarioIcon size={14} className={scenarioInfo?.color || 'text-slate-600'} />
-                                                        </div>
-                                                        <div className="flex-1">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-sm font-medium text-slate-700">{scenarioInfo?.label || scenario.type}</span>
-                                                                <span className={`text-xs font-bold ${scenario.confidence >= 90 ? 'text-emerald-600' : 'text-blue-600'}`}>{scenario.confidence}%</span>
-                                                            </div>
-                                                            <p className="text-xs text-slate-400">{scenario.description}</p>
-                                                        </div>
+                        ))}
+
+                        {Object.keys(groupedAssets).length === 0 && (
+                            <div className="text-center py-8 text-slate-400 text-sm">
+                                <Search size={24} className="mx-auto mb-2 opacity-30" />
+                                暂无资产
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Middle: Physical Table Columns */}
+                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+                    <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-slate-50 flex items-center justify-between">
+                        <div className="font-bold text-sm text-blue-800 flex items-center gap-2">
+                            <Database size={16} />
+                            物理表结构
+                        </div>
+                        {selectedTable && (
+                            <button
+                                onClick={handleAnalyze}
+                                disabled={isAnalyzing}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${isAnalyzing
+                                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                    : 'bg-pink-500 text-white hover:bg-pink-600 shadow-sm'
+                                    }`}
+                            >
+                                {isAnalyzing ? <RefreshCw size={12} className="animate-spin" /> : <Cpu size={12} />}
+                                {isAnalyzing ? '分析中...' : 'AI 语义分析'}
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="flex-1 overflow-auto">
+                        {selectedTable ? (
+                            <table className="w-full text-sm">
+                                <thead className="bg-slate-50 sticky top-0">
+                                    <tr className="text-left text-slate-500">
+                                        <th className="px-4 py-3 font-medium">字段名</th>
+                                        <th className="px-4 py-3 font-medium">类型</th>
+                                        <th className="px-4 py-3 font-medium">说明</th>
+                                        <th className="px-4 py-3 font-medium w-20 text-center">核心</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {selectedTable.fields?.map((field: any, idx: number) => {
+                                        const isCore = semanticProfile.coreFields.some(cf => cf.field === field.name);
+                                        return (
+                                            <tr key={idx} className={`hover:bg-slate-50 ${isCore ? 'bg-pink-50/50' : ''}`}>
+                                                <td className="px-4 py-3 font-mono text-slate-700">{field.name}</td>
+                                                <td className="px-4 py-3 text-slate-500 text-xs">{field.type || 'varchar'}</td>
+                                                <td className="px-4 py-3 text-slate-600">{field.suggestion || field.name}</td>
+                                                <td className="px-4 py-3 text-center">
+                                                    <button
+                                                        onClick={() => toggleCoreField(field.name, field.suggestion || field.name)}
+                                                        className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${isCore
+                                                            ? 'bg-pink-500 text-white'
+                                                            : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
+                                                            }`}
+                                                    >
+                                                        {isCore ? <CheckCircle size={12} /> : <span className="w-2 h-2 rounded-full bg-slate-300" />}
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                                <Database size={48} className="mb-4 opacity-20" />
+                                <p className="text-sm">请从左侧选择一个物理表</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Right: AI Semantic Results */}
+                <div className="w-80 bg-gradient-to-br from-white to-pink-50 rounded-xl border border-pink-100 shadow-sm flex flex-col overflow-hidden shrink-0">
+                    <div className="px-4 py-3 border-b border-pink-100 bg-pink-50/50 flex items-center justify-between">
+                        <div className="font-bold text-sm text-pink-800 flex items-center gap-2">
+                            <Cpu size={16} />
+                            语义理解结果
+                        </div>
+                        {semanticProfile.businessName && !editMode && (
+                            <button onClick={() => setEditMode(true)} className="text-xs text-pink-600 underline">
+                                编辑
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        {semanticProfile.businessName || editMode ? (
+                            <>
+                                {/* Business Name */}
+                                <div>
+                                    <label className="text-xs font-bold text-pink-400 uppercase tracking-wider">业务名称</label>
+                                    {editMode ? (
+                                        <input
+                                            value={semanticProfile.businessName}
+                                            onChange={(e) => setSemanticProfile(prev => ({ ...prev, businessName: e.target.value }))}
+                                            className="w-full mt-1 px-3 py-2 border border-pink-200 rounded-lg focus:outline-none focus:border-pink-500 text-slate-800 font-bold"
+                                            placeholder="输入业务名称..."
+                                        />
+                                    ) : (
+                                        <div className="text-xl font-bold text-slate-800 mt-1">{semanticProfile.businessName}</div>
+                                    )}
+                                </div>
+
+                                {/* Description */}
+                                <div>
+                                    <label className="text-xs font-bold text-pink-400 uppercase tracking-wider">业务描述</label>
+                                    {editMode ? (
+                                        <textarea
+                                            value={semanticProfile.description}
+                                            onChange={(e) => setSemanticProfile(prev => ({ ...prev, description: e.target.value }))}
+                                            rows={3}
+                                            className="w-full mt-1 px-3 py-2 border border-pink-200 rounded-lg focus:outline-none focus:border-pink-500 text-sm text-slate-600"
+                                            placeholder="输入业务描述..."
+                                        />
+                                    ) : (
+                                        <p className="text-sm text-slate-600 mt-1 leading-relaxed bg-white/50 p-3 rounded-lg border border-pink-100">
+                                            {semanticProfile.description}
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Scenarios */}
+                                <div>
+                                    <label className="text-xs font-bold text-pink-400 uppercase tracking-wider">适用场景</label>
+                                    {editMode ? (
+                                        <input
+                                            value={semanticProfile.scenarios.join(', ')}
+                                            onChange={(e) => setSemanticProfile(prev => ({
+                                                ...prev,
+                                                scenarios: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                                            }))}
+                                            className="w-full mt-1 px-3 py-2 border border-pink-200 rounded-lg text-xs"
+                                            placeholder="场景1, 场景2, ..."
+                                        />
+                                    ) : (
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                            {semanticProfile.scenarios.map(s => (
+                                                <span key={s} className="px-2.5 py-1 bg-white border border-pink-200 text-pink-700 text-xs rounded-full shadow-sm">
+                                                    {s}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Core Fields */}
+                                <div className="bg-pink-50/50 rounded-lg p-3 border border-pink-100">
+                                    <label className="text-xs font-bold text-pink-400 uppercase tracking-wider">
+                                        核心字段 ({semanticProfile.coreFields.length})
+                                    </label>
+                                    <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
+                                        {semanticProfile.coreFields.length > 0 ? (
+                                            semanticProfile.coreFields.map(cf => (
+                                                <div key={cf.field} className="flex items-center gap-2 bg-white rounded-lg p-2 border border-pink-100">
+                                                    <div className="w-2 h-2 rounded-full bg-pink-500" />
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="text-xs font-mono font-bold text-slate-700">{cf.field}</div>
+                                                        <div className="text-[10px] text-slate-400 truncate">{cf.reason}</div>
                                                     </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs text-slate-500">数据质量:</span>
-                                            <div className="w-20 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                                                <div className={`h-full rounded-full ${analysis.dataQuality >= 90 ? 'bg-emerald-500' : analysis.dataQuality >= 70 ? 'bg-blue-500' : 'bg-amber-500'}`} style={{ width: `${analysis.dataQuality}%` }} />
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="text-xs text-slate-400 text-center py-2">
+                                                点击中间表格的核心列标记字段
                                             </div>
-                                            <span className="text-xs font-bold text-slate-600">{analysis.dataQuality}%</span>
-                                        </div>
-                                        <div className="text-xs text-slate-400">建议对象: <span className="font-medium text-purple-600">{analysis.suggestedBOName}</span></div>
+                                        )}
                                     </div>
                                 </div>
-                            )}
-                        </div>
-                    );
-                }) : (
-                    <div className="col-span-full py-16 text-center text-slate-400 flex flex-col items-center">
-                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 text-slate-300"><Search size={32} /></div>
-                        <p className="text-lg font-medium text-slate-600">暂无可分析的资产</p>
-                        <p className="text-sm">请先在"资产扫描"模块中扫描数据源</p>
+                            </>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                                <Cpu size={48} className="mb-4 opacity-20" />
+                                <p className="text-sm text-center">选择表后点击<br />"AI 语义分析"开始</p>
+                            </div>
+                        )}
                     </div>
-                )}
+
+                    {/* Action Buttons */}
+                    {editMode && semanticProfile.businessName && (
+                        <div className="p-4 border-t border-pink-100 space-y-2">
+                            <button
+                                onClick={handleSaveToMetadata}
+                                className="w-full py-2 bg-pink-500 text-white rounded-lg text-sm font-medium hover:bg-pink-600 transition-colors flex items-center justify-center gap-2"
+                            >
+                                <CheckCircle size={14} />
+                                保存到元数据
+                            </button>
+                            <button
+                                onClick={() => setEditMode(false)}
+                                className="w-full py-2 bg-white border border-pink-200 text-pink-600 rounded-lg text-sm font-medium hover:bg-pink-50 transition-colors"
+                            >
+                                取消
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
 };
+
 
 // ------------------------------------------------------------------
 // 视图 6: 候选生成 (BU-04) - Enhanced
@@ -4703,6 +4911,403 @@ const UnifiedMetadataCatalogView = () => {
                     </div>
                 </div>
             )}
+        </div>
+    );
+};
+
+// ------------------------------------------------------------------
+// 视图: API 网关 (EE-05) - Generate APIs from Business Objects
+// ------------------------------------------------------------------
+const ApiGatewayView = ({ businessObjects }: { businessObjects: any[] }) => {
+    const [generatedApis, setGeneratedApis] = useState<any[]>([]);
+    const [selectedBO, setSelectedBO] = useState<any>(null);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [selectedApi, setSelectedApi] = useState<any>(null);
+    const [apiTemplate, setApiTemplate] = useState({
+        prefix: '/api/v1',
+        methods: ['GET', 'POST', 'PUT', 'DELETE'],
+        auth: 'jwt'
+    });
+
+    // Initialize with some mock generated APIs
+    useEffect(() => {
+        const mockApis = businessObjects.filter(bo => bo.status === 'published').map(bo => ({
+            id: `API_${bo.id}`,
+            boId: bo.id,
+            boName: bo.name,
+            boCode: bo.code,
+            basePath: `/api/v1/${bo.code}`,
+            status: 'online',
+            version: 'v1.0',
+            createdAt: '2024-05-20',
+            endpoints: [
+                { method: 'GET', path: `/${bo.code}`, name: `查询${bo.name}列表`, qps: Math.floor(Math.random() * 500), latency: `${Math.floor(Math.random() * 50) + 10}ms` },
+                { method: 'GET', path: `/${bo.code}/:id`, name: `获取${bo.name}详情`, qps: Math.floor(Math.random() * 300), latency: `${Math.floor(Math.random() * 30) + 5}ms` },
+                { method: 'POST', path: `/${bo.code}`, name: `创建${bo.name}`, qps: Math.floor(Math.random() * 100), latency: `${Math.floor(Math.random() * 100) + 50}ms` },
+                { method: 'PUT', path: `/${bo.code}/:id`, name: `更新${bo.name}`, qps: Math.floor(Math.random() * 80), latency: `${Math.floor(Math.random() * 80) + 30}ms` },
+                { method: 'DELETE', path: `/${bo.code}/:id`, name: `删除${bo.name}`, qps: Math.floor(Math.random() * 20), latency: `${Math.floor(Math.random() * 40) + 20}ms` },
+            ]
+        }));
+        setGeneratedApis(mockApis);
+    }, [businessObjects]);
+
+    // Generate API from selected BO
+    const handleGenerateApi = () => {
+        if (!selectedBO) return;
+
+        // Check if already exists
+        if (generatedApis.find(api => api.boId === selectedBO.id)) {
+            alert('该业务对象已生成API！');
+            return;
+        }
+
+        setIsGenerating(true);
+        setTimeout(() => {
+            const newApi = {
+                id: `API_${Date.now()}`,
+                boId: selectedBO.id,
+                boName: selectedBO.name,
+                boCode: selectedBO.code,
+                basePath: `${apiTemplate.prefix}/${selectedBO.code}`,
+                status: 'draft',
+                version: 'v1.0',
+                createdAt: new Date().toLocaleDateString('zh-CN'),
+                endpoints: apiTemplate.methods.map(method => ({
+                    method,
+                    path: method === 'GET' || method === 'DELETE' || method === 'PUT'
+                        ? `/${selectedBO.code}/:id`
+                        : `/${selectedBO.code}`,
+                    name: method === 'GET' ? `查询${selectedBO.name}`
+                        : method === 'POST' ? `创建${selectedBO.name}`
+                            : method === 'PUT' ? `更新${selectedBO.name}`
+                                : `删除${selectedBO.name}`,
+                    qps: 0,
+                    latency: '-'
+                }))
+            };
+            setGeneratedApis(prev => [newApi, ...prev]);
+            setSelectedBO(null);
+            setIsGenerating(false);
+        }, 1500);
+    };
+
+    // Publish API
+    const handlePublishApi = (apiId: string) => {
+        setGeneratedApis(prev => prev.map(api =>
+            api.id === apiId ? { ...api, status: 'online' } : api
+        ));
+    };
+
+    // Method colors
+    const methodColors: Record<string, string> = {
+        GET: 'bg-blue-100 text-blue-700',
+        POST: 'bg-emerald-100 text-emerald-700',
+        PUT: 'bg-amber-100 text-amber-700',
+        DELETE: 'bg-red-100 text-red-700'
+    };
+
+    // Stats
+    const onlineCount = generatedApis.filter(a => a.status === 'online').length;
+    const totalEndpoints = generatedApis.reduce((acc, api) => acc + (api.endpoints?.length || 0), 0);
+
+    return (
+        <div className="h-full flex flex-col animate-fade-in">
+            {/* Header */}
+            <div className="flex justify-between items-center mb-6">
+                <div>
+                    <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                        <Server className="text-orange-500" size={24} />
+                        API 网关
+                    </h2>
+                    <p className="text-slate-500 mt-1">基于业务对象自动生成RESTful API接口</p>
+                </div>
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 text-sm">
+                        <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-lg">{onlineCount} 已上线</span>
+                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-lg">{totalEndpoints} 个端点</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Main Content */}
+            <div className="flex-1 flex gap-6 overflow-hidden">
+                {/* Left: Business Object Selection */}
+                <div className="w-80 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden shrink-0">
+                    <div className="p-4 border-b border-slate-100 bg-slate-50">
+                        <h3 className="font-bold text-slate-700 flex items-center gap-2">
+                            <Layers size={16} className="text-blue-500" />
+                            选择业务对象
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-1">选择要生成API的业务对象</p>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                        {businessObjects.map(bo => {
+                            const hasApi = generatedApis.find(api => api.boId === bo.id);
+                            return (
+                                <div
+                                    key={bo.id}
+                                    onClick={() => !hasApi && setSelectedBO(bo)}
+                                    className={`p-3 rounded-lg border transition-all cursor-pointer ${selectedBO?.id === bo.id
+                                            ? 'border-orange-500 bg-orange-50'
+                                            : hasApi
+                                                ? 'border-slate-100 bg-slate-50 opacity-60 cursor-not-allowed'
+                                                : 'border-slate-200 hover:border-orange-300 hover:bg-orange-50/50'
+                                        }`}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="font-medium text-slate-800">{bo.name}</div>
+                                            <div className="text-xs text-slate-400 font-mono">{bo.code}</div>
+                                        </div>
+                                        {hasApi ? (
+                                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-600 text-xs rounded-full">已生成</span>
+                                        ) : (
+                                            <span className={`px-2 py-0.5 text-xs rounded-full ${bo.status === 'published' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
+                                                }`}>
+                                                {bo.status === 'published' ? '已发布' : '草稿'}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {bo.fields && (
+                                        <div className="mt-2 text-xs text-slate-400">{bo.fields.length} 个字段</div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* API Generation Config */}
+                    {selectedBO && (
+                        <div className="p-4 border-t border-slate-100 bg-slate-50 space-y-3">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">API 前缀</label>
+                                <input
+                                    value={apiTemplate.prefix}
+                                    onChange={(e) => setApiTemplate(prev => ({ ...prev, prefix: e.target.value }))}
+                                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">HTTP Methods</label>
+                                <div className="flex flex-wrap gap-2 mt-1">
+                                    {['GET', 'POST', 'PUT', 'DELETE'].map(method => (
+                                        <button
+                                            key={method}
+                                            onClick={() => setApiTemplate(prev => ({
+                                                ...prev,
+                                                methods: prev.methods.includes(method)
+                                                    ? prev.methods.filter(m => m !== method)
+                                                    : [...prev.methods, method]
+                                            }))}
+                                            className={`px-2 py-1 text-xs rounded font-bold ${apiTemplate.methods.includes(method)
+                                                    ? methodColors[method]
+                                                    : 'bg-slate-100 text-slate-400'
+                                                }`}
+                                        >
+                                            {method}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleGenerateApi}
+                                disabled={isGenerating}
+                                className={`w-full py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 ${isGenerating
+                                        ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                                        : 'bg-orange-500 text-white hover:bg-orange-600'
+                                    }`}
+                            >
+                                {isGenerating ? (
+                                    <><RefreshCw size={14} className="animate-spin" /> 生成中...</>
+                                ) : (
+                                    <><Cpu size={14} /> 生成 API</>
+                                )}
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Right: Generated APIs List */}
+                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+                    <div className="p-4 border-b border-slate-100 bg-gradient-to-r from-orange-50 to-slate-50">
+                        <h3 className="font-bold text-orange-800 flex items-center gap-2">
+                            <Server size={16} />
+                            已生成的 API 服务
+                        </h3>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        {generatedApis.length > 0 ? generatedApis.map(api => (
+                            <div
+                                key={api.id}
+                                className={`bg-white border rounded-xl overflow-hidden transition-all ${selectedApi?.id === api.id ? 'border-orange-500 shadow-md' : 'border-slate-200 hover:border-slate-300'
+                                    }`}
+                            >
+                                <div
+                                    className="p-4 cursor-pointer"
+                                    onClick={() => setSelectedApi(selectedApi?.id === api.id ? null : api)}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${api.status === 'online' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
+                                                }`}>
+                                                <Server size={20} />
+                                            </div>
+                                            <div>
+                                                <div className="font-bold text-slate-800">{api.boName}</div>
+                                                <div className="text-xs text-slate-400 font-mono">{api.basePath}</div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`px-2 py-1 rounded text-xs font-bold ${api.status === 'online' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
+                                                }`}>
+                                                {api.status === 'online' ? '已上线' : '草稿'}
+                                            </span>
+                                            {api.status !== 'online' && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handlePublishApi(api.id); }}
+                                                    className="px-3 py-1 bg-orange-500 text-white text-xs rounded-lg hover:bg-orange-600"
+                                                >
+                                                    发布上线
+                                                </button>
+                                            )}
+                                            <ChevronRight
+                                                size={16}
+                                                className={`text-slate-400 transition-transform ${selectedApi?.id === api.id ? 'rotate-90' : ''}`}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Expanded Endpoints */}
+                                {selectedApi?.id === api.id && (
+                                    <div className="border-t border-slate-100 bg-slate-50 p-4">
+                                        <div className="text-xs font-bold text-slate-500 uppercase mb-3">API 端点列表</div>
+                                        <div className="space-y-2">
+                                            {api.endpoints.map((endpoint: any, idx: number) => (
+                                                <div key={idx} className="flex items-center justify-between bg-white rounded-lg p-3 border border-slate-100">
+                                                    <div className="flex items-center gap-3">
+                                                        <span className={`px-2 py-0.5 rounded text-xs font-bold font-mono ${methodColors[endpoint.method]}`}>
+                                                            {endpoint.method}
+                                                        </span>
+                                                        <span className="font-mono text-sm text-slate-600">{endpoint.path}</span>
+                                                        <span className="text-sm text-slate-400">- {endpoint.name}</span>
+                                                    </div>
+                                                    {api.status === 'online' && (
+                                                        <div className="flex items-center gap-4 text-xs">
+                                                            <div className="text-center">
+                                                                <div className="text-slate-400">QPS</div>
+                                                                <div className="font-bold text-slate-700">{endpoint.qps}</div>
+                                                            </div>
+                                                            <div className="text-center">
+                                                                <div className="text-slate-400">延迟</div>
+                                                                <div className="font-bold text-slate-700">{endpoint.latency}</div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Code Sample */}
+                                        <div className="mt-4 bg-slate-800 rounded-lg p-4 text-sm font-mono text-slate-300">
+                                            <div className="text-slate-500 mb-2">// 调用示例</div>
+                                            <div><span className="text-blue-400">curl</span> -X GET \</div>
+                                            <div className="pl-4"><span className="text-emerald-400">"http://api.example.com{api.basePath}"</span> \</div>
+                                            <div className="pl-4">-H <span className="text-amber-400">"Authorization: Bearer {'<token>'}"</span></div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )) : (
+                            <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                                <Server size={48} className="mb-4 opacity-20" />
+                                <p className="text-sm text-center">暂无已生成的 API<br />请从左侧选择业务对象生成</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ------------------------------------------------------------------
+// 视图: 缓存策略 (EE-06)
+// ------------------------------------------------------------------
+const CacheStrategyView = () => {
+    const [policies] = useState([
+        { id: 'CP_001', name: '高频代码表缓存', target: 'Dictionaries', type: 'Local', ttl: '24h', eviction: 'LFU', status: 'Active' },
+        { id: 'CP_002', name: '新生儿实时查询', target: 'Newborn (Single)', type: 'Redis', ttl: '5m', eviction: 'LRU', status: 'Active' },
+        { id: 'CP_003', name: '统计报表预计算', target: 'Reports', type: 'Redis Cluster', ttl: '1h', eviction: 'FIFO', status: 'Inactive' },
+    ]);
+
+    const [cacheKeys] = useState([
+        { key: 'bo:newborn:nb_123456', size: '2.4KB', created: '10:00:05', expires: '10:05:05', hits: 145 },
+        { key: 'dict:hosp_level', size: '15KB', created: '08:00:00', expires: 'Tomorrow', hits: 5200 },
+        { key: 'api:query:birth_cert:list', size: '450KB', created: '10:02:30', expires: '10:03:30', hits: 12 },
+    ]);
+
+    return (
+        <div className="space-y-6 animate-fade-in">
+            <div>
+                <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                    <RefreshCw className="text-purple-500" size={24} />
+                    缓存策略配置
+                </h2>
+                <p className="text-slate-500 mt-1">配置语义层数据的缓存加速策略</p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Policies */}
+                <div className="space-y-4">
+                    <h3 className="font-bold text-slate-700 flex items-center gap-2">
+                        <Settings size={18} /> 策略定义
+                    </h3>
+                    {policies.map(cp => (
+                        <div key={cp.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                            <div className="flex justify-between items-center mb-2">
+                                <div className="font-bold text-slate-700">{cp.name}</div>
+                                <div className={`w-2 h-2 rounded-full ${cp.status === 'Active' ? 'bg-green-500' : 'bg-slate-300'}`} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-xs text-slate-500">
+                                <div>Target: <span className="text-slate-700">{cp.target}</span></div>
+                                <div>Type: <span className="text-slate-700">{cp.type}</span></div>
+                                <div>TTL: <span className="text-slate-700">{cp.ttl}</span></div>
+                                <div>Eviction: <span className="text-slate-700">{cp.eviction}</span></div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Cache Keys */}
+                <div className="space-y-4">
+                    <h3 className="font-bold text-slate-700 flex items-center gap-2">
+                        <Activity size={18} /> 热门缓存 Key
+                    </h3>
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <table className="w-full text-xs text-left">
+                            <thead className="bg-slate-50 text-slate-500">
+                                <tr>
+                                    <th className="px-4 py-2">Key Pattern</th>
+                                    <th className="px-4 py-2">Size</th>
+                                    <th className="px-4 py-2">Hits</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {cacheKeys.map((k, i) => (
+                                    <tr key={i}>
+                                        <td className="px-4 py-2 font-mono text-slate-600 truncate max-w-[150px]" title={k.key}>{k.key}</td>
+                                        <td className="px-4 py-2 text-slate-500">{k.size}</td>
+                                        <td className="px-4 py-2 text-slate-700 font-medium">{k.hits}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };
