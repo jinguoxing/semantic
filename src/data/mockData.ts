@@ -457,3 +457,103 @@ export const mockCatalogItems = [
         createdAt: '2024-03-15'
     }
 ];
+
+// BU-02: 扫描结果 (模拟)
+export const mockScanResults = [
+    {
+        table: 't_user_profile',
+        sourceId: 'DS_001',
+        sourceName: '卫健委_前置库_01',
+        sourceType: 'MySQL',
+        rows: '2.5M',
+        updateTime: '2024-05-20 10:00:00',
+        status: 'analyzed',
+        comment: '用户画像基础表',
+        confidence: 95,
+        aiSuggestion: 'User: 用户主体',
+        semanticAnalysis: {
+            chineseName: '用户画像表',
+            description: '记录核心用户基础画像信息，包含用户ID、姓名、联系方式等属性。',
+            scenarios: ['客户管理', '画像分析'],
+            coreFields: [{ field: 'user_id', reason: '用户唯一标识' }],
+            qualityScore: 92,
+            privacyLevel: 'L3'
+        },
+        fields: [
+            { name: 'user_id', type: 'bigint', comment: '用户ID', suggestion: 'id' },
+            { name: 'name', type: 'varchar(50)', comment: '姓名', suggestion: 'name' },
+            { name: 'mobile', type: 'varchar(20)', comment: '手机号', suggestion: 'phone' }
+        ]
+    },
+    {
+        table: 't_order_main',
+        sourceId: 'DS_004',
+        sourceName: '政务云_数据湖',
+        sourceType: 'MySQL',
+        rows: '15.2M',
+        updateTime: '2024-05-21 02:00:00',
+        status: 'analyzed',
+        comment: '订单交易主表',
+        confidence: 88,
+        aiSuggestion: 'Order: 订单',
+        semanticAnalysis: {
+            chineseName: '订单主表',
+            description: '存储订单核心交易信息。',
+            scenarios: ['交易分析'],
+            coreFields: [{ field: 'order_id', reason: '订单主键' }],
+            qualityScore: 85,
+            privacyLevel: 'L2'
+        },
+        fields: [
+            { name: 'order_id', type: 'varchar(32)', comment: '订单号' },
+            { name: 'total_amt', type: 'decimal(18,2)', comment: '总金额' },
+            { name: 'create_time', type: 'datetime', comment: '下单时间' }
+        ]
+    },
+    {
+        table: 'V_CITIZEN_INFO',
+        sourceId: 'DS_002',
+        sourceName: '市人口库_主库',
+        sourceType: 'Oracle',
+        rows: '8.2M',
+        updateTime: '2024-05-21 08:30:00',
+        status: 'scanned',
+        comment: '公民基本信息视图',
+        confidence: 75,
+        aiSuggestion: 'Person: 自然人',
+        fields: [
+            { name: 'CITIZEN_ID', type: 'VARCHAR2(18)', comment: '身份证' },
+            { name: 'FULL_NAME', type: 'VARCHAR2(50)', comment: '姓名' }
+        ]
+    },
+    {
+        table: 'ods_license',
+        sourceId: 'DS_004',
+        sourceName: '政务云_数据湖',
+        sourceType: 'MySQL',
+        rows: '180K',
+        updateTime: '2024-05-20 18:00:00',
+        status: 'scanned',
+        comment: '电子证照许可表',
+        confidence: 60,
+        fields: [
+            { name: 'license_no', type: 'varchar(50)', comment: '证照编号' },
+            { name: 'valid_date', type: 'date', comment: '有效期' }
+        ]
+    },
+    {
+        table: 'sys_log_2024',
+        sourceId: 'DS_003',
+        sourceName: '日志归档库',
+        sourceType: 'PostgreSQL',
+        rows: '50M+',
+        updateTime: '2024-05-22 09:15:00',
+        status: 'scanned',
+        comment: '系统操作日志',
+        confidence: 40,
+        fields: [
+            { name: 'log_id', type: 'uuid' },
+            { name: 'action', type: 'text' }
+        ]
+    }
+];

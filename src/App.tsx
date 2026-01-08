@@ -18,8 +18,11 @@ import {
     mockDataSources,
     mockBOTableMappings,
     mockConflicts,
-    mockCatalogItems
+    mockCatalogItems,
+    mockScanResults
 } from './data/mockData';
+
+
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
 import StatCard from './components/common/StatCard';
@@ -55,7 +58,9 @@ export default function SemanticLayerApp() {
     const [businessObjects, setBusinessObjects] = useState(mockBusinessObjects);
 
     // Lifted State: Scan Results (Shared between BU-02 and BU-04)
-    const [scanResults, setScanResults] = useState<any[]>([]);
+    // Lifted State: Scan Results (Shared between BU-02 and BU-04)
+    // Initialized with mock data to show logic view immediately
+    const [scanResults, setScanResults] = useState<any[]>(mockScanResults || []);
 
     const handleAddBusinessObject = (newBO: any) => {
         setBusinessObjects([...businessObjects, newBO]);
