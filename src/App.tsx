@@ -543,7 +543,7 @@ const Sidebar = ({ activeModule, setActiveModule }: { activeModule: string, setA
             items: [
                 { id: 'bu_connect', label: '数据源管理 (BU-01)', icon: Database },
                 { id: 'bu_discovery', label: '资产扫描 (BU-02)', icon: Search },
-                { id: 'bu_semantic', label: '数据语义理解 (BU-03)', icon: FileText },
+                { id: 'bu_semantic', label: '逻辑视图 (BU-03)', icon: FileText },
                 { id: 'bu_candidates', label: '候选生成 (BU-04)', icon: Cpu },
             ]
         },
