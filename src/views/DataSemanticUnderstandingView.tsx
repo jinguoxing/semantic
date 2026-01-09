@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Database, Search, ChevronRight, Cpu, CheckCircle, Star, Tag, FileText, Layers, ShieldCheck, Activity, ArrowLeft, Table, Clock, Server, RefreshCw, X, AlertCircle, Settings, AlertTriangle, Share2, Shield, Plus, Edit3 } from 'lucide-react';
+import { Database, Search, ChevronRight, Cpu, CheckCircle, Star, Tag, FileText, Layers, ShieldCheck, Activity, ArrowLeft, Table, Clock, Server, RefreshCw, X, AlertCircle, Settings, AlertTriangle, Share2, Shield, Plus, Edit3, Sparkles } from 'lucide-react';
 
 interface DataSemanticUnderstandingViewProps {
     scanResults: any[];
@@ -463,89 +463,104 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                     </div>
                                     <div className="flex items-center gap-2 pr-4">
                                         {batchAnalyzing ? (
-                                            <div className="flex items-center gap-2 text-sm text-blue-600">
-                                                <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                                                分析中 {batchProgress.current}/{batchProgress.total}
+                                            <div className="flex items-center gap-2 text-sm text-purple-600">
+                                                <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+                                                语义理解中 {batchProgress.current}/{batchProgress.total}
                                             </div>
                                         ) : (
                                             <button
                                                 onClick={handleBatchAnalyze}
                                                 disabled={selectedTables.length === 0}
-                                                className={`px-4 py-1.5 text-sm rounded-lg flex items-center gap-2 transition-colors ${selectedTables.length > 0
-                                                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                                className={`px-4 py-1.5 text-sm rounded-lg flex items-center gap-2 transition-all ${selectedTables.length > 0
+                                                    ? 'bg-gradient-to-r from-purple-600 to-pink-500 text-white hover:from-purple-700 hover:to-pink-600 shadow-md hover:shadow-lg'
                                                     : 'bg-slate-100 text-slate-400 cursor-not-allowed'
                                                     }`}
                                             >
-                                                <Activity size={14} />
-                                                批量分析
+                                                <Sparkles size={14} />
+                                                语义理解
                                             </button>
                                         )}
                                     </div>
                                 </div>
-                                <table className="w-full text-sm text-left">
-                                    <thead className="bg-slate-50 text-slate-500 border-b border-slate-100 sticky top-0 z-10">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-gradient-to-r from-slate-50 to-slate-100/50 text-slate-500 border-b border-slate-200 sticky top-0 z-10">
                                         <tr>
-                                            <th className="px-3 py-3 w-10"></th>
-                                            <th className="px-6 py-3 font-medium">表技术名称</th>
-                                            <th className="px-6 py-3 font-medium">表业务名称</th>
-                                            <th className="px-6 py-3 font-medium">所属数据源</th>
-                                            <th className="px-6 py-3 font-medium w-24">行数</th>
-                                            <th className="px-6 py-3 font-medium w-40">更新时间</th>
-                                            <th className="px-6 py-3 font-medium w-28 text-center">分析状态</th>
+                                            <th className="px-3 py-3.5 w-12"></th>
+                                            <th className="px-4 py-3.5 font-medium text-left min-w-[200px]">表技术名称</th>
+                                            <th className="px-4 py-3.5 font-medium text-left min-w-[140px]">表业务名称</th>
+                                            <th className="px-4 py-3.5 font-medium text-left min-w-[160px]">所属数据源</th>
+                                            <th className="px-4 py-3.5 font-medium text-right w-24">行数</th>
+                                            <th className="px-4 py-3.5 font-medium text-center w-32">更新时间</th>
+                                            <th className="px-4 py-3.5 font-medium text-center w-28">分析状态</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {filteredAssets.map(asset => (
+                                    <tbody className="divide-y divide-slate-100">
+                                        {filteredAssets.map((asset, index) => (
                                             <tr key={asset.table}
                                                 onClick={() => handleTableClick(asset.table)}
-                                                className={`hover:bg-blue-50/50 cursor-pointer group transition-colors ${selectedTables.includes(asset.table) ? 'bg-blue-50/30' : ''}`}
+                                                className={`hover:bg-purple-50/30 cursor-pointer group transition-all duration-150 ${selectedTables.includes(asset.table) ? 'bg-purple-50/50 border-l-2 border-l-purple-400' : ''} ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}`}
                                             >
                                                 <td className="px-3 py-4" onClick={(e) => e.stopPropagation()}>
                                                     <input
                                                         type="checkbox"
                                                         checked={selectedTables.includes(asset.table)}
                                                         onChange={() => toggleTableSelection(asset.table)}
-                                                        className="w-4 h-4 text-blue-600 rounded border-slate-300"
+                                                        className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500"
                                                     />
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-2 font-mono text-blue-600 font-medium">
-                                                        <Table size={14} className="opacity-50" />
-                                                        {asset.table}
+                                                <td className="px-4 py-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center flex-shrink-0">
+                                                            <Table size={14} className="text-blue-600" />
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <div className="font-mono text-blue-600 font-semibold text-sm truncate group-hover:text-blue-700">{asset.table}</div>
+                                                            {asset.comment && <div className="text-xs text-slate-400 truncate max-w-[180px]">{asset.comment}</div>}
+                                                        </div>
                                                     </div>
-                                                    {asset.comment && <div className="text-xs text-slate-400 mt-0.5 pl-6 truncate w-48">{asset.comment}</div>}
                                                 </td>
-                                                <td className="px-6 py-4">
+                                                <td className="px-4 py-4">
                                                     {asset.semanticAnalysis?.chineseName ? (
                                                         <span className="text-slate-800 font-medium">{asset.semanticAnalysis.chineseName}</span>
                                                     ) : (
-                                                        <span className="text-slate-400 italic text-xs">- 未定义 -</span>
+                                                        <span className="text-slate-300 italic text-xs">- 未定义 -</span>
                                                     )}
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-1.5 text-slate-600">
-                                                        <span className={`w-1.5 h-1.5 rounded-full ${typeConfig[asset.sourceType]?.bgColor.replace('bg-', 'bg-') || 'bg-slate-400'}`}></span>
-                                                        {asset.sourceName}
+                                                <td className="px-4 py-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${asset.sourceType === 'MySQL' ? 'bg-blue-100 text-blue-700' :
+                                                                asset.sourceType === 'Oracle' ? 'bg-orange-100 text-orange-700' :
+                                                                    asset.sourceType === 'PostgreSQL' ? 'bg-emerald-100 text-emerald-700' :
+                                                                        'bg-slate-100 text-slate-600'
+                                                            }`}>
+                                                            {asset.sourceType}
+                                                        </span>
                                                     </div>
-                                                    <div className="text-[10px] text-slate-400 pl-3">{asset.sourceType}</div>
+                                                    <div className="text-xs text-slate-500 mt-0.5 truncate max-w-[140px]">{asset.sourceName}</div>
                                                 </td>
-                                                <td className="px-6 py-4 text-slate-600 font-mono">
-                                                    {asset.rows || '-'}
+                                                <td className="px-4 py-4 text-right">
+                                                    <span className="font-mono text-slate-700 font-medium">
+                                                        {typeof asset.rows === 'number'
+                                                            ? asset.rows >= 1000000 ? `${(asset.rows / 1000000).toFixed(1)}M`
+                                                                : asset.rows >= 1000 ? `${(asset.rows / 1000).toFixed(1)}K`
+                                                                    : asset.rows.toLocaleString()
+                                                            : asset.rows || '-'}
+                                                    </span>
                                                 </td>
-                                                <td className="px-6 py-4 text-slate-500 text-xs">
-                                                    <div className="flex items-center gap-1">
-                                                        <Clock size={12} />
+                                                <td className="px-4 py-4 text-center">
+                                                    <div className="flex items-center justify-center gap-1 text-slate-500 text-xs">
+                                                        <Clock size={12} className="text-slate-400" />
                                                         {asset.updateTime?.split(' ')[0] || 'N/A'}
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 text-center">
+                                                <td className="px-4 py-4 text-center">
                                                     {asset.status === 'analyzed' ? (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 text-xs font-medium whitespace-nowrap">
-                                                            <CheckCircle size={10} /> 已分析
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-purple-50 to-pink-50 text-purple-600 text-xs font-medium whitespace-nowrap border border-purple-100">
+                                                            <Sparkles size={10} /> 已理解
                                                         </span>
                                                     ) : (
                                                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 text-xs whitespace-nowrap">
-                                                            待分析
+                                                            待理解
                                                         </span>
                                                     )}
                                                 </td>
@@ -579,12 +594,12 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                             </span>
                                             {/* Analysis Status Badge */}
                                             {semanticProfile.analysisStep === 'done' ? (
-                                                <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-xs font-bold border border-emerald-100 flex items-center gap-1">
-                                                    <CheckCircle size={10} /> 语义分析完成
+                                                <span className="px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 text-xs font-bold border border-purple-100 flex items-center gap-1">
+                                                    <Sparkles size={10} /> 语义理解完成
                                                 </span>
                                             ) : (
                                                 <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs border border-slate-200">
-                                                    未分析
+                                                    待理解
                                                 </span>
                                             )}
                                         </div>
@@ -599,15 +614,15 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                         onClick={handleAnalyze}
                                         disabled={isAnalyzing || semanticProfile.analysisStep === 'done'}
                                         className={`px-4 py-1.5 rounded-lg text-sm shadow-sm flex items-center gap-2 text-white transition-all ${isAnalyzing ? 'bg-slate-400 cursor-not-allowed' :
-                                            semanticProfile.analysisStep === 'done' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
+                                            semanticProfile.analysisStep === 'done' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600'
                                             }`}
                                     >
                                         {isAnalyzing ? (
-                                            <><RefreshCw size={14} className="animate-spin" /> 分析计算中...</>
+                                            <><RefreshCw size={14} className="animate-spin" /> 语义理解中...</>
                                         ) : semanticProfile.analysisStep === 'done' ? (
-                                            <><RefreshCw size={14} /> 重新分析</>
+                                            <><RefreshCw size={14} /> 重新理解</>
                                         ) : (
-                                            <><Cpu size={14} /> 开始语义识别</>
+                                            <><Sparkles size={14} /> 开始语义理解</>
                                         )}
                                     </button>
                                 </div>
@@ -1089,7 +1104,7 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                         <div className="flex items-center gap-2 mb-3">
                                                             <Activity size={16} className="text-amber-500" />
                                                             <span className="text-sm font-bold text-slate-700">升级建议</span>
-                                                            <span className="text-xs text-slate-400">基于语义分析自动识别</span>
+                                                            <span className="text-xs text-slate-400">基于语义理解自动识别</span>
                                                         </div>
 
                                                         {statusFields.length > 0 && (
@@ -1423,7 +1438,7 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                                     <span className="flex items-center gap-1 text-purple-600"><Settings size={12} /> 规则判定</span>
                                                                 </th>
                                                                 <th className="px-4 py-2">
-                                                                    <span className="flex items-center gap-1 text-blue-600"><Cpu size={12} /> AI 建议</span>
+                                                                    <span className="flex items-center gap-1 text-blue-600"><Sparkles size={12} /> AI 语义</span>
                                                                 </th>
                                                                 <th className="px-4 py-2">
                                                                     <span className="flex items-center gap-1 text-orange-600"><Shield size={12} /> 敏感等级</span>
@@ -1647,11 +1662,11 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
                         <div className="bg-white rounded-2xl shadow-2xl w-[700px] max-h-[80vh] overflow-hidden flex flex-col">
                             {/* Modal Header */}
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-purple-50 to-pink-50">
                                 <div>
                                     <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                        <Activity size={20} className="text-blue-600" />
-                                        批量分析结果审核
+                                        <Sparkles size={20} className="text-purple-600" />
+                                        语义理解结果审核
                                     </h3>
                                     <p className="text-sm text-slate-500 mt-1">
                                         共 {batchResults.length} 项，
@@ -1835,9 +1850,9 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                                                 <td className="px-2 py-1.5 text-slate-500">{field.type}</td>
                                                                                 <td className="px-2 py-1.5">
                                                                                     <span className={`px-1.5 py-0.5 rounded text-[10px] ${field.name.includes('id') ? 'bg-purple-100 text-purple-700' :
-                                                                                            field.name.includes('time') || field.name.includes('date') ? 'bg-blue-100 text-blue-700' :
-                                                                                                field.name.includes('status') ? 'bg-amber-100 text-amber-700' :
-                                                                                                    'bg-slate-100 text-slate-600'
+                                                                                        field.name.includes('time') || field.name.includes('date') ? 'bg-blue-100 text-blue-700' :
+                                                                                            field.name.includes('status') ? 'bg-amber-100 text-amber-700' :
+                                                                                                'bg-slate-100 text-slate-600'
                                                                                         }`}>
                                                                                         {field.name.includes('id') ? '标识符' :
                                                                                             field.name.includes('time') || field.name.includes('date') ? '时间' :
