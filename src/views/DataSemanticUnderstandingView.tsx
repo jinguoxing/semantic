@@ -13,6 +13,9 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
     const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
     const [expandedTypes, setExpandedTypes] = useState<string[]>(['MySQL', 'Oracle', 'PostgreSQL']);
     const [searchTerm, setSearchTerm] = useState('');
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
     // Batch Analysis State
     const [selectedTables, setSelectedTables] = useState<string[]>([]);
     const [batchAnalyzing, setBatchAnalyzing] = useState(false);
@@ -367,7 +370,17 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
     const typeConfig: Record<string, { color: string; bgColor: string }> = {
         MySQL: { color: 'text-blue-600', bgColor: 'bg-blue-100' },
         Oracle: { color: 'text-orange-600', bgColor: 'bg-orange-100' },
-        PostgreSQL: { color: 'text-emerald-600', bgColor: 'bg-emerald-100' }
+        PostgreSQL: { color: 'text-emerald-600', bgColor: 'bg-emerald-100' },
+        SQLServer: { color: 'text-red-600', bgColor: 'bg-red-100' },
+        MongoDB: { color: 'text-green-600', bgColor: 'bg-green-100' },
+        Redis: { color: 'text-rose-600', bgColor: 'bg-rose-100' },
+        Elasticsearch: { color: 'text-yellow-600', bgColor: 'bg-yellow-100' },
+        ClickHouse: { color: 'text-amber-600', bgColor: 'bg-amber-100' },
+        TiDB: { color: 'text-cyan-600', bgColor: 'bg-cyan-100' },
+        OceanBase: { color: 'text-indigo-600', bgColor: 'bg-indigo-100' },
+        达梦: { color: 'text-purple-600', bgColor: 'bg-purple-100' },
+        人大金仓: { color: 'text-pink-600', bgColor: 'bg-pink-100' },
+        GaussDB: { color: 'text-teal-600', bgColor: 'bg-teal-100' }
     };
 
     return (
@@ -495,83 +508,150 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {filteredAssets.map((asset, index) => (
-                                            <tr key={asset.table}
-                                                onClick={() => handleTableClick(asset.table)}
-                                                className={`hover:bg-purple-50/30 cursor-pointer group transition-all duration-150 ${selectedTables.includes(asset.table) ? 'bg-purple-50/50 border-l-2 border-l-purple-400' : ''} ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}`}
-                                            >
-                                                <td className="px-3 py-4" onClick={(e) => e.stopPropagation()}>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={selectedTables.includes(asset.table)}
-                                                        onChange={() => toggleTableSelection(asset.table)}
-                                                        className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500"
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-4">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center flex-shrink-0">
-                                                            <Table size={14} className="text-blue-600" />
+                                        {(() => {
+                                            // Pagination logic
+                                            const totalItems = filteredAssets.length;
+                                            const totalPages = Math.ceil(totalItems / pageSize);
+                                            const startIndex = (currentPage - 1) * pageSize;
+                                            const endIndex = startIndex + pageSize;
+                                            const paginatedAssets = filteredAssets.slice(startIndex, endIndex);
+
+                                            return paginatedAssets.map((asset, index) => (
+                                                <tr key={asset.table}
+                                                    onClick={() => handleTableClick(asset.table)}
+                                                    className={`hover:bg-purple-50/30 cursor-pointer group transition-all duration-150 ${selectedTables.includes(asset.table) ? 'bg-purple-50/50 border-l-2 border-l-purple-400' : ''} ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}`}
+                                                >
+                                                    <td className="px-3 py-4" onClick={(e) => e.stopPropagation()}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedTables.includes(asset.table)}
+                                                            onChange={() => toggleTableSelection(asset.table)}
+                                                            className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-4">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center flex-shrink-0">
+                                                                <Table size={14} className="text-blue-600" />
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <div className="font-mono text-blue-600 font-semibold text-sm truncate group-hover:text-blue-700">{asset.table}</div>
+                                                                {asset.comment && <div className="text-xs text-slate-400 truncate max-w-[180px]">{asset.comment}</div>}
+                                                            </div>
                                                         </div>
-                                                        <div className="min-w-0">
-                                                            <div className="font-mono text-blue-600 font-semibold text-sm truncate group-hover:text-blue-700">{asset.table}</div>
-                                                            {asset.comment && <div className="text-xs text-slate-400 truncate max-w-[180px]">{asset.comment}</div>}
+                                                    </td>
+                                                    <td className="px-4 py-4">
+                                                        {asset.semanticAnalysis?.chineseName ? (
+                                                            <span className="text-slate-800 font-medium">{asset.semanticAnalysis.chineseName}</span>
+                                                        ) : (
+                                                            <span className="text-slate-300 italic text-xs">- 未定义 -</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-4">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${asset.sourceType === 'MySQL' ? 'bg-blue-100 text-blue-700' :
+                                                                asset.sourceType === 'Oracle' ? 'bg-orange-100 text-orange-700' :
+                                                                    asset.sourceType === 'PostgreSQL' ? 'bg-emerald-100 text-emerald-700' :
+                                                                        'bg-slate-100 text-slate-600'
+                                                                }`}>
+                                                                {asset.sourceType}
+                                                            </span>
                                                         </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-4">
-                                                    {asset.semanticAnalysis?.chineseName ? (
-                                                        <span className="text-slate-800 font-medium">{asset.semanticAnalysis.chineseName}</span>
-                                                    ) : (
-                                                        <span className="text-slate-300 italic text-xs">- 未定义 -</span>
-                                                    )}
-                                                </td>
-                                                <td className="px-4 py-4">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${asset.sourceType === 'MySQL' ? 'bg-blue-100 text-blue-700' :
-                                                            asset.sourceType === 'Oracle' ? 'bg-orange-100 text-orange-700' :
-                                                                asset.sourceType === 'PostgreSQL' ? 'bg-emerald-100 text-emerald-700' :
-                                                                    'bg-slate-100 text-slate-600'
-                                                            }`}>
-                                                            {asset.sourceType}
+                                                        <div className="text-xs text-slate-500 mt-0.5 truncate max-w-[140px]">{asset.sourceName}</div>
+                                                    </td>
+                                                    <td className="px-4 py-4 text-right">
+                                                        <span className="font-mono text-slate-700 font-medium">
+                                                            {typeof asset.rows === 'number'
+                                                                ? asset.rows >= 1000000 ? `${(asset.rows / 1000000).toFixed(1)}M`
+                                                                    : asset.rows >= 1000 ? `${(asset.rows / 1000).toFixed(1)}K`
+                                                                        : asset.rows.toLocaleString()
+                                                                : asset.rows || '-'}
                                                         </span>
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 mt-0.5 truncate max-w-[140px]">{asset.sourceName}</div>
-                                                </td>
-                                                <td className="px-4 py-4 text-right">
-                                                    <span className="font-mono text-slate-700 font-medium">
-                                                        {typeof asset.rows === 'number'
-                                                            ? asset.rows >= 1000000 ? `${(asset.rows / 1000000).toFixed(1)}M`
-                                                                : asset.rows >= 1000 ? `${(asset.rows / 1000).toFixed(1)}K`
-                                                                    : asset.rows.toLocaleString()
-                                                            : asset.rows || '-'}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-4 text-center">
-                                                    <div className="flex items-center justify-center gap-1 text-slate-500 text-xs">
-                                                        <Clock size={12} className="text-slate-400" />
-                                                        {asset.updateTime?.split(' ')[0] || 'N/A'}
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-4 text-center">
-                                                    {asset.status === 'analyzed' ? (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-purple-50 to-pink-50 text-purple-600 text-xs font-medium whitespace-nowrap border border-purple-100">
-                                                            <Sparkles size={10} /> 已理解
-                                                        </span>
-                                                    ) : (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 text-xs whitespace-nowrap">
-                                                            待理解
-                                                        </span>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))}
+                                                    </td>
+                                                    <td className="px-4 py-4 text-center">
+                                                        <div className="flex items-center justify-center gap-1 text-slate-500 text-xs">
+                                                            <Clock size={12} className="text-slate-400" />
+                                                            {asset.updateTime?.split(' ')[0] || 'N/A'}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-4 text-center">
+                                                        {asset.status === 'analyzed' ? (
+                                                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-purple-50 to-pink-50 text-purple-600 text-xs font-medium whitespace-nowrap border border-purple-100">
+                                                                <Sparkles size={10} /> 已理解
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 text-xs whitespace-nowrap">
+                                                                待理解
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ));
+                                        })()}
                                     </tbody>
                                 </table>
                                 {filteredAssets.length === 0 && (
                                     <div className="p-12 text-center text-slate-400">
                                         <Search size={48} className="mx-auto mb-4 opacity-10" />
                                         <p>没有找到匹配的表</p>
+                                    </div>
+                                )}
+                                {/* Pagination Controls */}
+                                {filteredAssets.length > 0 && (
+                                    <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-t border-slate-200">
+                                        <div className="flex items-center gap-4 text-sm text-slate-600">
+                                            <span>共 {filteredAssets.length} 条记录</span>
+                                            <div className="flex items-center gap-2">
+                                                <span>每页</span>
+                                                <select
+                                                    value={pageSize}
+                                                    onChange={(e) => {
+                                                        setPageSize(Number(e.target.value));
+                                                        setCurrentPage(1);
+                                                    }}
+                                                    className="px-2 py-1 border border-slate-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                                >
+                                                    <option value={10}>10</option>
+                                                    <option value={20}>20</option>
+                                                    <option value={50}>50</option>
+                                                    <option value={100}>100</option>
+                                                </select>
+                                                <span>条</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => setCurrentPage(1)}
+                                                disabled={currentPage === 1}
+                                                className={`px-2 py-1 text-xs rounded ${currentPage === 1 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-200'}`}
+                                            >
+                                                首页
+                                            </button>
+                                            <button
+                                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                                disabled={currentPage === 1}
+                                                className={`px-3 py-1 text-sm rounded ${currentPage === 1 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-200'}`}
+                                            >
+                                                上一页
+                                            </button>
+                                            <span className="px-3 py-1 text-sm text-slate-700">
+                                                第 <span className="font-medium text-purple-600">{currentPage}</span> / {Math.ceil(filteredAssets.length / pageSize)} 页
+                                            </span>
+                                            <button
+                                                onClick={() => setCurrentPage(p => Math.min(Math.ceil(filteredAssets.length / pageSize), p + 1))}
+                                                disabled={currentPage >= Math.ceil(filteredAssets.length / pageSize)}
+                                                className={`px-3 py-1 text-sm rounded ${currentPage >= Math.ceil(filteredAssets.length / pageSize) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-200'}`}
+                                            >
+                                                下一页
+                                            </button>
+                                            <button
+                                                onClick={() => setCurrentPage(Math.ceil(filteredAssets.length / pageSize))}
+                                                disabled={currentPage >= Math.ceil(filteredAssets.length / pageSize)}
+                                                className={`px-2 py-1 text-xs rounded ${currentPage >= Math.ceil(filteredAssets.length / pageSize) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-200'}`}
+                                            >
+                                                末页
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
                             </div>
