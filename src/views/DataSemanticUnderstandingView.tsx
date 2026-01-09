@@ -1809,20 +1809,78 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                         </ul>
                                                     </div>
                                                 )}
+                                                {/* Field List Section */}
+                                                {(() => {
+                                                    const table = scanResults.find((t: any) => t.table === result.tableId);
+                                                    const fields = table?.fields || [];
+                                                    return fields.length > 0 && (
+                                                        <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                                                            <div className="text-xs font-medium text-slate-600 mb-2 flex items-center gap-1">
+                                                                <Layers size={12} /> 字段列表 ({fields.length}个)
+                                                            </div>
+                                                            <div className="max-h-40 overflow-y-auto">
+                                                                <table className="w-full text-xs">
+                                                                    <thead className="bg-slate-100 sticky top-0">
+                                                                        <tr>
+                                                                            <th className="px-2 py-1 text-left text-slate-500">字段名</th>
+                                                                            <th className="px-2 py-1 text-left text-slate-500">类型</th>
+                                                                            <th className="px-2 py-1 text-left text-slate-500">语义角色</th>
+                                                                            <th className="px-2 py-1 text-left text-slate-500">说明</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody className="divide-y divide-slate-100">
+                                                                        {fields.slice(0, 10).map((field: any, i: number) => (
+                                                                            <tr key={i} className="hover:bg-white">
+                                                                                <td className="px-2 py-1.5 font-mono text-blue-600">{field.name}</td>
+                                                                                <td className="px-2 py-1.5 text-slate-500">{field.type}</td>
+                                                                                <td className="px-2 py-1.5">
+                                                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${field.name.includes('id') ? 'bg-purple-100 text-purple-700' :
+                                                                                            field.name.includes('time') || field.name.includes('date') ? 'bg-blue-100 text-blue-700' :
+                                                                                                field.name.includes('status') ? 'bg-amber-100 text-amber-700' :
+                                                                                                    'bg-slate-100 text-slate-600'
+                                                                                        }`}>
+                                                                                        {field.name.includes('id') ? '标识符' :
+                                                                                            field.name.includes('time') || field.name.includes('date') ? '时间' :
+                                                                                                field.name.includes('status') ? '状态' : '业务属性'}
+                                                                                    </span>
+                                                                                </td>
+                                                                                <td className="px-2 py-1.5 text-slate-400 truncate max-w-[120px]">{field.comment || '-'}</td>
+                                                                            </tr>
+                                                                        ))}
+                                                                    </tbody>
+                                                                </table>
+                                                                {fields.length > 10 && (
+                                                                    <div className="text-center text-xs text-slate-400 py-1">
+                                                                        还有 {fields.length - 10} 个字段...
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })()}
 
-                                                {/* View Details Button */}
-                                                <button
-                                                    onClick={() => {
-                                                        const table = scanResults.find((t: any) => t.table === result.tableId);
-                                                        if (table) {
-                                                            handleTableClick(table.table);
-                                                            setShowBatchReview(false);
-                                                        }
-                                                    }}
-                                                    className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                                                >
-                                                    查看完整分析详情 →
-                                                </button>
+                                                {/* Relationship Details Section */}
+                                                {result.relationships && result.relationships.count > 0 && (
+                                                    <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                                                        <div className="text-xs font-medium text-blue-700 mb-2 flex items-center gap-1">
+                                                            <Share2 size={12} /> 关系详情 ({result.relationships.count}个)
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            {result.relationships.targets.map((target: string, i: number) => (
+                                                                <div key={i} className="flex items-center gap-2 text-xs">
+                                                                    <span className="text-blue-400">→</span>
+                                                                    <span className="font-mono text-blue-600">{target}</span>
+                                                                    <span className="px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded text-[10px]">
+                                                                        {['Many-to-One', 'One-to-Many', 'Many-to-Many'][i % 3]}
+                                                                    </span>
+                                                                    <span className="text-slate-400">
+                                                                        via <span className="font-mono">{target.replace('t_', '')}_id</span>
+                                                                    </span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
