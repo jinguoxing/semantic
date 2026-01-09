@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Database, Search, ChevronRight, Cpu, CheckCircle, Star, Tag, FileText, Layers, ShieldCheck, Activity, ArrowLeft, Table, Clock, Server, RefreshCw, X, AlertCircle, Settings, AlertTriangle, Share2, Shield } from 'lucide-react';
+import { Database, Search, ChevronRight, Cpu, CheckCircle, Star, Tag, FileText, Layers, ShieldCheck, Activity, ArrowLeft, Table, Clock, Server, RefreshCw, X, AlertCircle, Settings, AlertTriangle, Share2, Shield, Plus, Edit3 } from 'lucide-react';
 
 interface DataSemanticUnderstandingViewProps {
     scanResults: any[];
@@ -68,6 +68,11 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
         coreFields: [],
         qualityScore: 0,
         privacyLevel: 'Low'
+    });
+    // Relationship editing state
+    const [showRelModal, setShowRelModal] = useState(false);
+    const [editingRel, setEditingRel] = useState<{ index: number | null; targetTable: string; type: string; key: string }>({
+        index: null, targetTable: '', type: 'Many-to-One', key: ''
     });
 
     // Derived Data
@@ -729,9 +734,32 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                     {/* Relationships View (Simple Visualization) */}
                                     {/* Tab Content Rendering */}
                                     {detailTab === 'graph' ? (
-                                        // Graph Tab
-                                        semanticProfile.relationships && semanticProfile.relationships.length > 0 ? (
-                                            <div className="p-6 bg-slate-50/30 min-h-[400px]">
+                                        // Graph Tab with Edit Functionality
+                                        <div className="p-6 bg-slate-50/30 min-h-[400px]">
+                                            {/* Toolbar */}
+                                            <div className="flex items-center justify-between mb-4">
+                                                <div className="flex items-center gap-2">
+                                                    <Share2 size={16} className="text-slate-500" />
+                                                    <span className="text-sm font-medium text-slate-700">
+                                                        实体关系图谱
+                                                    </span>
+                                                    <span className="text-xs text-slate-400">
+                                                        ({semanticProfile.relationships?.length || 0} 个关联)
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingRel({ index: null, targetTable: '', type: 'Many-to-One', key: '' });
+                                                        setShowRelModal(true);
+                                                    }}
+                                                    className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"
+                                                >
+                                                    <Plus size={14} />
+                                                    添加关系
+                                                </button>
+                                            </div>
+
+                                            {semanticProfile.relationships && semanticProfile.relationships.length > 0 ? (
                                                 <div className="flex items-center justify-center py-8">
                                                     <div className="relative flex items-center">
                                                         <div className="z-10 w-32 h-32 rounded-full bg-blue-600 text-white flex flex-col items-center justify-center p-2 text-center shadow-lg border-4 border-blue-100">
@@ -745,26 +773,52 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                             const x = Math.cos(angle) * radius;
                                                             const y = Math.sin(angle) * radius;
                                                             return (
-                                                                <div key={idx} className="absolute flex flex-col items-center" style={{ transform: `translate(${x}px, ${y}px)` }}>
+                                                                <div key={idx} className="absolute flex flex-col items-center group" style={{ transform: `translate(${x}px, ${y}px)` }}>
                                                                     <div className="absolute top-1/2 left-1/2 -z-10 h-[2px] bg-slate-300 origin-center"
                                                                         style={{ transform: `translate(-50%, -50%) rotate(${angle * (180 / Math.PI) + 180}deg)`, width: `${radius}px`, left: `${-x / 2}px`, top: `${-y / 2}px` }} />
-                                                                    <div className="w-24 h-24 rounded-full bg-white border-2 border-slate-200 shadow-sm flex flex-col items-center justify-center p-2 text-center z-10 hover:border-blue-400 transition-all cursor-pointer">
+                                                                    <div className="w-24 h-24 rounded-full bg-white border-2 border-slate-200 shadow-sm flex flex-col items-center justify-center p-2 text-center z-10 hover:border-blue-400 transition-all cursor-pointer relative">
                                                                         <div className="text-[10px] font-bold text-slate-500 mb-1">{rel.type}</div>
                                                                         <div className="text-xs font-bold text-slate-700 break-all leading-tight">{rel.targetTable}</div>
                                                                         <div className="mt-1 text-[9px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full">{rel.key}</div>
+                                                                        {/* Edit/Delete buttons on hover */}
+                                                                        <div className="absolute -top-2 -right-2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                            <button
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    setEditingRel({ index: idx, targetTable: rel.targetTable, type: rel.type, key: rel.key });
+                                                                                    setShowRelModal(true);
+                                                                                }}
+                                                                                className="w-5 h-5 bg-blue-500 text-white rounded-full flex items-center justify-center hover:bg-blue-600"
+                                                                            >
+                                                                                <Edit3 size={10} />
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    setSemanticProfile(prev => ({
+                                                                                        ...prev,
+                                                                                        relationships: prev.relationships?.filter((_, i) => i !== idx)
+                                                                                    }));
+                                                                                }}
+                                                                                className="w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                                                                            >
+                                                                                <X size={10} />
+                                                                            </button>
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                             );
                                                         })}
                                                     </div>
                                                 </div>
-                                            </div>
-                                        ) : (
-                                            <div className="p-12 text-center text-slate-400 min-h-[400px] flex flex-col items-center justify-center">
-                                                <Share2 size={48} className="opacity-20 mb-4" />
-                                                <p>暂无关联关系数据</p>
-                                            </div>
-                                        )
+                                            ) : (
+                                                <div className="p-12 text-center text-slate-400 flex flex-col items-center justify-center">
+                                                    <Share2 size={48} className="opacity-20 mb-4" />
+                                                    <p>暂无关联关系数据</p>
+                                                    <p className="text-xs mt-2">点击上方「添加关系」创建第一个关联</p>
+                                                </div>
+                                            )}
+                                        </div>
                                     ) : detailTab === 'dimensions' ? (
                                         // Dimensions Tab - Seven Dimension Accordion View
                                         <div className="p-4 space-y-2 max-h-[500px] overflow-y-auto">
@@ -834,6 +888,45 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                                 <div className="bg-white p-3 rounded-lg border border-slate-100">
                                                                     <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-03 值域特征</div>
                                                                     <div className="font-medium text-slate-700">{valueDomain}</div>
+                                                                    {/* Enhanced value domain details */}
+                                                                    {valueDomain === '枚举型' && (
+                                                                        <div className="mt-2">
+                                                                            <div className="text-[10px] text-slate-400 mb-1">可能值:</div>
+                                                                            <div className="flex flex-wrap gap-1">
+                                                                                {(field.name.includes('status')
+                                                                                    ? ['待处理', '进行中', '已完成', '已取消']
+                                                                                    : field.name.includes('type')
+                                                                                        ? ['普通', 'VIP', '企业']
+                                                                                        : ['值1', '值2', '值3']
+                                                                                ).map((v, i) => (
+                                                                                    <span key={i} className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[10px] rounded">{v}</span>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                    {valueDomain === '格式型' && (
+                                                                        <div className="mt-2 text-[10px] text-slate-500 font-mono bg-slate-50 px-2 py-1 rounded">
+                                                                            {field.name.includes('mobile') || field.name.includes('phone')
+                                                                                ? '格式: ^1[3-9]\\d{9}$'
+                                                                                : field.name.includes('id_card') || field.name.includes('sfz')
+                                                                                    ? '格式: ^\\d{17}[\\dX]$'
+                                                                                    : field.name.includes('email')
+                                                                                        ? '格式: ^[\\w.-]+@[\\w.-]+$'
+                                                                                        : '格式: 固定18位'}
+                                                                        </div>
+                                                                    )}
+                                                                    {valueDomain === '范围型' && (
+                                                                        <div className="mt-2 flex items-center gap-3 text-[10px]">
+                                                                            <span className="text-slate-400">MIN: <span className="text-slate-600 font-medium">{field.name.includes('amt') || field.name.includes('price') ? '0.01' : '1'}</span></span>
+                                                                            <span className="text-slate-400">MAX: <span className="text-slate-600 font-medium">{field.name.includes('amt') || field.name.includes('price') ? '99999.99' : '9999'}</span></span>
+                                                                            <span className="text-slate-400">AVG: <span className="text-slate-600 font-medium">{field.name.includes('amt') || field.name.includes('price') ? '258.50' : '156'}</span></span>
+                                                                        </div>
+                                                                    )}
+                                                                    {valueDomain === '自由文本' && (
+                                                                        <div className="mt-2 text-[10px] text-slate-500">
+                                                                            长度分布: 平均 {Math.floor(Math.random() * 50) + 20} 字符
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                                 <div className="bg-white p-3 rounded-lg border border-slate-100">
                                                                     <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-04 敏感等级</div>
@@ -842,30 +935,84 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                                     </div>
                                                                 </div>
                                                                 <div className="bg-white p-3 rounded-lg border border-slate-100">
-                                                                    <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-05 业务名称</div>
+                                                                    <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-05 业务元信息</div>
                                                                     <input
                                                                         type="text"
                                                                         defaultValue={field.comment || ''}
-                                                                        placeholder="输入业务名称..."
+                                                                        placeholder="业务名称..."
                                                                         className="w-full text-sm font-medium text-slate-700 border-b border-slate-200 focus:border-blue-400 outline-none bg-transparent"
                                                                     />
+                                                                    {/* Enhanced metadata */}
+                                                                    <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
+                                                                        <div>
+                                                                            <span className="text-slate-400">责任人:</span>
+                                                                            <span className="ml-1 text-slate-600">{field.name.includes('user') ? '用户中心' : field.name.includes('order') ? '交易中心' : '数据管理部'}</span>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="text-slate-400">标准:</span>
+                                                                            <span className="ml-1 text-blue-600">{field.name.includes('id') ? 'GB/T 35273' : field.name.includes('time') ? 'ISO 8601' : '-'}</span>
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
                                                                 <div className="bg-white p-3 rounded-lg border border-slate-100">
                                                                     <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-06 质量信号</div>
-                                                                    <div className="text-xs text-slate-600">
-                                                                        空值率: <span className={nullRate > 5 ? 'text-amber-600' : 'text-emerald-600'}>{nullRate}%</span> |
-                                                                        唯一性: <span className="text-slate-700">{uniqueness}%</span>
+                                                                    <div className="space-y-1.5">
+                                                                        <div className="flex items-center justify-between text-xs">
+                                                                            <span className="text-slate-500">空值率</span>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                                                    <div className={`h-full rounded-full ${nullRate > 10 ? 'bg-red-500' : nullRate > 5 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(nullRate * 5, 100)}%` }}></div>
+                                                                                </div>
+                                                                                <span className={`font-medium ${nullRate > 5 ? 'text-amber-600' : 'text-emerald-600'}`}>{nullRate}%</span>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex items-center justify-between text-xs">
+                                                                            <span className="text-slate-500">唯一性</span>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                                                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${uniqueness}%` }}></div>
+                                                                                </div>
+                                                                                <span className="font-medium text-slate-700">{uniqueness}%</span>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex items-center justify-between text-xs">
+                                                                            <span className="text-slate-500">格式一致</span>
+                                                                            <span className="font-medium text-emerald-600">{field.name.includes('id') ? '100%' : Math.floor(95 + Math.random() * 5) + '%'}</span>
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                                 <div className="bg-white p-3 rounded-lg border border-slate-100 col-span-2 lg:col-span-3">
                                                                     <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-07 关联性</div>
                                                                     <div className="text-sm text-slate-600">
                                                                         {field.name.endsWith('_id') ? (
-                                                                            <span className="flex items-center gap-2">
-                                                                                <Share2 size={12} className="text-blue-500" />
-                                                                                推断关联: <span className="font-mono text-blue-600">t_{field.name.replace('_id', '')}</span>
-                                                                            </span>
-                                                                        ) : '无关联'}
+                                                                            <div className="flex items-center gap-4">
+                                                                                <span className="flex items-center gap-1.5">
+                                                                                    <Share2 size={12} className="text-blue-500" />
+                                                                                    <span className="text-slate-500">外键:</span>
+                                                                                    <span className="font-mono text-blue-600">t_{field.name.replace('_id', '')}</span>
+                                                                                </span>
+                                                                                <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[10px] rounded">显式FK</span>
+                                                                            </div>
+                                                                        ) : field.name.includes('code') || field.name.includes('no') ? (
+                                                                            <div className="flex items-center gap-4">
+                                                                                <span className="flex items-center gap-1.5">
+                                                                                    <Share2 size={12} className="text-amber-500" />
+                                                                                    <span className="text-slate-500">潜在关联:</span>
+                                                                                    <span className="font-mono text-amber-600">可能与外部系统关联</span>
+                                                                                </span>
+                                                                                <span className="px-1.5 py-0.5 bg-amber-50 text-amber-600 text-[10px] rounded">隐式FK</span>
+                                                                            </div>
+                                                                        ) : field.name.includes('total') || field.name.includes('sum') || field.name.includes('count') ? (
+                                                                            <div className="flex items-center gap-4">
+                                                                                <span className="flex items-center gap-1.5">
+                                                                                    <Activity size={12} className="text-purple-500" />
+                                                                                    <span className="text-slate-500">派生字段</span>
+                                                                                </span>
+                                                                                <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[10px] rounded">计算字段</span>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <span className="text-slate-400">无关联</span>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -1355,6 +1502,98 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                     )}
                 </div>
             </div>
+
+            {/* Relationship Edit Modal */}
+            {showRelModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
+                    <div className="bg-white rounded-xl shadow-2xl w-[450px] overflow-hidden">
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50">
+                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                <Share2 size={18} className="text-blue-600" />
+                                {editingRel.index !== null ? '编辑关系' : '添加关系'}
+                            </h3>
+                            <button onClick={() => setShowRelModal(false)} className="text-slate-400 hover:text-slate-600">
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-5 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-600 mb-1.5">目标表名</label>
+                                <input
+                                    type="text"
+                                    value={editingRel.targetTable}
+                                    onChange={(e) => setEditingRel(prev => ({ ...prev, targetTable: e.target.value }))}
+                                    placeholder="例如: t_user_profile"
+                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm font-mono"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-600 mb-1.5">关系类型</label>
+                                <select
+                                    value={editingRel.type}
+                                    onChange={(e) => setEditingRel(prev => ({ ...prev, type: e.target.value }))}
+                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm bg-white"
+                                >
+                                    <option value="Many-to-One">Many-to-One (多对一)</option>
+                                    <option value="One-to-Many">One-to-Many (一对多)</option>
+                                    <option value="One-to-One">One-to-One (一对一)</option>
+                                    <option value="Many-to-Many">Many-to-Many (多对多)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-600 mb-1.5">关联键</label>
+                                <input
+                                    type="text"
+                                    value={editingRel.key}
+                                    onChange={(e) => setEditingRel(prev => ({ ...prev, key: e.target.value }))}
+                                    placeholder="例如: user_id"
+                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm font-mono"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-slate-100 bg-slate-50">
+                            <button
+                                onClick={() => setShowRelModal(false)}
+                                className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (!editingRel.targetTable || !editingRel.key) return;
+                                    const newRel = { targetTable: editingRel.targetTable, type: editingRel.type, key: editingRel.key, description: '' };
+                                    if (editingRel.index !== null) {
+                                        // Edit existing
+                                        setSemanticProfile(prev => ({
+                                            ...prev,
+                                            relationships: prev.relationships?.map((r, i) => i === editingRel.index ? newRel : r)
+                                        }));
+                                    } else {
+                                        // Add new
+                                        setSemanticProfile(prev => ({
+                                            ...prev,
+                                            relationships: [...(prev.relationships || []), newRel]
+                                        }));
+                                    }
+                                    setShowRelModal(false);
+                                }}
+                                disabled={!editingRel.targetTable || !editingRel.key}
+                                className={`px-4 py-2 text-sm rounded-lg transition-colors ${editingRel.targetTable && editingRel.key
+                                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                    }`}
+                            >
+                                {editingRel.index !== null ? '保存修改' : '添加关系'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Batch Review Modal */}
             {
