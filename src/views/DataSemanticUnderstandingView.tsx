@@ -445,7 +445,7 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                             <th className="px-6 py-3 font-medium">所属数据源</th>
                                             <th className="px-6 py-3 font-medium w-24">行数</th>
                                             <th className="px-6 py-3 font-medium w-40">更新时间</th>
-                                            <th className="px-6 py-3 font-medium w-24 text-center">状态</th>
+                                            <th className="px-6 py-3 font-medium w-28 text-center">分析状态</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
@@ -494,11 +494,11 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                 </td>
                                                 <td className="px-6 py-4 text-center">
                                                     {asset.status === 'analyzed' ? (
-                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-xs font-medium">
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 text-xs font-medium whitespace-nowrap">
                                                             <CheckCircle size={10} /> 已分析
                                                         </span>
                                                     ) : (
-                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs">
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 text-xs whitespace-nowrap">
                                                             待分析
                                                         </span>
                                                     )}
