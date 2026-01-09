@@ -23,6 +23,8 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
     const [fieldRoleOverrides, setFieldRoleOverrides] = useState<Record<string, { role: string; source: 'rule' | 'ai' }>>({});
     // Track which field's conflict popover is currently open (click-based)
     const [openConflictPopover, setOpenConflictPopover] = useState<string | null>(null);
+    // Track user's sensitivity level overrides: fieldName -> sensitivityLevel
+    const [sensitivityOverrides, setSensitivityOverrides] = useState<Record<string, 'L1' | 'L2' | 'L3' | 'L4'>>({});
     const [semanticProfile, setSemanticProfile] = useState<{
         analysisStep: 'idle' | 'analyzing' | 'done';
         gateResult: 'PASS' | 'REJECT' | 'REVIEW';
@@ -862,145 +864,233 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                             </div>
                                         </div>
                                     </div>
-                                ) : (
-                                    // Fields Tab (default)
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-sm text-left">
-                                            <thead className="bg-slate-50 text-slate-500 border-b border-slate-100">
-                                                <tr>
-                                                    <th className="px-4 py-2 w-10">#</th>
-                                                    <th className="px-4 py-2">物理字段</th>
-                                                    <th className="px-4 py-2">类型</th>
-                                                    <th className="px-4 py-2">
-                                                        <span className="flex items-center gap-1 text-purple-600"><Settings size={12} /> 规则判定</span>
-                                                    </th>
-                                                    <th className="px-4 py-2">
-                                                        <span className="flex items-center gap-1 text-blue-600"><Cpu size={12} /> AI 建议</span>
-                                                    </th>
-                                                    <th className="px-4 py-2">
-                                                        <span className="flex items-center gap-1 text-orange-600"><Shield size={12} /> 敏感等级</span>
-                                                    </th>
-                                                    <th className="px-4 py-2 text-center w-20">冲突</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-50">
-                                                {selectedTable.fields?.map((field: any, idx: number) => {
-                                                    // Semantic role determination
-                                                    const ruleRole = field.name.endsWith('_id') ? 'Identifier' :
-                                                        field.name.includes('time') ? 'EventHint' :
-                                                            field.name.includes('status') ? 'Status' : 'BusAttr';
-                                                    const aiRole = field.suggestion ? field.suggestion : ruleRole;
+                                ) : (() => {
+                                    // Calculate conflict stats for batch actions
+                                    const allFields = selectedTable.fields || [];
+                                    const conflictFields = allFields.filter((field: any) => {
+                                        const ruleRole = field.name.endsWith('_id') ? 'Identifier' :
+                                            field.name.includes('time') ? 'EventHint' :
+                                                field.name.includes('status') ? 'Status' : 'BusAttr';
+                                        const aiRole = field.suggestion ? field.suggestion : ruleRole;
+                                        const isResolved = !!fieldRoleOverrides[field.name];
+                                        return ruleRole !== aiRole && aiRole !== 'unknown' && !isResolved;
+                                    });
+                                    const resolvedCount = Object.keys(fieldRoleOverrides).length;
 
-                                                    // Check if user has resolved this conflict
-                                                    const override = fieldRoleOverrides[field.name];
-                                                    const isResolved = !!override;
-                                                    const hasConflict = ruleRole !== aiRole && aiRole !== 'unknown' && !isResolved;
-                                                    const displayRole = override?.role || ruleRole;
+                                    // Batch resolve all conflicts
+                                    const batchResolve = (choice: 'rule' | 'ai') => {
+                                        const newOverrides: Record<string, { role: string; source: 'rule' | 'ai' }> = { ...fieldRoleOverrides };
+                                        conflictFields.forEach((field: any) => {
+                                            const ruleRole = field.name.endsWith('_id') ? 'Identifier' :
+                                                field.name.includes('time') ? 'EventHint' :
+                                                    field.name.includes('status') ? 'Status' : 'BusAttr';
+                                            const aiRole = field.suggestion ? field.suggestion : ruleRole;
+                                            newOverrides[field.name] = {
+                                                role: choice === 'rule' ? ruleRole : aiRole,
+                                                source: choice
+                                            };
+                                        });
+                                        setFieldRoleOverrides(newOverrides);
+                                    };
 
-                                                    // Sensitivity level inference
-                                                    const getSensitivity = (name: string, type: string): 'L1' | 'L2' | 'L3' | 'L4' => {
-                                                        if (name.includes('id_card') || name.includes('sfz') || name.includes('bank')) return 'L4';
-                                                        if (name.includes('mobile') || name.includes('phone') || name.includes('name') || name.includes('address')) return 'L3';
-                                                        if (name.includes('user') || name.includes('employee')) return 'L2';
-                                                        return 'L1';
-                                                    };
-                                                    const sensitivity = getSensitivity(field.name, field.type);
-
-                                                    const sensitivityConfig: Record<string, { bg: string, text: string, label: string }> = {
-                                                        'L1': { bg: 'bg-slate-100', text: 'text-slate-600', label: 'L1 公开' },
-                                                        'L2': { bg: 'bg-blue-50', text: 'text-blue-600', label: 'L2 内部' },
-                                                        'L3': { bg: 'bg-orange-50', text: 'text-orange-600', label: 'L3 敏感' },
-                                                        'L4': { bg: 'bg-red-50', text: 'text-red-600', label: 'L4 高敏' },
-                                                    };
-
-                                                    return (
-                                                        <tr key={idx} className={`hover:bg-slate-50 ${hasConflict ? 'bg-amber-50/50' : isResolved ? 'bg-emerald-50/30' : ''}`}>
-                                                            <td className="px-4 py-2.5 text-slate-400 text-xs font-mono">{idx + 1}</td>
-                                                            <td className="px-4 py-2.5 font-mono text-slate-700 font-medium">{field.name}</td>
-                                                            <td className="px-4 py-2.5 text-xs text-slate-500">{field.type}</td>
-                                                            <td className="px-4 py-2.5">
-                                                                <span className={`px-2 py-0.5 rounded text-xs font-mono ${override?.source === 'rule' ? 'border-2 border-purple-400 bg-purple-100 text-purple-800' : 'border border-purple-100 bg-purple-50 text-purple-700'}`}>
-                                                                    {ruleRole}
-                                                                </span>
-                                                            </td>
-                                                            <td className="px-4 py-2.5">
-                                                                {isAnalyzing ? (
-                                                                    <span className="animate-pulse bg-slate-200 h-4 w-12 rounded inline-block"></span>
-                                                                ) : (
-                                                                    <span className={`px-2 py-0.5 rounded text-xs font-mono ${override?.source === 'ai' ? 'border-2 border-blue-400 bg-blue-100 text-blue-800' : 'border border-blue-100 bg-blue-50 text-blue-700'}`}>
-                                                                        {aiRole}
-                                                                    </span>
-                                                                )}
-                                                            </td>
-                                                            <td className="px-4 py-2.5">
-                                                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${sensitivityConfig[sensitivity].bg} ${sensitivityConfig[sensitivity].text}`}>
-                                                                    {sensitivityConfig[sensitivity].label}
-                                                                </span>
-                                                            </td>
-                                                            <td className="px-4 py-2.5 text-center">
-                                                                {isResolved ? (
-                                                                    <div className="flex items-center justify-center gap-1">
-                                                                        <CheckCircle size={14} className="text-emerald-500" />
-                                                                        <span className="text-[10px] text-emerald-600">已采用{override.source === 'rule' ? '规则' : 'AI'}</span>
-                                                                    </div>
-                                                                ) : hasConflict && !isAnalyzing ? (
-                                                                    <div className="relative inline-block">
-                                                                        <button
-                                                                            onClick={() => setOpenConflictPopover(openConflictPopover === field.name ? null : field.name)}
-                                                                            className="p-1 hover:bg-amber-100 rounded transition-colors"
-                                                                        >
-                                                                            <AlertTriangle size={16} className="text-amber-500" />
-                                                                        </button>
-                                                                        {/* Click-based Conflict Resolution Popover */}
-                                                                        {openConflictPopover === field.name && (
-                                                                            <div className="absolute right-0 bottom-full mb-2 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-30 p-3 text-left">
-                                                                                <div className="text-xs font-bold text-slate-700 mb-2 flex items-center justify-between">
-                                                                                    <span className="flex items-center gap-1">
-                                                                                        <AlertTriangle size={14} className="text-amber-500" /> 判定冲突
-                                                                                    </span>
-                                                                                    <button
-                                                                                        onClick={() => setOpenConflictPopover(null)}
-                                                                                        className="text-slate-400 hover:text-slate-600"
-                                                                                    >
-                                                                                        <X size={14} />
-                                                                                    </button>
-                                                                                </div>
-                                                                                <div className="space-y-2 mb-3">
-                                                                                    <div className="flex justify-between items-center text-xs">
-                                                                                        <span className="text-slate-500">规则判定:</span>
-                                                                                        <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-700 font-mono">{ruleRole}</span>
-                                                                                    </div>
-                                                                                    <div className="flex justify-between items-center text-xs">
-                                                                                        <span className="text-slate-500">AI 建议:</span>
-                                                                                        <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-mono">{aiRole}</span>
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div className="border-t border-slate-100 pt-2 flex gap-1">
-                                                                                    <button
-                                                                                        onClick={() => { resolveConflict(field.name, 'rule', ruleRole, aiRole); setOpenConflictPopover(null); }}
-                                                                                        className="flex-1 px-2 py-1.5 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
-                                                                                    >
-                                                                                        采用规则
-                                                                                    </button>
-                                                                                    <button
-                                                                                        onClick={() => { resolveConflict(field.name, 'ai', ruleRole, aiRole); setOpenConflictPopover(null); }}
-                                                                                        className="flex-1 px-2 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                                                                                    >
-                                                                                        采用AI
-                                                                                    </button>
-                                                                                </div>
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                ) : null}
-                                                            </td>
+                                    return (
+                                        // Fields Tab (default)
+                                        <div className="overflow-x-auto">
+                                            {/* Batch Action Toolbar */}
+                                            <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
+                                                <div className="flex items-center gap-4 text-xs">
+                                                    <span className="text-slate-600">
+                                                        共 <span className="font-bold text-slate-800">{allFields.length}</span> 个字段
+                                                    </span>
+                                                    {conflictFields.length > 0 && (
+                                                        <span className="flex items-center gap-1 text-amber-600">
+                                                            <AlertTriangle size={12} />
+                                                            <span className="font-medium">{conflictFields.length}</span> 个待处理冲突
+                                                        </span>
+                                                    )}
+                                                    {resolvedCount > 0 && (
+                                                        <span className="flex items-center gap-1 text-emerald-600">
+                                                            <CheckCircle size={12} />
+                                                            已处理 <span className="font-medium">{resolvedCount}</span> 个
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {conflictFields.length > 0 && (
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs text-slate-500">批量处理:</span>
+                                                        <button
+                                                            onClick={() => batchResolve('rule')}
+                                                            className="px-3 py-1.5 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors flex items-center gap-1"
+                                                        >
+                                                            <Settings size={12} /> 全部采用规则
+                                                        </button>
+                                                        <button
+                                                            onClick={() => batchResolve('ai')}
+                                                            className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-1"
+                                                        >
+                                                            <Cpu size={12} /> 全部采用AI
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {/* Large dataset warning */}
+                                            {allFields.length > 50 && (
+                                                <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 text-xs text-blue-600 flex items-center gap-2">
+                                                    <Layers size={14} />
+                                                    大表提示: 该表包含 {allFields.length} 个字段，建议使用批量操作或筛选功能
+                                                </div>
+                                            )}
+                                            <div className={allFields.length > 30 ? "max-h-[500px] overflow-y-auto" : ""}>
+                                                <table className="w-full text-sm text-left">
+                                                    <thead className="bg-slate-50 text-slate-500 border-b border-slate-100">
+                                                        <tr>
+                                                            <th className="px-4 py-2 w-10">#</th>
+                                                            <th className="px-4 py-2">物理字段</th>
+                                                            <th className="px-4 py-2">类型</th>
+                                                            <th className="px-4 py-2">
+                                                                <span className="flex items-center gap-1 text-purple-600"><Settings size={12} /> 规则判定</span>
+                                                            </th>
+                                                            <th className="px-4 py-2">
+                                                                <span className="flex items-center gap-1 text-blue-600"><Cpu size={12} /> AI 建议</span>
+                                                            </th>
+                                                            <th className="px-4 py-2">
+                                                                <span className="flex items-center gap-1 text-orange-600"><Shield size={12} /> 敏感等级</span>
+                                                            </th>
+                                                            <th className="px-4 py-2 text-center w-20">冲突</th>
                                                         </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                )}
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-50">
+                                                        {selectedTable.fields?.map((field: any, idx: number) => {
+                                                            // Semantic role determination
+                                                            const ruleRole = field.name.endsWith('_id') ? 'Identifier' :
+                                                                field.name.includes('time') ? 'EventHint' :
+                                                                    field.name.includes('status') ? 'Status' : 'BusAttr';
+                                                            const aiRole = field.suggestion ? field.suggestion : ruleRole;
+
+                                                            // Check if user has resolved this conflict
+                                                            const override = fieldRoleOverrides[field.name];
+                                                            const isResolved = !!override;
+                                                            const hasConflict = ruleRole !== aiRole && aiRole !== 'unknown' && !isResolved;
+                                                            const displayRole = override?.role || ruleRole;
+
+                                                            // Sensitivity level inference (with override support)
+                                                            const getInferredSensitivity = (name: string): 'L1' | 'L2' | 'L3' | 'L4' => {
+                                                                if (name.includes('id_card') || name.includes('sfz') || name.includes('bank')) return 'L4';
+                                                                if (name.includes('mobile') || name.includes('phone') || name.includes('name') || name.includes('address')) return 'L3';
+                                                                if (name.includes('user') || name.includes('employee')) return 'L2';
+                                                                return 'L1';
+                                                            };
+                                                            const inferredSensitivity = getInferredSensitivity(field.name);
+                                                            const sensitivity = sensitivityOverrides[field.name] || inferredSensitivity;
+                                                            const isOverridden = !!sensitivityOverrides[field.name];
+
+                                                            const sensitivityConfig: Record<string, { bg: string, text: string, label: string, selectBg: string }> = {
+                                                                'L1': { bg: 'bg-slate-100', text: 'text-slate-600', label: 'L1 公开', selectBg: 'bg-slate-50' },
+                                                                'L2': { bg: 'bg-blue-50', text: 'text-blue-600', label: 'L2 内部', selectBg: 'bg-blue-50' },
+                                                                'L3': { bg: 'bg-orange-50', text: 'text-orange-600', label: 'L3 敏感', selectBg: 'bg-orange-50' },
+                                                                'L4': { bg: 'bg-red-50', text: 'text-red-600', label: 'L4 高敏', selectBg: 'bg-red-50' },
+                                                            };
+
+                                                            return (
+                                                                <tr key={idx} className={`hover:bg-slate-50 ${hasConflict ? 'bg-amber-50/50' : isResolved ? 'bg-emerald-50/30' : ''}`}>
+                                                                    <td className="px-4 py-2.5 text-slate-400 text-xs font-mono">{idx + 1}</td>
+                                                                    <td className="px-4 py-2.5 font-mono text-slate-700 font-medium">{field.name}</td>
+                                                                    <td className="px-4 py-2.5 text-xs text-slate-500">{field.type}</td>
+                                                                    <td className="px-4 py-2.5">
+                                                                        <span className={`px-2 py-0.5 rounded text-xs font-mono ${override?.source === 'rule' ? 'border-2 border-purple-400 bg-purple-100 text-purple-800' : 'border border-purple-100 bg-purple-50 text-purple-700'}`}>
+                                                                            {ruleRole}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-4 py-2.5">
+                                                                        {isAnalyzing ? (
+                                                                            <span className="animate-pulse bg-slate-200 h-4 w-12 rounded inline-block"></span>
+                                                                        ) : (
+                                                                            <span className={`px-2 py-0.5 rounded text-xs font-mono ${override?.source === 'ai' ? 'border-2 border-blue-400 bg-blue-100 text-blue-800' : 'border border-blue-100 bg-blue-50 text-blue-700'}`}>
+                                                                                {aiRole}
+                                                                            </span>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="px-4 py-2.5">
+                                                                        <select
+                                                                            value={sensitivity}
+                                                                            onChange={(e) => setSensitivityOverrides(prev => ({
+                                                                                ...prev,
+                                                                                [field.name]: e.target.value as 'L1' | 'L2' | 'L3' | 'L4'
+                                                                            }))}
+                                                                            className={`px-2 py-1 rounded text-xs font-medium cursor-pointer outline-none border transition-all ${isOverridden ? 'border-2 border-emerald-400' : 'border-transparent'} ${sensitivityConfig[sensitivity].bg} ${sensitivityConfig[sensitivity].text}`}
+                                                                        >
+                                                                            <option value="L1" className="bg-white text-slate-600">L1 公开</option>
+                                                                            <option value="L2" className="bg-white text-blue-600">L2 内部</option>
+                                                                            <option value="L3" className="bg-white text-orange-600">L3 敏感</option>
+                                                                            <option value="L4" className="bg-white text-red-600">L4 高敏</option>
+                                                                        </select>
+                                                                    </td>
+                                                                    <td className="px-4 py-2.5 text-center">
+                                                                        {isResolved ? (
+                                                                            <div className="flex items-center justify-center gap-1">
+                                                                                <CheckCircle size={14} className="text-emerald-500" />
+                                                                                <span className="text-[10px] text-emerald-600">已采用{override.source === 'rule' ? '规则' : 'AI'}</span>
+                                                                            </div>
+                                                                        ) : hasConflict && !isAnalyzing ? (
+                                                                            <div className="relative inline-block">
+                                                                                <button
+                                                                                    onClick={() => setOpenConflictPopover(openConflictPopover === field.name ? null : field.name)}
+                                                                                    className="p-1 hover:bg-amber-100 rounded transition-colors"
+                                                                                >
+                                                                                    <AlertTriangle size={16} className="text-amber-500" />
+                                                                                </button>
+                                                                                {/* Click-based Conflict Resolution Popover */}
+                                                                                {openConflictPopover === field.name && (
+                                                                                    <div className="absolute right-0 bottom-full mb-2 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-30 p-3 text-left">
+                                                                                        <div className="text-xs font-bold text-slate-700 mb-2 flex items-center justify-between">
+                                                                                            <span className="flex items-center gap-1">
+                                                                                                <AlertTriangle size={14} className="text-amber-500" /> 判定冲突
+                                                                                            </span>
+                                                                                            <button
+                                                                                                onClick={() => setOpenConflictPopover(null)}
+                                                                                                className="text-slate-400 hover:text-slate-600"
+                                                                                            >
+                                                                                                <X size={14} />
+                                                                                            </button>
+                                                                                        </div>
+                                                                                        <div className="space-y-2 mb-3">
+                                                                                            <div className="flex justify-between items-center text-xs">
+                                                                                                <span className="text-slate-500">规则判定:</span>
+                                                                                                <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-700 font-mono">{ruleRole}</span>
+                                                                                            </div>
+                                                                                            <div className="flex justify-between items-center text-xs">
+                                                                                                <span className="text-slate-500">AI 建议:</span>
+                                                                                                <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-mono">{aiRole}</span>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div className="border-t border-slate-100 pt-2 flex gap-1">
+                                                                                            <button
+                                                                                                onClick={() => { resolveConflict(field.name, 'rule', ruleRole, aiRole); setOpenConflictPopover(null); }}
+                                                                                                className="flex-1 px-2 py-1.5 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+                                                                                            >
+                                                                                                采用规则
+                                                                                            </button>
+                                                                                            <button
+                                                                                                onClick={() => { resolveConflict(field.name, 'ai', ruleRole, aiRole); setOpenConflictPopover(null); }}
+                                                                                                className="flex-1 px-2 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                                                                                            >
+                                                                                                采用AI
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        ) : null}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         </div>
                     </div>
