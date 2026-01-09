@@ -511,8 +511,17 @@ export const mockScanResults = [
         },
         fields: [
             { name: 'order_id', type: 'varchar(32)', comment: '订单号' },
+            { name: 'user_id', type: 'bigint', comment: '用户ID' },
             { name: 'total_amt', type: 'decimal(18,2)', comment: '总金额' },
-            { name: 'create_time', type: 'datetime', comment: '下单时间' }
+            { name: 'order_status', type: 'tinyint', comment: '订单状态: 1待支付 2已支付 3已发货 4已完成 5已取消' },
+            { name: 'pay_status', type: 'varchar(20)', comment: '支付状态: pending/paid/refunded' },
+            { name: 'delivery_phase', type: 'varchar(20)', comment: '配送阶段' },
+            { name: 'create_time', type: 'datetime', comment: '下单时间' },
+            { name: 'pay_time', type: 'datetime', comment: '支付时间' },
+            { name: 'approve_time', type: 'datetime', comment: '审核通过时间' },
+            { name: 'confirm_time', type: 'datetime', comment: '确认收货时间' },
+            { name: 'cancel_time', type: 'datetime', comment: '取消时间' },
+            { name: 'update_time', type: 'datetime', comment: '更新时间' }
         ]
     },
     {

@@ -873,6 +873,128 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                     </div>
                                                 );
                                             })}
+
+                                            {/* Upgrade Suggestions Section */}
+                                            {(() => {
+                                                // Status Object Detection: status/state fields with expected multiple values
+                                                const statusFields = (selectedTable.fields || []).filter((f: any) =>
+                                                    f.name.includes('status') || f.name.includes('state') ||
+                                                    f.name.includes('phase') || f.name.includes('stage')
+                                                );
+
+                                                // Behavior Object Detection: time fields with verb-like semantics
+                                                const behaviorVerbs = ['pay', 'create', 'update', 'submit', 'approve', 'confirm', 'cancel', 'delete', 'login', 'logout', 'sign', 'complete', 'finish', 'start', 'end'];
+                                                const behaviorFields = (selectedTable.fields || []).filter((f: any) => {
+                                                    if (!f.name.includes('time') && !f.name.includes('date') && !f.name.includes('_at')) return false;
+                                                    return behaviorVerbs.some(verb => f.name.includes(verb));
+                                                });
+
+                                                if (statusFields.length === 0 && behaviorFields.length === 0) return null;
+
+                                                return (
+                                                    <div className="mt-4 pt-4 border-t border-slate-200">
+                                                        <div className="flex items-center gap-2 mb-3">
+                                                            <Activity size={16} className="text-amber-500" />
+                                                            <span className="text-sm font-bold text-slate-700">升级建议</span>
+                                                            <span className="text-xs text-slate-400">基于语义分析自动识别</span>
+                                                        </div>
+
+                                                        {statusFields.length > 0 && (
+                                                            <div className="mb-3 p-3 bg-amber-50 border border-amber-100 rounded-lg">
+                                                                <div className="flex items-center gap-2 mb-2">
+                                                                    <Layers size={14} className="text-amber-600" />
+                                                                    <span className="text-sm font-medium text-amber-800">状态对象</span>
+                                                                    <span className="text-xs bg-amber-200 text-amber-700 px-1.5 py-0.5 rounded">
+                                                                        发现 {statusFields.length} 个
+                                                                    </span>
+                                                                </div>
+                                                                <div className="text-xs text-amber-700 mb-2">
+                                                                    状态字段通常包含多个业务状态值，建议升级为独立的状态对象以便管理状态流转
+                                                                </div>
+                                                                <div className="space-y-1.5">
+                                                                    {statusFields.map((field: any, idx: number) => (
+                                                                        <div key={idx} className="flex items-center justify-between bg-white px-3 py-2 rounded border border-amber-100">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="font-mono text-sm text-slate-600">{field.name}</span>
+                                                                                <span className="text-slate-400">→</span>
+                                                                                <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-medium">
+                                                                                    {field.name.replace(/^(.*?)_?(status|state|phase|stage)$/i, '$1')}状态对象
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="flex items-center gap-1">
+                                                                                <button className="px-2 py-1 text-xs bg-amber-500 text-white rounded hover:bg-amber-600">
+                                                                                    升级
+                                                                                </button>
+                                                                                <button className="px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded">
+                                                                                    忽略
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {behaviorFields.length > 0 && (
+                                                            <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                                                                <div className="flex items-center gap-2 mb-2">
+                                                                    <Clock size={14} className="text-blue-600" />
+                                                                    <span className="text-sm font-medium text-blue-800">行为对象</span>
+                                                                    <span className="text-xs bg-blue-200 text-blue-700 px-1.5 py-0.5 rounded">
+                                                                        发现 {behaviorFields.length} 个
+                                                                    </span>
+                                                                </div>
+                                                                <div className="text-xs text-blue-700 mb-2">
+                                                                    时间字段配合动词语义，表示业务行为发生的时刻，建议升级为独立的行为对象
+                                                                </div>
+                                                                <div className="space-y-1.5">
+                                                                    {behaviorFields.map((field: any, idx: number) => {
+                                                                        // Extract verb from field name
+                                                                        const matchedVerb = behaviorVerbs.find(v => field.name.includes(v));
+                                                                        const behaviorName = matchedVerb ?
+                                                                            (matchedVerb === 'pay' ? '支付' :
+                                                                                matchedVerb === 'create' ? '创建' :
+                                                                                    matchedVerb === 'update' ? '更新' :
+                                                                                        matchedVerb === 'submit' ? '提交' :
+                                                                                            matchedVerb === 'approve' ? '审批' :
+                                                                                                matchedVerb === 'confirm' ? '确认' :
+                                                                                                    matchedVerb === 'cancel' ? '取消' :
+                                                                                                        matchedVerb === 'delete' ? '删除' :
+                                                                                                            matchedVerb === 'login' ? '登录' :
+                                                                                                                matchedVerb === 'logout' ? '登出' :
+                                                                                                                    matchedVerb === 'sign' ? '签署' :
+                                                                                                                        matchedVerb === 'complete' ? '完成' :
+                                                                                                                            matchedVerb === 'finish' ? '结束' :
+                                                                                                                                matchedVerb === 'start' ? '开始' :
+                                                                                                                                    matchedVerb === 'end' ? '终止' : matchedVerb) + '行为'
+                                                                            : '业务行为';
+
+                                                                        return (
+                                                                            <div key={idx} className="flex items-center justify-between bg-white px-3 py-2 rounded border border-blue-100">
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <span className="font-mono text-sm text-slate-600">{field.name}</span>
+                                                                                    <span className="text-slate-400">→</span>
+                                                                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                                                                                        {behaviorName}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="flex items-center gap-1">
+                                                                                    <button className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600">
+                                                                                        升级
+                                                                                    </button>
+                                                                                    <button className="px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded">
+                                                                                        忽略
+                                                                                    </button>
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     ) : detailTab === 'quality' ? (
                                         // Quality Overview Tab
