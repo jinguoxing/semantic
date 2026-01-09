@@ -529,9 +529,9 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                 <td className="px-4 py-4">
                                                     <div className="flex items-center gap-2">
                                                         <span className={`px-2 py-0.5 rounded text-xs font-medium ${asset.sourceType === 'MySQL' ? 'bg-blue-100 text-blue-700' :
-                                                                asset.sourceType === 'Oracle' ? 'bg-orange-100 text-orange-700' :
-                                                                    asset.sourceType === 'PostgreSQL' ? 'bg-emerald-100 text-emerald-700' :
-                                                                        'bg-slate-100 text-slate-600'
+                                                            asset.sourceType === 'Oracle' ? 'bg-orange-100 text-orange-700' :
+                                                                asset.sourceType === 'PostgreSQL' ? 'bg-emerald-100 text-emerald-700' :
+                                                                    'bg-slate-100 text-slate-600'
                                                             }`}>
                                                             {asset.sourceType}
                                                         </span>
@@ -1431,19 +1431,22 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                     <table className="w-full text-sm text-left">
                                                         <thead className="bg-slate-50 text-slate-500 border-b border-slate-100">
                                                             <tr>
-                                                                <th className="px-4 py-2 w-10">#</th>
-                                                                <th className="px-4 py-2">物理字段</th>
-                                                                <th className="px-4 py-2">类型</th>
-                                                                <th className="px-4 py-2">
+                                                                <th className="px-3 py-2.5 w-10 text-xs">#</th>
+                                                                <th className="px-3 py-2.5 text-xs">物理字段</th>
+                                                                <th className="px-3 py-2.5 text-xs w-24">类型</th>
+                                                                <th className="px-3 py-2.5 text-xs w-36">
                                                                     <span className="flex items-center gap-1 text-purple-600"><Settings size={12} /> 规则判定</span>
                                                                 </th>
-                                                                <th className="px-4 py-2">
+                                                                <th className="px-3 py-2.5 text-xs w-40">
                                                                     <span className="flex items-center gap-1 text-blue-600"><Sparkles size={12} /> AI 语义</span>
                                                                 </th>
-                                                                <th className="px-4 py-2">
+                                                                <th className="px-3 py-2.5 text-xs w-28">
+                                                                    <span className="flex items-center gap-1 text-slate-500"><Database size={12} /> 采样值</span>
+                                                                </th>
+                                                                <th className="px-3 py-2.5 text-xs w-24">
                                                                     <span className="flex items-center gap-1 text-orange-600"><Shield size={12} /> 敏感等级</span>
                                                                 </th>
-                                                                <th className="px-4 py-2 text-center w-28">
+                                                                <th className="px-3 py-2.5 text-xs text-center w-32">
                                                                     <span className="flex items-center justify-center gap-1 text-emerald-600"><Layers size={12} /> 融合结果</span>
                                                                 </th>
                                                             </tr>
@@ -1451,7 +1454,7 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                         <tbody className="divide-y divide-slate-50">
                                                             {filteredFields.length === 0 && fieldSearchTerm ? (
                                                                 <tr>
-                                                                    <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
+                                                                    <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
                                                                         <Search size={24} className="mx-auto mb-2 opacity-50" />
                                                                         <div className="text-sm">未找到匹配 "{fieldSearchTerm}" 的字段</div>
                                                                         <button
@@ -1463,16 +1466,58 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                                     </td>
                                                                 </tr>
                                                             ) : filteredFields.map((field: any, idx: number) => {
-                                                                // Semantic role determination
-                                                                const ruleRole = field.name.endsWith('_id') ? 'Identifier' :
-                                                                    field.name.includes('time') ? 'EventHint' :
-                                                                        field.name.includes('status') ? 'Status' : 'BusAttr';
-                                                                const aiRole = field.suggestion ? field.suggestion : ruleRole;
+                                                                // Rule-based role determination with reasoning
+                                                                const getRuleResult = (name: string, type: string) => {
+                                                                    if (name.endsWith('_id') || name === 'id') return { role: 'Identifier', reason: '字段名含_id后缀', confidence: 95 };
+                                                                    if (name.includes('time') || name.includes('date') || type.includes('datetime') || type.includes('timestamp')) return { role: 'EventHint', reason: '时间类型字段', confidence: 90 };
+                                                                    if (name.includes('status') || name.includes('state') || name.includes('type')) return { role: 'Status', reason: '状态/类型字段', confidence: 85 };
+                                                                    if (name.includes('amount') || name.includes('price') || name.includes('total') || type.includes('decimal')) return { role: 'Measure', reason: '金额/数量字段', confidence: 80 };
+                                                                    return { role: 'BusAttr', reason: '默认业务属性', confidence: 60 };
+                                                                };
+                                                                const ruleResult = getRuleResult(field.name, field.type);
+                                                                const ruleRole = ruleResult.role;
+
+                                                                // AI semantic analysis with business meaning
+                                                                const getAIResult = (name: string) => {
+                                                                    const aiMappings: Record<string, { role: string; meaning: string; scenario: string; confidence: number }> = {
+                                                                        'id': { role: 'id', meaning: '记录标识', scenario: '主键关联', confidence: 92 },
+                                                                        'user_id': { role: 'user_id', meaning: '用户标识', scenario: '用户关联查询', confidence: 95 },
+                                                                        'name': { role: 'name', meaning: '名称属性', scenario: '展示/搜索', confidence: 88 },
+                                                                        'mobile': { role: 'phone', meaning: '手机号码', scenario: '联系/验证', confidence: 90 },
+                                                                        'phone': { role: 'phone', meaning: '电话号码', scenario: '联系方式', confidence: 90 },
+                                                                        'email': { role: 'email', meaning: '电子邮箱', scenario: '通知/登录', confidence: 92 },
+                                                                        'status': { role: 'status', meaning: '状态标识', scenario: '状态流转', confidence: 85 },
+                                                                        'create_time': { role: 'create_time', meaning: '创建时间', scenario: '审计追踪', confidence: 95 },
+                                                                        'update_time': { role: 'update_time', meaning: '更新时间', scenario: '变更追踪', confidence: 95 },
+                                                                        'address': { role: 'address', meaning: '地址信息', scenario: '配送/定位', confidence: 85 },
+                                                                        'amount': { role: 'amount', meaning: '金额数值', scenario: '财务统计', confidence: 88 },
+                                                                        'order_id': { role: 'order_id', meaning: '订单标识', scenario: '订单关联', confidence: 95 },
+                                                                    };
+                                                                    // Find matching AI result
+                                                                    const key = Object.keys(aiMappings).find(k => name.includes(k));
+                                                                    if (key) return aiMappings[key];
+                                                                    return { role: 'unknown', meaning: '待识别', scenario: '-', confidence: 0 };
+                                                                };
+                                                                const aiResult = getAIResult(field.name);
+                                                                const aiRole = field.suggestion || aiResult.role;
+
+                                                                // Sample values for the field
+                                                                const getSampleValues = (name: string, type: string): string[] => {
+                                                                    if (name.includes('id')) return ['1001', '1002', '1003'];
+                                                                    if (name.includes('name')) return ['张三', '李四', '王五'];
+                                                                    if (name.includes('mobile') || name.includes('phone')) return ['138****1234', '159****5678'];
+                                                                    if (name.includes('status')) return ['1', '2', '3'];
+                                                                    if (name.includes('time') || name.includes('date')) return ['2024-01-15', '2024-02-20'];
+                                                                    if (name.includes('amount') || name.includes('price')) return ['99.00', '188.50', '520.00'];
+                                                                    if (type.includes('varchar')) return ['示例值A', '示例值B'];
+                                                                    return ['-'];
+                                                                };
+                                                                const sampleValues = getSampleValues(field.name, field.type);
 
                                                                 // Check if user has resolved this conflict
                                                                 const override = fieldRoleOverrides[field.name];
                                                                 const isResolved = !!override;
-                                                                const hasConflict = ruleRole !== aiRole && aiRole !== 'unknown' && !isResolved;
+                                                                const hasConflict = ruleRole.toLowerCase() !== aiRole.toLowerCase() && aiRole !== 'unknown' && !isResolved;
                                                                 const displayRole = override?.role || ruleRole;
 
                                                                 // Sensitivity level inference (with override support)
@@ -1494,32 +1539,49 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                                 };
 
                                                                 return (
-                                                                    <tr key={idx} className="hover:bg-slate-50">
-                                                                        <td className="px-4 py-2.5 text-slate-400 text-xs font-mono">{idx + 1}</td>
-                                                                        <td className="px-4 py-2.5 font-mono text-slate-700 font-medium">{field.name}</td>
-                                                                        <td className="px-4 py-2.5 text-xs text-slate-500">{field.type}</td>
-                                                                        <td className="px-4 py-2.5">
-                                                                            <span className={`px-2 py-0.5 rounded text-xs font-mono ${override?.source === 'rule' ? 'border-2 border-purple-400 bg-purple-100 text-purple-800' : 'border border-purple-100 bg-purple-50 text-purple-700'}`}>
-                                                                                {ruleRole}
-                                                                            </span>
+                                                                    <tr key={idx} className={`hover:bg-slate-50 ${hasConflict ? 'bg-amber-50/30' : ''}`}>
+                                                                        <td className="px-3 py-2.5 text-slate-400 text-xs font-mono">{idx + 1}</td>
+                                                                        <td className="px-3 py-2.5 font-mono text-blue-600 font-medium text-sm">{field.name}</td>
+                                                                        <td className="px-3 py-2.5 text-xs text-slate-500">{field.type}</td>
+                                                                        {/* Enhanced Rule Judgment Column */}
+                                                                        <td className="px-3 py-2">
+                                                                            <div className={`px-2 py-1 rounded ${override?.source === 'rule' ? 'border-2 border-purple-400 bg-purple-100' : 'bg-purple-50 border border-purple-100'}`}>
+                                                                                <div className="text-xs font-medium text-purple-700">{ruleRole}</div>
+                                                                                <div className="text-[10px] text-purple-500">{ruleResult.reason}</div>
+                                                                                <div className="text-[10px] text-purple-400">置信度 {ruleResult.confidence}%</div>
+                                                                            </div>
                                                                         </td>
-                                                                        <td className="px-4 py-2.5">
+                                                                        {/* Enhanced AI Semantic Column */}
+                                                                        <td className="px-3 py-2">
                                                                             {isAnalyzing ? (
-                                                                                <span className="animate-pulse bg-slate-200 h-4 w-12 rounded inline-block"></span>
+                                                                                <div className="animate-pulse bg-slate-200 h-12 w-full rounded"></div>
                                                                             ) : (
-                                                                                <span className={`px-2 py-0.5 rounded text-xs font-mono ${override?.source === 'ai' ? 'border-2 border-blue-400 bg-blue-100 text-blue-800' : 'border border-blue-100 bg-blue-50 text-blue-700'}`}>
-                                                                                    {aiRole}
-                                                                                </span>
+                                                                                <div className={`px-2 py-1 rounded ${override?.source === 'ai' ? 'border-2 border-blue-400 bg-blue-100' : 'bg-blue-50 border border-blue-100'}`}>
+                                                                                    <div className="text-xs font-medium text-blue-700">{aiResult.meaning}</div>
+                                                                                    <div className="text-[10px] text-blue-500">@{aiRole}</div>
+                                                                                    <div className="text-[10px] text-blue-400">场景: {aiResult.scenario}</div>
+                                                                                </div>
                                                                             )}
                                                                         </td>
-                                                                        <td className="px-4 py-2.5">
+                                                                        {/* Sample Values Column */}
+                                                                        <td className="px-3 py-2.5">
+                                                                            <div className="flex flex-wrap gap-1">
+                                                                                {sampleValues.slice(0, 3).map((val, i) => (
+                                                                                    <span key={i} className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-mono truncate max-w-[60px]" title={val}>
+                                                                                        {val}
+                                                                                    </span>
+                                                                                ))}
+                                                                            </div>
+                                                                        </td>
+                                                                        {/* Sensitivity Column */}
+                                                                        <td className="px-3 py-2.5">
                                                                             <select
                                                                                 value={sensitivity}
                                                                                 onChange={(e) => setSensitivityOverrides(prev => ({
                                                                                     ...prev,
                                                                                     [field.name]: e.target.value as 'L1' | 'L2' | 'L3' | 'L4'
                                                                                 }))}
-                                                                                className={`px-2 py-1 rounded text-xs font-medium cursor-pointer outline-none border transition-all ${isOverridden ? 'border-2 border-emerald-400' : 'border-transparent'} ${sensitivityConfig[sensitivity].bg} ${sensitivityConfig[sensitivity].text}`}
+                                                                                className={`px-2 py-1 rounded text-xs font-medium cursor-pointer outline-none border transition-all w-full ${isOverridden ? 'border-2 border-emerald-400' : 'border-transparent'} ${sensitivityConfig[sensitivity].bg} ${sensitivityConfig[sensitivity].text}`}
                                                                             >
                                                                                 <option value="L1" className="bg-white text-slate-600">L1 公开</option>
                                                                                 <option value="L2" className="bg-white text-blue-600">L2 内部</option>
@@ -1527,25 +1589,33 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                                                 <option value="L4" className="bg-white text-red-600">L4 高敏</option>
                                                                             </select>
                                                                         </td>
-                                                                        <td className="px-4 py-2.5 text-center">
-                                                                            {/* Merged Result - Rule + AI Complementary */}
-                                                                            <div className="flex flex-wrap items-center justify-center gap-1">
-                                                                                {/* Show rule role as structural tag */}
-                                                                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-600 border border-purple-100">
-                                                                                    {ruleRole}
-                                                                                </span>
-                                                                                {/* Show AI role if different (adds semantic context) */}
-                                                                                {aiRole !== ruleRole && aiRole !== 'unknown' && (
-                                                                                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-50 text-blue-600 border border-blue-100">
-                                                                                        +{aiRole}
-                                                                                    </span>
+                                                                        {/* Enhanced Merge Result Column */}
+                                                                        <td className="px-3 py-2.5 text-center">
+                                                                            <div className="space-y-1">
+                                                                                {/* Conflict indicator */}
+                                                                                {hasConflict && (
+                                                                                    <div className="flex items-center justify-center gap-1 text-amber-600 text-[10px]">
+                                                                                        <AlertTriangle size={10} /> 待确认
+                                                                                    </div>
                                                                                 )}
-                                                                                {/* Show sensitivity tag if L3/L4 */}
-                                                                                {(sensitivity === 'L3' || sensitivity === 'L4') && (
-                                                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${sensitivity === 'L4' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-orange-50 text-orange-600 border border-orange-100'}`}>
-                                                                                        {sensitivity === 'L4' ? '高敏' : '敏感'}
+                                                                                <div className="flex flex-wrap items-center justify-center gap-1">
+                                                                                    {/* Rule role */}
+                                                                                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-600 border border-purple-100">
+                                                                                        {ruleRole}
                                                                                     </span>
-                                                                                )}
+                                                                                    {/* AI supplement if different */}
+                                                                                    {aiRole.toLowerCase() !== ruleRole.toLowerCase() && aiRole !== 'unknown' && (
+                                                                                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-50 text-blue-600 border border-blue-100">
+                                                                                            +{aiResult.meaning}
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {/* Sensitivity tag for L3/L4 */}
+                                                                                    {(sensitivity === 'L3' || sensitivity === 'L4') && (
+                                                                                        <span className={`px-1.5 py-0.5 rounded text-[10px] ${sensitivity === 'L4' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-orange-50 text-orange-600 border border-orange-100'}`}>
+                                                                                            {sensitivity === 'L4' ? '高敏' : '敏感'}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
                                                                             </div>
                                                                         </td>
                                                                     </tr>
