@@ -25,8 +25,15 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
         scorePercent: number;
         needsReview?: boolean;
         userAction?: 'accepted' | 'rejected' | 'pending';
+        // Enhanced analysis details
+        fieldStats?: { total: number; identifiers: number; status: number; busAttr: number; time: number };
+        sensitiveFields?: { count: number; examples: string[] };
+        relationships?: { count: number; targets: string[] };
+        upgradeSuggestions?: { statusObjects: number; behaviorObjects: number };
+        lowConfidenceReasons?: string[];
     }[]>([]);
     const [showBatchReview, setShowBatchReview] = useState(false);
+    const [expandedReviewItems, setExpandedReviewItems] = useState<string[]>([]);
 
 
     // Detail View State
@@ -287,13 +294,52 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                 status: 'success',
                 scorePercent,
                 needsReview,
-                userAction: 'pending'
+                userAction: 'pending',
+                // Enhanced analysis details (mock data)
+                fieldStats: {
+                    total: table.fields?.length || Math.floor(5 + Math.random() * 15),
+                    identifiers: Math.floor(1 + Math.random() * 3),
+                    status: Math.floor(Math.random() * 3),
+                    busAttr: Math.floor(3 + Math.random() * 8),
+                    time: Math.floor(1 + Math.random() * 4)
+                },
+                sensitiveFields: {
+                    count: Math.floor(Math.random() * 4),
+                    examples: ['user_name', 'mobile', 'id_card'].slice(0, Math.floor(Math.random() * 3) + 1)
+                },
+                relationships: {
+                    count: Math.floor(1 + Math.random() * 4),
+                    targets: ['t_user', 't_product', 't_payment', 't_order_item'].slice(0, Math.floor(1 + Math.random() * 3))
+                },
+                upgradeSuggestions: {
+                    statusObjects: Math.floor(Math.random() * 2),
+                    behaviorObjects: Math.floor(Math.random() * 3)
+                },
+                lowConfidenceReasons: needsReview
+                    ? [
+                        '部分字段缺少注释，AI无法准确推断业务含义',
+                        scorePercent < 60 ? '字段命名不规范，语义识别困难' : null,
+                        Math.random() > 0.5 ? '发现未知类型字段 (如 ext_data)' : null
+                    ].filter(Boolean) as string[]
+                    : []
             });
 
-            // Update scanResults to mark as pending_review
+            // Update scanResults with mock semantic analysis data for detail view
+            const mockSemanticAnalysis = {
+                chineseName: businessName,
+                description: `${businessName}的业务数据表`,
+                scenarios: ['数据查询', '报表分析'],
+                tags: ['核心业务', '交易数据'],
+                coreFields: table.fields?.slice(0, 5).map((f: any) => f.name) || ['id', 'name', 'status', 'created_at', 'updated_at'],
+                relationships: [
+                    { targetTable: 't_user', type: 'Many-to-One', key: 'user_id', description: '用户关联' },
+                    { targetTable: 't_product', type: 'Many-to-Many', key: 'product_id', description: '产品关联' }
+                ].slice(0, Math.floor(1 + Math.random() * 2))
+            };
+
             setScanResults((prev: any[]) => prev.map((item: any) =>
                 item.table === tableId
-                    ? { ...item, status: 'pending_review', scorePercent }
+                    ? { ...item, status: 'pending_review', scorePercent, semanticAnalysis: mockSemanticAnalysis }
                     : item
             ));
         }
@@ -388,13 +434,13 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                     />
                                 </div>
                             </div>
-
                             {/* Data Grid */}
                             <div className="flex-1 overflow-auto">
                                 {/* Batch Action Toolbar */}
-                                <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-100">
-                                    <div className="flex items-center gap-3">
-                                        <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+                                <div className="flex items-center justify-between py-2 bg-slate-50 border-b border-slate-100">
+                                    <div className="flex items-center">
+                                        {/* Checkbox container - same width as table column */}
+                                        <div className="w-10 px-3 flex items-center justify-center">
                                             <input
                                                 type="checkbox"
                                                 checked={selectedTables.length > 0 && selectedTables.length === filteredAssets.length}
@@ -405,17 +451,17 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                         setSelectedTables([]);
                                                     }
                                                 }}
-                                                className="w-4 h-4 text-blue-600 rounded border-slate-300"
+                                                className="w-4 h-4 text-blue-600 rounded border-slate-300 cursor-pointer"
                                             />
-                                            全选
-                                        </label>
+                                        </div>
+                                        <span className="text-sm text-slate-600 px-6">全选</span>
                                         {selectedTables.length > 0 && (
                                             <span className="text-sm text-blue-600 font-medium">
                                                 已选 {selectedTables.length} 张表
                                             </span>
                                         )}
                                     </div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 pr-4">
                                         {batchAnalyzing ? (
                                             <div className="flex items-center gap-2 text-sm text-blue-600">
                                                 <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -1632,14 +1678,25 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                     'bg-slate-50 border-slate-200'
                                             }`}
                                     >
+                                        {/* Header Row */}
                                         <div className="flex items-center justify-between">
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => setExpandedReviewItems(prev =>
+                                                            prev.includes(result.tableId)
+                                                                ? prev.filter(id => id !== result.tableId)
+                                                                : [...prev, result.tableId]
+                                                        )}
+                                                        className="text-slate-400 hover:text-slate-600"
+                                                    >
+                                                        <ChevronRight size={16} className={`transition-transform ${expandedReviewItems.includes(result.tableId) ? 'rotate-90' : ''}`} />
+                                                    </button>
                                                     <span className="font-mono text-sm text-slate-600">{result.tableName}</span>
                                                     <span className="text-slate-400">→</span>
                                                     <span className="font-medium text-slate-800">{result.businessName}</span>
                                                 </div>
-                                                <div className="flex items-center gap-3 mt-2">
+                                                <div className="flex items-center gap-3 mt-2 pl-6">
                                                     <span className={`text-xs px-2 py-0.5 rounded ${result.scorePercent >= 70 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
                                                         }`}>
                                                         置信度 {result.scorePercent}%
@@ -1647,6 +1704,12 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                     {result.needsReview && (
                                                         <span className="text-xs text-amber-600 flex items-center gap-1">
                                                             <AlertTriangle size={12} /> 需人工确认
+                                                        </span>
+                                                    )}
+                                                    {/* Quick Stats */}
+                                                    {result.fieldStats && (
+                                                        <span className="text-xs text-slate-400">
+                                                            {result.fieldStats.total}字段 · {result.sensitiveFields?.count || 0}敏感 · {result.relationships?.count || 0}关联
                                                         </span>
                                                     )}
                                                 </div>
@@ -1679,6 +1742,89 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                 )}
                                             </div>
                                         </div>
+
+                                        {/* Expandable Details */}
+                                        {expandedReviewItems.includes(result.tableId) && (
+                                            <div className="mt-3 pt-3 border-t border-slate-200 space-y-3">
+                                                {/* Analysis Summary */}
+                                                <div className="bg-white rounded-lg p-3 border border-slate-100">
+                                                    <div className="text-xs font-medium text-slate-600 mb-2 flex items-center gap-1">
+                                                        <FileText size={12} /> 分析摘要
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-slate-400">识别字段:</span>
+                                                            <span className="text-slate-700">
+                                                                {result.fieldStats?.total}个
+                                                                <span className="text-slate-400 ml-1">
+                                                                    ({result.fieldStats?.identifiers}主键, {result.fieldStats?.status}状态, {result.fieldStats?.busAttr}业务, {result.fieldStats?.time}时间)
+                                                                </span>
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-slate-400">敏感字段:</span>
+                                                            <span className={`${(result.sensitiveFields?.count || 0) > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
+                                                                {result.sensitiveFields?.count || 0}个
+                                                                {result.sensitiveFields?.examples && result.sensitiveFields.examples.length > 0 && (
+                                                                    <span className="text-slate-400 font-mono ml-1">({result.sensitiveFields.examples.join(', ')})</span>
+                                                                )}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-slate-400">发现关系:</span>
+                                                            <span className="text-blue-600">
+                                                                {result.relationships?.count || 0}个
+                                                                {result.relationships?.targets && result.relationships.targets.length > 0 && (
+                                                                    <span className="text-slate-400 font-mono ml-1">(→{result.relationships.targets.join(', →')})</span>
+                                                                )}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-slate-400">升级建议:</span>
+                                                            <span className="text-purple-600">
+                                                                {(result.upgradeSuggestions?.statusObjects || 0) + (result.upgradeSuggestions?.behaviorObjects || 0)}个
+                                                                {((result.upgradeSuggestions?.statusObjects || 0) > 0 || (result.upgradeSuggestions?.behaviorObjects || 0) > 0) && (
+                                                                    <span className="text-slate-400 ml-1">
+                                                                        ({result.upgradeSuggestions?.statusObjects}状态对象, {result.upgradeSuggestions?.behaviorObjects}行为对象)
+                                                                    </span>
+                                                                )}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Low Confidence Reasons */}
+                                                {result.lowConfidenceReasons && result.lowConfidenceReasons.length > 0 && (
+                                                    <div className="bg-amber-50 rounded-lg p-3 border border-amber-100">
+                                                        <div className="text-xs font-medium text-amber-700 mb-2 flex items-center gap-1">
+                                                            <AlertTriangle size={12} /> 低置信度原因
+                                                        </div>
+                                                        <ul className="text-xs text-amber-600 space-y-1">
+                                                            {result.lowConfidenceReasons.map((reason, i) => (
+                                                                <li key={i} className="flex items-start gap-1.5">
+                                                                    <span className="text-amber-400 mt-0.5">•</span>
+                                                                    {reason}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+
+                                                {/* View Details Button */}
+                                                <button
+                                                    onClick={() => {
+                                                        const table = scanResults.find((t: any) => t.table === result.tableId);
+                                                        if (table) {
+                                                            handleTableClick(table.table);
+                                                            setShowBatchReview(false);
+                                                        }
+                                                    }}
+                                                    className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                                                >
+                                                    查看完整分析详情 →
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
