@@ -18,6 +18,7 @@ export const DeepAnalysisTabs: React.FC<DeepAnalysisTabsProps> = ({
 }) => {
     const [activeTab, setActiveTab] = useState<'fields' | 'graph' | 'quality'>('fields');
     const [expandedFields, setExpandedFields] = useState<string[]>([]);
+    const [showAnomalyOnly, setShowAnomalyOnly] = useState(false); // V2.2: Anomaly filter
     const [showRelModal, setShowRelModal] = useState(false);
     const [editingRel, setEditingRel] = useState<{ index: number | null; targetTable: string; type: string; key: string }>({
         index: null, targetTable: '', type: '多对一', key: ''
@@ -110,92 +111,143 @@ export const DeepAnalysisTabs: React.FC<DeepAnalysisTabsProps> = ({
                 >
                     <Activity size={14} /> 质量概览
                 </button>
+
+                {/* V2.2: Anomaly Filter Toggle */}
+                <div className="ml-auto flex items-center gap-2">
+                    <span className="text-xs text-slate-500">只看异常项</span>
+                    <button
+                        onClick={() => setShowAnomalyOnly(!showAnomalyOnly)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${showAnomalyOnly ? 'bg-purple-600' : 'bg-slate-300'
+                            }`}
+                    >
+                        <span
+                            className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${showAnomalyOnly ? 'translate-x-5' : 'translate-x-1'
+                                }`}
+                        />
+                    </button>
+                </div>
             </div>
 
             {/* Tab Content */}
             <div className="bg-slate-50/50 rounded-lg border border-slate-100 overflow-hidden">
                 {activeTab === 'fields' && (
-                    <div className="max-h-[400px] overflow-y-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-slate-100 sticky top-0">
-                                <tr>
-                                    <th className="px-4 py-2 text-left font-medium text-slate-600">字段名</th>
-                                    <th className="px-4 py-2 text-left font-medium text-slate-600">类型</th>
-                                    <th className="px-4 py-2 text-left font-medium text-slate-600">语义角色</th>
-                                    <th className="px-4 py-2 text-left font-medium text-slate-600">敏感等级</th>
-                                    <th className="px-4 py-2 text-left font-medium text-slate-600">质量</th>
-                                    <th className="px-4 py-2 text-center font-medium text-slate-600 w-16"></th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {fields.map((field: any, idx: number) => {
-                                    const role = getSemanticRole(field.name, field.primaryKey);
-                                    const sensitivity = getSensitivity(field.name);
-                                    const grade = getQualityGrade(field.name);
-                                    const isExpanded = expandedFields.includes(field.name);
+                    <div className="max-h-[400px] overflow-y-auto p-4">
+                        <div className="grid gap-3">
+                            {fields.map((field: any, idx: number) => {
+                                const role = getSemanticRole(field.name, field.primaryKey);
+                                const sensitivity = getSensitivity(field.name);
+                                const grade = getQualityGrade(field.name);
+                                const isExpanded = expandedFields.includes(field.name);
 
-                                    return (
-                                        <React.Fragment key={idx}>
-                                            <tr
-                                                className="bg-white hover:bg-slate-50 cursor-pointer"
-                                                onClick={() => toggleFieldExpand(field.name)}
-                                            >
-                                                <td className="px-4 py-2.5">
-                                                    <div className="flex items-center gap-2">
-                                                        {isExpanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
-                                                        <span className="font-mono text-slate-700">{field.name}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-2.5 text-slate-500">{field.type}</td>
-                                                <td className="px-4 py-2.5">
-                                                    <span className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-600">{role}</span>
-                                                </td>
-                                                <td className="px-4 py-2.5">
-                                                    <span className={`px-2 py-0.5 rounded text-xs ${sensitivity === 'L4' ? 'bg-red-50 text-red-600' :
-                                                        sensitivity === 'L3' ? 'bg-orange-50 text-orange-600' :
-                                                            sensitivity === 'L2' ? 'bg-yellow-50 text-yellow-600' :
-                                                                'bg-slate-100 text-slate-500'
-                                                        }`}>
-                                                        {sensitivity} {sensitivity !== 'L1' && '⚠'}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-2.5">
-                                                    <span className={`font-bold ${grade === 'A' ? 'text-emerald-600' :
-                                                        grade === 'B' ? 'text-blue-600' :
-                                                            'text-amber-600'
-                                                        }`}>{grade}</span>
-                                                </td>
-                                                <td className="px-4 py-2.5 text-center">
-                                                    <button className="text-slate-400 hover:text-blue-600">
-                                                        <Edit3 size={14} />
+                                // Role icon mapping
+                                const roleIcon = role === '标识符' ? '🔑' :
+                                    role === '状态' ? '📋' :
+                                        role === '时间标记' ? '⏱️' : '📝';
+
+                                // V2.2: Filter logic for anomaly mode
+                                const isAnomaly = sensitivity !== 'L1' || grade !== 'A' || role === '未知';
+                                if (showAnomalyOnly && !isAnomaly) {
+                                    return null; // Hide "good" fields when filter is on
+                                }
+
+                                return (
+                                    <div key={idx} className="bg-white rounded-lg border border-slate-200 hover:border-purple-200 transition-all">
+                                        <div
+                                            className="flex items-center justify-between p-3 cursor-pointer"
+                                            onClick={() => toggleFieldExpand(field.name)}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-lg">{roleIcon}</span>
+                                                <div>
+                                                    <div className="font-mono text-sm text-slate-700 font-medium">{field.name}</div>
+                                                    <div className="text-xs text-slate-400">{field.type}</div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                {/* V2.2: Clickable semantic role for identifiers */}
+                                                {role === '标识符' ? (
+                                                    <button
+                                                        onClick={() => {
+                                                            // TODO: Navigate to related logical entity
+                                                            console.log(`Navigate to entity referenced by ${field.name}`);
+                                                        }}
+                                                        className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-600 hover:bg-purple-100 hover:text-purple-700 transition-colors cursor-pointer flex items-center gap-1 group"
+                                                    >
+                                                        🔗 {role}
+                                                        <span className="text-[10px] text-purple-400 group-hover:text-purple-600">(指向: {field.name.replace(/_id$/, '').replace(/_/g, ' ')})</span>
                                                     </button>
-                                                </td>
-                                            </tr>
-                                            {isExpanded && (
-                                                <tr className="bg-slate-50">
-                                                    <td colSpan={6} className="px-4 py-3">
-                                                        <div className="grid grid-cols-3 gap-3 text-xs">
-                                                            <div className="bg-white p-2 rounded border border-slate-100">
-                                                                <div className="text-slate-400 mb-1">D-01 语义角色</div>
-                                                                <div className="font-medium text-slate-700">{role}</div>
+                                                ) : (
+                                                    <span className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-600">{role}</span>
+                                                )}
+                                                {/* V2.2: Security Level with Lock Icons */}
+                                                <span className={`px-2 py-0.5 rounded text-xs flex items-center gap-1 ${sensitivity === 'L4' ? 'bg-red-50 text-red-600 border border-red-200 animate-pulse' :
+                                                    sensitivity === 'L3' ? 'bg-red-50 text-red-600 border border-red-200' :
+                                                        sensitivity === 'L2' ? 'bg-orange-50 text-orange-600 border border-orange-200' :
+                                                            'bg-slate-100 text-slate-500'
+                                                    }`}>
+                                                    {(sensitivity === 'L2' || sensitivity === 'L3' || sensitivity === 'L4') && (
+                                                        <span className="text-xs">🔒</span>
+                                                    )}
+                                                    {sensitivity}
+                                                    {sensitivity === 'L2' && ' 内部'}
+                                                    {sensitivity === 'L3' && ' 敏感'}
+                                                    {sensitivity === 'L4' && ' 机密'}
+                                                </span>
+                                                {/* V2.2: Quality Grade with Tooltip */}
+                                                <div className="relative group">
+                                                    <span className={`w-6 h-6 flex items-center justify-center rounded text-xs font-bold cursor-help ${grade === 'A' ? 'bg-emerald-100 text-emerald-600' :
+                                                        grade === 'B' ? 'bg-blue-100 text-blue-600' :
+                                                            'bg-amber-100 text-amber-600'
+                                                        }`}>{grade}</span>
+                                                    {/* Tooltip */}
+                                                    <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block w-48 bg-slate-800 text-white text-xs rounded-lg p-2 shadow-lg z-10">
+                                                        <div className="space-y-1">
+                                                            <div className="flex justify-between">
+                                                                <span className="text-slate-300">空值率:</span>
+                                                                <span className={grade === 'C' ? 'text-amber-400 font-medium' : ''}>
+                                                                    {grade === 'A' ? '0%' : grade === 'B' ? '8%' : '39%'}
+                                                                    {grade === 'A' && ' (完美)'}
+                                                                    {grade === 'B' && ' (正常)'}
+                                                                    {grade === 'C' && ' ⚠️ 偏高'}
+                                                                </span>
                                                             </div>
-                                                            <div className="bg-white p-2 rounded border border-slate-100">
-                                                                <div className="text-slate-400 mb-1">D-04 敏感等级</div>
-                                                                <div className="font-medium text-slate-700">{sensitivity}</div>
+                                                            <div className="flex justify-between">
+                                                                <span className="text-slate-300">唯一性:</span>
+                                                                <span>{grade === 'A' ? '100%' : grade === 'B' ? '95%' : '78%'}</span>
                                                             </div>
-                                                            <div className="bg-white p-2 rounded border border-slate-100">
-                                                                <div className="text-slate-400 mb-1">D-06 质量信号</div>
-                                                                <div className="font-medium text-slate-700">空值率: {Math.floor(Math.random() * 10)}%</div>
+                                                            <div className="flex justify-between">
+                                                                <span className="text-slate-300">正则匹配:</span>
+                                                                <span>{grade === 'A' ? '99.9%' : grade === 'B' ? '95%' : '85%'}</span>
                                                             </div>
                                                         </div>
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </React.Fragment>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                                                        <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800"></div>
+                                                    </div>
+                                                </div>
+                                                {isExpanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
+                                            </div>
+                                        </div>
+                                        {isExpanded && (
+                                            <div className="px-3 pb-3 pt-0">
+                                                <div className="grid grid-cols-3 gap-2 text-xs bg-slate-50 rounded-lg p-3">
+                                                    <div>
+                                                        <div className="text-slate-400 mb-1">语义角色</div>
+                                                        <div className="font-medium text-slate-700">{role}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-slate-400 mb-1">敏感等级</div>
+                                                        <div className="font-medium text-slate-700">{sensitivity}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-slate-400 mb-1">空值率</div>
+                                                        <div className="font-medium text-slate-700">{Math.floor(Math.random() * 10)}%</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 )}
 

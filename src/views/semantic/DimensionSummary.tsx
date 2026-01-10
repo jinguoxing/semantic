@@ -16,12 +16,12 @@ interface DimensionSummaryProps {
 export const DimensionSummary: React.FC<DimensionSummaryProps> = ({ profile }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
-    // Table Dimension Rules
+    // Table Dimension Rules - 用户友好的名称
     const tableRules: RuleItem[] = [
-        { code: 'T-01', name: '表名归纳', status: 'pass', value: profile.ruleScore.naming > 0.5 ? '语义明确' : '弱语义' },
-        { code: 'T-02', name: '主键检测', status: profile.gateResult.details.primaryKey ? 'pass' : 'fail', value: profile.gateResult.details.primaryKey ? '已识别' : '缺失' },
-        { code: 'T-03', name: '生命周期', status: profile.gateResult.details.lifecycle ? 'pass' : 'fail', value: profile.gateResult.details.lifecycle ? '已识别' : '缺失' },
-        { code: 'T-04', name: '类型排查', status: profile.gateResult.details.tableType ? 'pass' : 'fail', value: profile.gateResult.details.tableType ? '有效' : '非业务表' },
+        { code: '命名', name: '表名是否有业务含义', status: 'pass', value: profile.ruleScore.naming > 0.5 ? '语义明确' : '弱语义' },
+        { code: '主键', name: '是否存在主键字段', status: profile.gateResult.details.primaryKey ? 'pass' : 'fail', value: profile.gateResult.details.primaryKey ? '已识别' : '缺失' },
+        { code: '时间', name: '是否有生命周期字段', status: profile.gateResult.details.lifecycle ? 'pass' : 'fail', value: profile.gateResult.details.lifecycle ? '已识别' : '缺失' },
+        { code: '类型', name: '是否为有效业务表', status: profile.gateResult.details.tableType ? 'pass' : 'fail', value: profile.gateResult.details.tableType ? '有效' : '非业务表' },
     ];
 
     // Field Dimension Rules
@@ -30,9 +30,9 @@ export const DimensionSummary: React.FC<DimensionSummaryProps> = ({ profile }) =
     const sensitiveFields = profile.fields.filter(f => f.sensitivity !== 'L1').length;
 
     const fieldRules: RuleItem[] = [
-        { code: 'D-01', name: '关键字段占比', status: 'pass', value: `${keyFields}/${fieldCount}` },
-        { code: 'D-04', name: '敏感字段检测', status: 'pass', value: `${sensitiveFields} 个` },
-        { code: 'D-02', name: '命名规范度', status: 'pass', value: '高' },
+        { code: '核心', name: '核心字段占比', status: 'pass', value: `${keyFields}/${fieldCount} 个` },
+        { code: '敏感', name: '敏感数据检测', status: 'pass', value: `${sensitiveFields} 个` },
+        { code: '命名', name: '字段命名规范', status: 'pass', value: '高' },
     ];
 
     const tablePassedCount = tableRules.filter(r => r.status === 'pass').length;

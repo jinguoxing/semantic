@@ -29,7 +29,7 @@ export const BUSINESS_DOMAINS = [
 export type BusinessDomain = typeof BUSINESS_DOMAINS[number];
 
 // V2 Beta: Data Layer Options
-export const DATA_LAYERS = ['ODS', 'DWD', 'DWS', 'ADS', '其他'] as const;
+export const DATA_LAYERS = ['ODS', 'DWD', 'DWS', 'ADS', 'DIM', '其他'] as const;
 export type DataLayer = typeof DATA_LAYERS[number];
 
 // V2 Beta: Update Strategy Options

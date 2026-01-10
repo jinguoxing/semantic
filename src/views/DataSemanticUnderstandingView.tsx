@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Database, Search, ChevronRight, Cpu, CheckCircle, Star, Tag, FileText, Layers, ShieldCheck, Activity, ArrowLeft, Table, Clock, Server, RefreshCw, X, AlertCircle, Settings, AlertTriangle, Share2, Shield, Plus, Edit3, Sparkles } from 'lucide-react';
 import { checkGatekeeper, analyzeField } from '../logic/semantic/rules';
 import { calculateTableRuleScore, calculateFusionScore } from '../logic/semantic/scoring';
 import { analyzeTableWithMockAI } from '../services/mockAiService';
 import { TableSemanticProfile, FieldSemanticProfile } from '../types/semantic';
 import { SemanticAnalysisCard } from './semantic/SemanticAnalysisCard';
+import { AnalysisProgressPanel } from './semantic/AnalysisProgressPanel';
+import { StreamingProgressPanel } from './semantic/StreamingProgressPanel';
 
 interface DataSemanticUnderstandingViewProps {
     scanResults: any[];
@@ -25,6 +27,8 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
     const [selectedTables, setSelectedTables] = useState<string[]>([]);
     const [batchAnalyzing, setBatchAnalyzing] = useState(false);
     const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
+    const [currentAnalyzing, setCurrentAnalyzing] = useState<string | null>(null); // P0: Streaming progress
+    const [completedResults, setCompletedResults] = useState<typeof batchResults>([]); // P0: Real-time results
     const [batchResults, setBatchResults] = useState<{
         tableId: string;
         tableName: string;
@@ -47,6 +51,7 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
     // Detail View State
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [editMode, setEditMode] = useState(false);
+    const [pendingAnalysisResult, setPendingAnalysisResult] = useState<TableSemanticProfile | null>(null);
     const [detailTab, setDetailTab] = useState<'fields' | 'graph' | 'dimensions' | 'quality'>('fields');
     const [fieldSearchTerm, setFieldSearchTerm] = useState('');
     const [expandedFields, setExpandedFields] = useState<string[]>([]);
@@ -226,16 +231,12 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                 securityLevel: 'L2'
             };
 
-            setSemanticProfile({
-                ...result,
-                analysisStep: 'done',
-                relationships: semanticProfile.relationships // keep existing
-            });
-            setEditMode(true);
+            // Store result in state for AnalysisProgressPanel to use
+            setPendingAnalysisResult(result);
+            // Note: setIsAnalyzing(false) and state update will be handled by AnalysisProgressPanel.onComplete
 
         } catch (error) {
             console.error(error);
-        } finally {
             setIsAnalyzing(false);
         }
     };
@@ -274,6 +275,7 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
         if (selectedTables.length === 0) return;
         setBatchAnalyzing(true);
         setBatchProgress({ current: 0, total: selectedTables.length });
+        setCompletedResults([]); // P0: Clear previous results
         const results: typeof batchResults = [];
         const CONFIDENCE_THRESHOLD = 70;
 
@@ -282,7 +284,9 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
             const table = scanResults.find((t: any) => t.table === tableId);
             if (!table) continue;
 
-            setBatchProgress({ current: i + 1, total: selectedTables.length });
+            // P0: Show current analyzing table
+            setCurrentAnalyzing(table.table);
+            setBatchProgress({ current: i, total: selectedTables.length });
 
             // Simulate AI analysis with random delay
             await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
@@ -353,6 +357,8 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
             ));
         }
 
+        setCurrentAnalyzing(null); // P0: Clear current analyzing
+        setBatchProgress({ current: selectedTables.length, total: selectedTables.length });
         setBatchResults(results);
         setBatchAnalyzing(false);
         setSelectedTables([]);
@@ -482,9 +488,16 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                     </div>
                                     <div className="flex items-center gap-2 pr-4">
                                         {batchAnalyzing ? (
-                                            <div className="flex items-center gap-2 text-sm text-purple-600">
-                                                <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-                                                语义理解中 {batchProgress.current}/{batchProgress.total}
+                                            <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
+                                                <StreamingProgressPanel
+                                                    currentAnalyzing={currentAnalyzing}
+                                                    completedResults={completedResults}
+                                                    progress={batchProgress}
+                                                    onResultClick={(tableId) => {
+                                                        setViewMode('detail');
+                                                        setSelectedTableId(tableId);
+                                                    }}
+                                                />
                                             </div>
                                         ) : (
                                             <button
@@ -720,10 +733,20 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                 {(isAnalyzing || semanticProfile.analysisStep !== 'idle') && (
                                     <div className="mb-6">
                                         {isAnalyzing ? (
-                                            <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-slate-200">
-                                                <div className="w-12 h-12 border-4 border-purple-100 border-t-purple-600 rounded-full animate-spin mb-4"></div>
-                                                <p className="text-slate-600 font-medium">Being intelligent... (Analying {selectedTable.table})</p>
-                                            </div>
+                                            <AnalysisProgressPanel
+                                                tableName={selectedTable.table}
+                                                mockAnalysisResult={pendingAnalysisResult}
+                                                onComplete={(result) => {
+                                                    setSemanticProfile({
+                                                        ...result,
+                                                        analysisStep: 'done',
+                                                        relationships: semanticProfile.relationships
+                                                    });
+                                                    setEditMode(true);
+                                                    setIsAnalyzing(false);
+                                                    setPendingAnalysisResult(null);
+                                                }}
+                                            />
                                         ) : (
                                             <SemanticAnalysisCard
                                                 profile={semanticProfile}
