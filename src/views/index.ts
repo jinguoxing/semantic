@@ -1,0 +1,15 @@
+// Views barrel export
+export { default as DashboardView } from './DashboardView';
+export { default as MappingStudioView } from './MappingStudioView';
+export { default as BusinessGoalsView } from './BusinessGoalsView';
+export { default as BusinessModelingView } from './BusinessModelingView';
+export { default as TechDiscoveryView } from './TechDiscoveryView';
+export { default as ScenarioOrchestrationView } from './ScenarioOrchestrationView';
+export { default as DataSemanticUnderstandingView } from './DataSemanticUnderstandingView';
+export { default as CandidateGenerationView } from './CandidateGenerationView';
+export { default as ConflictDetectionView } from './ConflictDetectionView';
+export { default as SmartDataHubView } from './SmartDataHubView';
+export { default as ApiGatewayView } from './ApiGatewayView';
+export { default as CacheStrategyView } from './CacheStrategyView';
+export { default as DataSourceManagementView } from './DataSourceManagementView';
+export { default as AssetScanningView } from './AssetScanningView';
