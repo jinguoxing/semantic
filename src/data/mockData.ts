@@ -720,5 +720,299 @@ export const mockScanResults = [
             { name: 'audit_status', type: 'varchar(20)', comment: '审核状态', suggestion: 'status' },
             { name: 'publish_status', type: 'varchar(20)', comment: '发布状态', suggestion: 'status' }
         ]
+    },
+    // SQLServer 数据源
+    {
+        table: 'dbo.T_HOSPITAL_VISIT',
+        sourceId: 'DS_005',
+        sourceName: '医院HIS系统',
+        sourceType: 'SQLServer',
+        rows: '12.8M',
+        updateTime: '2024-05-22 11:30:00',
+        status: 'analyzed',
+        comment: '患者就诊记录表',
+        confidence: 87,
+        aiSuggestion: 'Visit: 就诊记录',
+        semanticAnalysis: {
+            chineseName: '就诊记录表',
+            description: '存储患者门诊/住院就诊信息',
+            scenarios: ['医疗分析', '病历管理'],
+            coreFields: [{ field: 'visit_id', reason: '就诊唯一标识' }],
+            qualityScore: 85,
+            privacyLevel: 'L4'
+        },
+        fields: [
+            { name: 'visit_id', type: 'bigint', comment: '就诊ID' },
+            { name: 'patient_id', type: 'varchar(20)', comment: '患者ID' },
+            { name: 'dept_code', type: 'varchar(10)', comment: '科室编码' },
+            { name: 'doctor_id', type: 'varchar(20)', comment: '医生ID' },
+            { name: 'visit_date', type: 'datetime', comment: '就诊日期' },
+            { name: 'diagnosis', type: 'nvarchar(500)', comment: '诊断结果' }
+        ]
+    },
+    // MongoDB 数据源
+    {
+        table: 'user_behaviors',
+        sourceId: 'DS_006',
+        sourceName: '行为日志库',
+        sourceType: 'MongoDB',
+        rows: '156M',
+        updateTime: '2024-05-23 00:15:00',
+        status: 'scanned',
+        comment: '用户行为事件集合',
+        confidence: 72,
+        aiSuggestion: 'Event: 行为事件',
+        fields: [
+            { name: '_id', type: 'ObjectId', comment: '文档ID' },
+            { name: 'user_id', type: 'String', comment: '用户ID' },
+            { name: 'event_type', type: 'String', comment: '事件类型' },
+            { name: 'event_data', type: 'Object', comment: '事件数据' },
+            { name: 'timestamp', type: 'Date', comment: '时间戳' }
+        ]
+    },
+    // ClickHouse 数据源
+    {
+        table: 'analytics.page_views',
+        sourceId: 'DS_007',
+        sourceName: '数据分析平台',
+        sourceType: 'ClickHouse',
+        rows: '2.3B',
+        updateTime: '2024-05-23 06:00:00',
+        status: 'analyzed',
+        comment: '页面访问统计表',
+        confidence: 95,
+        aiSuggestion: 'Metric: 统计指标',
+        semanticAnalysis: {
+            chineseName: '页面访问统计',
+            description: '存储用户页面访问行为的聚合统计数据',
+            scenarios: ['流量分析', '用户洞察'],
+            coreFields: [{ field: 'page_id', reason: '页面标识' }],
+            qualityScore: 92,
+            privacyLevel: 'L1'
+        },
+        fields: [
+            { name: 'page_id', type: 'String', comment: '页面ID' },
+            { name: 'pv', type: 'UInt64', comment: '页面浏览量' },
+            { name: 'uv', type: 'UInt64', comment: '独立访客数' },
+            { name: 'avg_duration', type: 'Float64', comment: '平均停留时长' },
+            { name: 'stat_date', type: 'Date', comment: '统计日期' }
+        ]
+    },
+    // Redis 数据源
+    {
+        table: 'session:*',
+        sourceId: 'DS_008',
+        sourceName: '会话缓存',
+        sourceType: 'Redis',
+        rows: '580K',
+        updateTime: '2024-05-23 08:00:00',
+        status: 'scanned',
+        comment: '用户会话缓存',
+        confidence: 55,
+        fields: [
+            { name: 'session_id', type: 'String', comment: '会话ID' },
+            { name: 'user_id', type: 'String', comment: '用户ID' },
+            { name: 'login_time', type: 'Number', comment: '登录时间戳' },
+            { name: 'expire_at', type: 'Number', comment: '过期时间' }
+        ]
+    },
+    // Elasticsearch 数据源
+    {
+        table: 'logs-*',
+        sourceId: 'DS_009',
+        sourceName: '日志检索中心',
+        sourceType: 'Elasticsearch',
+        rows: '890M',
+        updateTime: '2024-05-23 09:00:00',
+        status: 'scanned',
+        comment: '应用日志索引',
+        confidence: 68,
+        fields: [
+            { name: '@timestamp', type: 'date', comment: '时间戳' },
+            { name: 'level', type: 'keyword', comment: '日志级别' },
+            { name: 'message', type: 'text', comment: '日志内容' },
+            { name: 'service', type: 'keyword', comment: '服务名称' },
+            { name: 'trace_id', type: 'keyword', comment: '追踪ID' }
+        ]
+    },
+    // TiDB 数据源
+    {
+        table: 't_financial_transaction',
+        sourceId: 'DS_010',
+        sourceName: '金融交易系统',
+        sourceType: 'TiDB',
+        rows: '45.6M',
+        updateTime: '2024-05-23 10:00:00',
+        status: 'analyzed',
+        comment: '金融交易流水表',
+        confidence: 91,
+        aiSuggestion: 'Transaction: 交易流水',
+        semanticAnalysis: {
+            chineseName: '金融交易流水',
+            description: '存储金融交易的详细流水记录',
+            scenarios: ['交易分析', '风控审计'],
+            coreFields: [{ field: 'trans_id', reason: '交易流水号' }],
+            qualityScore: 94,
+            privacyLevel: 'L4'
+        },
+        fields: [
+            { name: 'trans_id', type: 'varchar(32)', comment: '交易流水号' },
+            { name: 'account_id', type: 'varchar(20)', comment: '账户ID' },
+            { name: 'trans_type', type: 'varchar(10)', comment: '交易类型' },
+            { name: 'amount', type: 'decimal(18,2)', comment: '交易金额' },
+            { name: 'balance', type: 'decimal(18,2)', comment: '账户余额' },
+            { name: 'trans_time', type: 'datetime', comment: '交易时间' }
+        ]
+    },
+    // 达梦 数据源
+    {
+        table: 'GOV_APPROVAL_RECORD',
+        sourceId: 'DS_011',
+        sourceName: '政务审批中心',
+        sourceType: '达梦',
+        rows: '2.1M',
+        updateTime: '2024-05-23 11:00:00',
+        status: 'analyzed',
+        comment: '政务审批记录表',
+        confidence: 88,
+        aiSuggestion: 'Approval: 审批记录',
+        semanticAnalysis: {
+            chineseName: '政务审批记录',
+            description: '存储政务服务审批的全流程记录',
+            scenarios: ['政务服务', '效能监察'],
+            coreFields: [{ field: 'approval_id', reason: '审批编号' }],
+            qualityScore: 86,
+            privacyLevel: 'L2'
+        },
+        fields: [
+            { name: 'approval_id', type: 'VARCHAR(32)', comment: '审批编号' },
+            { name: 'matter_code', type: 'VARCHAR(20)', comment: '事项编码' },
+            { name: 'applicant_id', type: 'VARCHAR(18)', comment: '申请人ID' },
+            { name: 'status', type: 'VARCHAR(10)', comment: '审批状态' },
+            { name: 'submit_time', type: 'TIMESTAMP', comment: '提交时间' },
+            { name: 'finish_time', type: 'TIMESTAMP', comment: '办结时间' }
+        ]
+    },
+    // 人大金仓 数据源
+    {
+        table: 'tax_invoice_record',
+        sourceId: 'DS_012',
+        sourceName: '税务发票库',
+        sourceType: '人大金仓',
+        rows: '18.5M',
+        updateTime: '2024-05-23 12:00:00',
+        status: 'scanned',
+        comment: '税务发票记录表',
+        confidence: 78,
+        aiSuggestion: 'Invoice: 发票',
+        fields: [
+            { name: 'invoice_no', type: 'VARCHAR(20)', comment: '发票号码' },
+            { name: 'invoice_code', type: 'VARCHAR(12)', comment: '发票代码' },
+            { name: 'seller_tax_no', type: 'VARCHAR(20)', comment: '销方税号' },
+            { name: 'buyer_tax_no', type: 'VARCHAR(20)', comment: '购方税号' },
+            { name: 'amount', type: 'NUMERIC(18,2)', comment: '金额' },
+            { name: 'tax_amount', type: 'NUMERIC(18,2)', comment: '税额' },
+            { name: 'invoice_date', type: 'DATE', comment: '开票日期' }
+        ]
+    },
+    // OceanBase 数据源
+    {
+        table: 'trade_order_detail',
+        sourceId: 'DS_013',
+        sourceName: '电商交易中心',
+        sourceType: 'OceanBase',
+        rows: '120M',
+        updateTime: '2024-05-23 13:00:00',
+        status: 'analyzed',
+        comment: '交易订单明细表',
+        confidence: 93,
+        aiSuggestion: 'OrderDetail: 订单明细',
+        semanticAnalysis: {
+            chineseName: '交易订单明细',
+            description: '存储电商交易订单的商品明细信息',
+            scenarios: ['交易分析', '商品运营'],
+            coreFields: [{ field: 'detail_id', reason: '明细ID' }],
+            qualityScore: 91,
+            privacyLevel: 'L2'
+        },
+        fields: [
+            { name: 'detail_id', type: 'bigint', comment: '明细ID' },
+            { name: 'order_id', type: 'varchar(32)', comment: '订单ID' },
+            { name: 'product_id', type: 'varchar(20)', comment: '商品ID' },
+            { name: 'sku_id', type: 'varchar(20)', comment: 'SKU编码' },
+            { name: 'quantity', type: 'int', comment: '数量' },
+            { name: 'unit_price', type: 'decimal(10,2)', comment: '单价' },
+            { name: 'subtotal', type: 'decimal(10,2)', comment: '小计' }
+        ]
+    },
+    // GaussDB 数据源
+    {
+        table: 'iot_device_telemetry',
+        sourceId: 'DS_014',
+        sourceName: '物联网数据中心',
+        sourceType: 'GaussDB',
+        rows: '560M',
+        updateTime: '2024-05-23 14:00:00',
+        status: 'scanned',
+        comment: '物联网设备遥测数据',
+        confidence: 70,
+        aiSuggestion: 'Telemetry: 遥测数据',
+        fields: [
+            { name: 'device_id', type: 'VARCHAR(32)', comment: '设备ID' },
+            { name: 'metric_name', type: 'VARCHAR(50)', comment: '指标名称' },
+            { name: 'metric_value', type: 'DOUBLE', comment: '指标值' },
+            { name: 'collect_time', type: 'TIMESTAMP', comment: '采集时间' },
+            { name: 'location', type: 'VARCHAR(100)', comment: '设备位置' }
+        ]
+    },
+    // 更多 MySQL 数据源
+    {
+        table: 't_product_catalog',
+        sourceId: 'DS_015',
+        sourceName: '商品中心',
+        sourceType: 'MySQL',
+        rows: '850K',
+        updateTime: '2024-05-23 15:00:00',
+        status: 'analyzed',
+        comment: '商品目录表',
+        confidence: 89,
+        aiSuggestion: 'Product: 商品',
+        semanticAnalysis: {
+            chineseName: '商品目录',
+            description: '存储商品基础信息和分类属性',
+            scenarios: ['商品管理', '搜索推荐'],
+            coreFields: [{ field: 'product_id', reason: '商品ID' }],
+            qualityScore: 88,
+            privacyLevel: 'L1'
+        },
+        fields: [
+            { name: 'product_id', type: 'varchar(20)', comment: '商品ID' },
+            { name: 'product_name', type: 'varchar(200)', comment: '商品名称' },
+            { name: 'category_id', type: 'int', comment: '类目ID' },
+            { name: 'brand_id', type: 'int', comment: '品牌ID' },
+            { name: 'price', type: 'decimal(10,2)', comment: '价格' },
+            { name: 'status', type: 'tinyint', comment: '上架状态' }
+        ]
+    },
+    // 更多 Oracle 数据源
+    {
+        table: 'HR_EMPLOYEE_INFO',
+        sourceId: 'DS_016',
+        sourceName: '人力资源系统',
+        sourceType: 'Oracle',
+        rows: '125K',
+        updateTime: '2024-05-23 16:00:00',
+        status: 'scanned',
+        comment: '员工信息表',
+        confidence: 82,
+        aiSuggestion: 'Employee: 员工',
+        fields: [
+            { name: 'EMP_ID', type: 'VARCHAR2(20)', comment: '员工ID' },
+            { name: 'EMP_NAME', type: 'VARCHAR2(50)', comment: '员工姓名' },
+            { name: 'DEPT_ID', type: 'VARCHAR2(10)', comment: '部门ID' },
+            { name: 'POSITION', type: 'VARCHAR2(50)', comment: '职位' },
+            { name: 'HIRE_DATE', type: 'DATE', comment: '入职日期' },
+            { name: 'SALARY', type: 'NUMBER(10,2)', comment: '薪资' }
+        ]
     }
 ];
