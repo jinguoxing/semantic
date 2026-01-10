@@ -48,162 +48,237 @@ const inferBusinessDomain = (tableName: string): BusinessDomain => {
     if (/stock|warehouse|supply|logistics/.test(name)) return '供应链域';
     if (/finance|bill|invoice|cost/.test(name)) return '财务域';
     if (/ticket|service|customer/.test(name)) return '客服域';
-    if (/risk|fraud|audit/.test(name)) return '风控域';
 
     return '其他';
 };
 
 // 数据粒度推断
-const inferDataGrain = (tableName: string, objectType: ObjectType): string => {
-    const name = tableName.toLowerCase().replace(/^t_|^tbl_/, '');
+const inferDataGrain = (tableName: string, fields: any[]): string => {
+    const name = tableName.toLowerCase();
 
-    switch (objectType) {
-        case 'entity':
-            if (/user|member/.test(name)) return '单个自然人用户';
-            if (/order/.test(name)) return '单笔订单';
-            if (/product|goods/.test(name)) return '单个商品SKU';
-            return '单条业务记录';
-        case 'event':
-            if (/login/.test(name)) return '单次登录行为';
-            if (/click|view/.test(name)) return '单次点击/浏览行为';
-            if (/pay/.test(name)) return '单次支付行为';
-            return '单次业务事件';
-        case 'state':
-            return '某时刻的状态快照';
-        case 'rule':
-            return '单条配置/规则项';
-        case 'attribute':
-            return '单个派生/汇总值';
-        default:
-            return '单条记录';
+    if (/detail|item|line/.test(name)) return '明细粒度';
+    if (/summary|agg|stat|wide/.test(name)) return '汇总粒度';
+    if (/snapshot|daily|monthly/.test(name)) return '快照粒度';
+
+    // 如果有聚合字段，判断为汇总粒度
+    if (fields.some(f => /total|sum|count|avg/.test(f.name.toLowerCase()))) {
+        return '汇总粒度';
     }
+
+    return '明细粒度';
 };
 
-// 业务名称映射
-const nameMapping: Record<string, string> = {
-    'user': '用户', 'profile': '画像', 'order': '订单', 'product': '产品',
-    'customer': '客户', 'account': '账户', 'payment': '支付', 'transaction': '交易',
-    'employee': '员工', 'department': '部门', 'main': '主', 'base': '基础',
-    'info': '信息', 'detail': '明细', 'log': '日志', 'history': '历史',
-    'config': '配置', 'dict': '字典', 'item': '商品', 'goods': '商品',
-    'sku': 'SKU', 'stock': '库存', 'coupon': '优惠券', 'citizen': '公民',
-    'license': '证照', 'ods': '原始'
-};
-
-export interface AIAnalysisResult {
-    aiScore: number;
-    businessName: string;
+// 字段级建议生成
+interface FieldSuggestion {
+    name: string;
+    suggestedRole: string;
     description: string;
-    evidence: string[];
-    tags: string[];
-    // V2 Beta: New fields
-    objectType: ObjectType;
-    objectTypeReason: string;
-    businessDomain: BusinessDomain;
-    dataGrain: string;
-    // Field-level suggestions
-    fieldSuggestions?: {
-        fieldName: string;
-        businessTerm: string;
-        businessDefinition: string;
-        logicalType?: string;
-        unit?: string;
-    }[];
+    sensitivity: 'L1' | 'L2' | 'L3' | 'L4';
 }
 
+const generateFieldSuggestions = (fields: any[]): FieldSuggestion[] => {
+    return fields.map(field => {
+        const name = field.name.toLowerCase();
+        let role = '业务属性';
+        let description = field.comment || '待补充业务描述';
+        let sensitivity: 'L1' | 'L2' | 'L3' | 'L4' = 'L1';
+
+        // 识别主键
+        if (name === 'id' || name.endsWith('_id')) {
+            role = '标识符';
+            description = description || `${field.name.replace('_id', '')} 的唯一标识`;
+        }
+
+        // 识别时间字段
+        if (/(create|update|modify)_(time|at|date)/.test(name)) {
+            role = '时间标记';
+            description = description || `记录${name.includes('create') ? '创建' : '更新'}时间`;
+        }
+
+        // 识别状态字段
+        if (/status|state|flag|type/.test(name)) {
+            role = '状态';
+            description = description || '业务状态标识';
+        }
+
+        // 敏感字段识别
+        if (/phone|mobile|tel/.test(name)) {
+            sensitivity = 'L3';
+            description = description || '手机号码 (个人隐私)';
+        }
+        if (/id_card|passport|cert/.test(name)) {
+            sensitivity = 'L3';
+            description = description || '证件号码 (个人隐私)';
+        }
+        if (/password|secret|token/.test(name)) {
+            sensitivity = 'L4';
+            description = description || '敏感凭证 (严格加密)';
+        }
+        if (/name|address|email/.test(name)) {
+            sensitivity = 'L2';
+            description = description || '个人信息';
+        }
+
+        return {
+            name: field.name,
+            suggestedRole: role,
+            description,
+            sensitivity
+        };
+    });
+};
+
+// AI 分析入口
 export const analyzeTableWithMockAI = async (
     tableName: string,
     fields: any[],
     comment?: string
-): Promise<AIAnalysisResult> => {
-    // 模拟网络延迟
+): Promise<{
+    aiScore: number;
+    businessName: string;
+    description: string;
+    scenarios: string[];
+    evidence: string[];
+    tags: string[];
+    objectType: ObjectType;
+    objectTypeReason: string;
+    businessDomain: BusinessDomain;
+    dataGrain: string;
+    fieldSuggestions: FieldSuggestion[];
+}> => {
+    // Simulate network delay
     await new Promise(resolve => setTimeout(resolve, 1500));
 
     const isLogTable = /log|trace|history/i.test(tableName);
-    const { type: objectType, reason: objectTypeReason } = inferObjectType(tableName, fields);
-    const businessDomain = inferBusinessDomain(tableName);
-    const dataGrain = inferDataGrain(tableName, objectType);
 
     if (isLogTable) {
         return {
             aiScore: 0.25,
             businessName: tableName,
-            description: '系统自动生成的日志表。',
-            evidence: ['表名暗示日志记录', '时间戳字段密度高'],
-            tags: ['技术表', '日志'],
+            description: '可能是日志或历史记录表，建议人工确认业务含义',
+            scenarios: [],
+            evidence: ['表名包含日志关键词', '可能需要补充业务定义'],
+            tags: ['待确认'],
             objectType: 'event',
-            objectTypeReason: '表名包含日志关键词',
-            businessDomain: '数据域',
-            dataGrain: '单条日志记录'
+            objectTypeReason: '表名包含日志/流水关键词',
+            businessDomain: '其他',
+            dataGrain: '明细粒度',
+            fieldSuggestions: generateFieldSuggestions(fields)
         };
     }
 
-    // 基于表名生成业务名称
-    const parts = tableName.replace(/^t_|^tbl_|^ods_|^dwd_|^dws_|^ads_/, '').split('_');
-    const readableName = parts
-        .map(w => nameMapping[w.toLowerCase()] || (w.charAt(0).toUpperCase() + w.slice(1)))
-        .join('');
+    const { type, reason } = inferObjectType(tableName, fields);
 
-    // 生成字段级建议
-    const fieldSuggestions = fields.slice(0, 10).map(f => {
-        const fname = f.name.toLowerCase();
-        let businessTerm = f.name;
-        let businessDefinition = '';
-        let logicalType = '';
-        let unit: string | undefined;
+    // Mock a high score for demonstration
+    const aiScore = 0.75 + Math.random() * 0.2;
+    const domain = inferBusinessDomain(tableName);
+    const grain = inferDataGrain(tableName, fields);
 
-        if (/^id$|_id$/.test(fname)) {
-            businessTerm = fname.replace(/_id$/, '') + 'ID';
-            businessDefinition = '唯一标识符';
-            logicalType = '标识符';
-        } else if (/amount|price|cost|fee|money/.test(fname)) {
-            businessTerm = '金额';
-            businessDefinition = '金额数值';
-            logicalType = '金额';
-            unit = '元';
-        } else if (/time$|_at$|date/.test(fname)) {
-            businessTerm = fname.includes('create') ? '创建时间' : fname.includes('update') ? '更新时间' : '时间';
-            businessDefinition = '时间戳记录';
-            logicalType = '时间';
-        } else if (/status|state/.test(fname)) {
-            businessTerm = '状态';
-            businessDefinition = '业务状态枚举值';
-            logicalType = '枚举';
-        } else if (/name/.test(fname)) {
-            businessTerm = '名称';
-            businessDefinition = '名称文本';
-            logicalType = '文本';
-        } else if (/phone|mobile/.test(fname)) {
-            businessTerm = '手机号';
-            businessDefinition = '手机号码';
-            logicalType = '手机号';
-        } else if (/email/.test(fname)) {
-            businessTerm = '邮箱';
-            businessDefinition = '电子邮箱地址';
-            logicalType = '邮箱';
-        } else if (/card|idcard/.test(fname)) {
-            businessTerm = '身份证号';
-            businessDefinition = '身份证号码';
-            logicalType = '身份证';
-        }
-
-        return { fieldName: f.name, businessTerm, businessDefinition, logicalType, unit };
-    });
+    const businessName = tableName
+        .replace(/^t_/, '')
+        .split('_')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
 
     return {
-        aiScore: 0.88 + (Math.random() * 0.1),
-        businessName: readableName + '表',
-        description: `核心业务实体，代表${readableName}信息。包含关键标识符和状态信息。`,
+        aiScore,
+        businessName,
+        description: comment || `${businessName} 相关的业务数据表`,
+        scenarios: ['数据查询', '数据分析', '业务决策支持'],
         evidence: [
-            `表名 "${tableName}" 对应已知业务概念 "${readableName}"`,
-            `包含有效的主键和生命周期字段`,
-            `字段分布符合实体模式 (业务属性 > 系统字段)`
+            `AI 推断这是一个${type === 'entity' ? '主体对象' : type === 'event' ? '行为对象' : '其他对象'}`,
+            reason,
+            `业务域: ${domain}`,
+            `数据粒度: ${grain}`
         ],
-        tags: ['业务实体', '核心数据'],
-        objectType,
-        objectTypeReason,
-        businessDomain,
-        dataGrain,
-        fieldSuggestions
+        tags: [domain, grain, type === 'entity' ? '核心实体' : '业务对象'],
+        objectType: type,
+        objectTypeReason: reason,
+        businessDomain: domain,
+        dataGrain: grain,
+        fieldSuggestions: generateFieldSuggestions(fields)
     };
+};
+
+/**
+ * V2.3: 生成置信度提升任务（游戏化）
+ */
+export interface BoostingTask {
+    factor: string;
+    status: 'LOW' | 'MEDIUM' | 'OK';
+    statusText: string;
+    action: string;
+    actionType: 'BATCH_GENERATE' | 'SPECIFY_PK' | 'IDENTIFY_JSON' | 'NONE';
+    scoreImpact: number;
+    description?: string;
+}
+
+export const generateBoostingTasks = (
+    fields: any[],
+    aiScore: number,
+    profile?: any
+): BoostingTask[] => {
+    const tasks: BoostingTask[] = [];
+
+    // Task 1: 字段注释覆盖率
+    const commentedFields = fields.filter(f => f.comment && f.comment.trim()).length;
+    const commentCoverage = fields.length > 0 ? commentedFields / fields.length : 0;
+
+    tasks.push({
+        factor: '字段注释',
+        status: commentCoverage < 0.3 ? 'LOW' : commentCoverage < 0.7 ? 'MEDIUM' : 'OK',
+        statusText: commentCoverage < 0.3 ? `覆盖率低 (${Math.round(commentCoverage * 100)}%)` :
+            commentCoverage < 0.7 ? `覆盖率一般 (${Math.round(commentCoverage * 100)}%)` :
+                '覆盖率良好',
+        action: commentCoverage < 0.7 ? '批量生成注释建议' : '(已完成)',
+        actionType: commentCoverage < 0.7 ? 'BATCH_GENERATE' : 'NONE',
+        scoreImpact: commentCoverage < 0.3 ? 0.15 : commentCoverage < 0.7 ? 0.08 : 0,
+        description: 'AI 基于字段名生成业务注释，需人工确认'
+    });
+
+    // Task 2: 语义主键识别
+    const hasPrimaryKey = fields.some(f => f.name.toLowerCase().endsWith('_id') || f.name.toLowerCase() === 'id');
+    tasks.push({
+        factor: '主键语义',
+        status: hasPrimaryKey ? 'OK' : 'LOW',
+        statusText: hasPrimaryKey ? '已识别主键' : '未识别到语义主键',
+        action: hasPrimaryKey ? '(已完成)' : '指定语义主键',
+        actionType: hasPrimaryKey ? 'NONE' : 'SPECIFY_PK',
+        scoreImpact: hasPrimaryKey ? 0 : 0.10,
+        description: '跳转至详情页勾选唯一标识符'
+    });
+
+    // Task 3: 特殊字段识别
+    const unknownFields = fields.filter(f =>
+        /ext_|extra_|json|clob|text/.test(f.name.toLowerCase()) ||
+        f.type?.toLowerCase().includes('json') ||
+        f.type?.toLowerCase().includes('text')
+    );
+
+    if (unknownFields.length > 0) {
+        tasks.push({
+            factor: '特殊字段',
+            status: 'MEDIUM',
+            statusText: `存在 ${unknownFields.length} 个未知类型`,
+            action: '识别 JSON 结构',
+            actionType: 'IDENTIFY_JSON',
+            scoreImpact: 0.05,
+            description: `如: ${unknownFields[0].name}`
+        });
+    }
+
+    // Task 4: 生命周期字段
+    const hasTimeFields = fields.some(f =>
+        /(create|update|modify)_(time|at|date)/.test(f.name.toLowerCase())
+    );
+    tasks.push({
+        factor: '时间维度',
+        status: hasTimeFields ? 'OK' : 'MEDIUM',
+        statusText: hasTimeFields ? '生命周期完整' : '缺少时间字段',
+        action: hasTimeFields ? '(已检测到创建/更新时间)' : '建议添加时间字段',
+        actionType: 'NONE',
+        scoreImpact: 0
+    });
+
+    return tasks;
 };

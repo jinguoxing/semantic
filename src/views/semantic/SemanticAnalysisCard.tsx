@@ -3,6 +3,8 @@ import { Sparkles, Activity, CheckCircle, ChevronDown, ChevronRight, Bot } from 
 import { TableSemanticProfile, BUSINESS_DOMAINS, ObjectType } from '../../types/semantic';
 import { DimensionSummary } from './DimensionSummary';
 import { DeepAnalysisTabs } from './DeepAnalysisTabs';
+import { ConfidenceBoostingPanel } from './ConfidenceBoostingPanel';
+import { generateBoostingTasks } from '../../services/mockAiService';
 
 interface SemanticAnalysisCardProps {
     profile: TableSemanticProfile;
