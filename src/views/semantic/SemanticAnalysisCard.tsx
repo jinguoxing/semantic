@@ -215,6 +215,19 @@ export const SemanticAnalysisCard: React.FC<SemanticAnalysisCardProps> = ({
                         </div>
                     </div>
 
+                    {/* V2.3: Confidence Boosting Panel (when score < 0.7) */}
+                    {profile.aiScore < 0.7 && (
+                        <div className="mb-4">
+                            <ConfidenceBoostingPanel
+                                currentScore={profile.aiScore}
+                                tasks={generateBoostingTasks(fields, profile.aiScore, profile)}
+                                onActionClick={(actionType) => {
+                                    console.log('🎯 Action clicked:', actionType);
+                                }}
+                            />
+                        </div>
+                    )}
+
                     {/* V2.2: 三栏证据仪表盘 (Evidence Dashboard) */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                         {/* Card 1: 生命周期 */}
