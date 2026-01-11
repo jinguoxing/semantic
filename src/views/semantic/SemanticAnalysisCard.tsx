@@ -9,6 +9,8 @@ import { CommentGenerationModal } from './CommentGenerationModal';
 import { JsonFieldModal } from './JsonFieldModal';
 import { TermAutocomplete } from '../../components/TermAutocomplete';
 import { getAllTerms, depositNewTerm } from '../../data/mockData';
+import { ScoringBreakdownPanel } from './ScoringBreakdownPanel';
+import { UpgradeSuggestionCard, generateUpgradeSuggestion } from './UpgradeSuggestionCard';
 
 interface SemanticAnalysisCardProps {
     profile: TableSemanticProfile;
@@ -145,6 +147,28 @@ export const SemanticAnalysisCard: React.FC<SemanticAnalysisCardProps> = ({
         }
     };
 
+    // V2.3F P5: Upgrade suggestion handlers
+    const upgradeSuggestion = generateUpgradeSuggestion(profile);
+
+    const handleUpgradeAccept = () => {
+        if (!upgradeSuggestion) return;
+        console.log('Upgrade accepted:', upgradeSuggestion);
+        // Apply upgrade changes to profile
+        if (onProfileChange) {
+            onProfileChange(upgradeSuggestion.afterState);
+        }
+    };
+
+    const handleUpgradeReject = (reason: string) => {
+        console.log('Upgrade rejected. Reason:', reason);
+        // Log rejection feedback for model optimization
+    };
+
+    const handleUpgradeLater = () => {
+        console.log('Upgrade postponed');
+        // Can implement a reminder system here
+    };
+
 
     // V2.3F P3: Security analysis helper functions
     const calculateHighestSecurityLevel = (fieldsList: any[]): 'L1' | 'L2' | 'L3' | 'L4' => {
@@ -212,6 +236,19 @@ export const SemanticAnalysisCard: React.FC<SemanticAnalysisCardProps> = ({
             <div className="p-6">
                 {/* V2.1: Compressed Dimension Summary */}
                 <DimensionSummary profile={profile} />
+
+                {/* V2.3F P6: Scoring Breakdown Panel */}
+                <ScoringBreakdownPanel profile={profile} fields={fields} />
+
+                {/* V2.3F P5: Upgrade Suggestion (conditional) */}
+                {upgradeSuggestion && (
+                    <UpgradeSuggestionCard
+                        suggestion={upgradeSuggestion}
+                        onAccept={handleUpgradeAccept}
+                        onReject={handleUpgradeReject}
+                        onLater={handleUpgradeLater}
+                    />
+                )}
 
                 {/* Deep Analysis Tabs */}
                 <DeepAnalysisTabs

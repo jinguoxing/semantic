@@ -1,24 +1,86 @@
 import React from 'react';
-import { Lock } from 'lucide-react';
+import { Lock, AlertTriangle, CheckCircle } from 'lucide-react';
 
 interface EnhancedFieldRowProps {
     field: any;
     index: number;
 }
 
+// Quality issue detection logic
+interface QualityIssue {
+    hasIssue: boolean;
+    message?: string;
+    severity?: 'warning' | 'error';
+}
+
+function detectQualityIssue(field: any, roleLabel: string): QualityIssue {
+    // Mock quality metrics (in real app, these would come from field analysis)
+    const nullRate = field.name.includes('name') ? 39 :
+        field.name.includes('created') ? 0 :
+            Math.random() * 10;
+
+    const uniqueness = field.name.includes('id') ? 100 :
+        field.name.includes('name') ? 78 :
+            Math.random() * 100;
+
+    // Rule 1: Identifiers/PKs must have zero nulls and 100% uniqueness
+    if (roleLabel === '标识符' || field.key === 'PK') {
+        if (nullRate > 0) {
+            return {
+                hasIssue: true,
+                message: `空值${nullRate.toFixed(0)}%`,
+                severity: 'error'
+            };
+        }
+        if (uniqueness < 100) {
+            return {
+                hasIssue: true,
+                message: `唯一度${uniqueness.toFixed(0)}%`,
+                severity: 'error'
+            };
+        }
+    }
+
+    // Rule 2: Time fields should have low null rate
+    if (roleLabel === '时间') {
+        if (nullRate > 30) {
+            return {
+                hasIssue: true,
+                message: `空值${nullRate.toFixed(0)}%`,
+                severity: 'warning'
+            };
+        }
+    }
+
+    // Rule 3: Foreign keys should have good referential integrity
+    if (field.key === 'FK') {
+        if (nullRate > 20) {
+            return {
+                hasIssue: true,
+                message: `完整性${(100 - nullRate).toFixed(0)}%`,
+                severity: 'warning'
+            };
+        }
+    }
+
+    // No issue detected
+    return { hasIssue: false };
+}
+
 export const EnhancedFieldRow: React.FC<EnhancedFieldRowProps> = ({ field, index }) => {
-    // Mock security and quality data based on field characteristics
+    // Determine field role and security level
     const isSensitive = field.name.includes('phone') || field.name.includes('mobile') ||
         field.name.includes('id_card') || field.name.includes('name') ||
         field.name.includes('email') || field.name.includes('address');
     const securityLevel = isSensitive ? (Math.random() > 0.5 ? 'L3' : 'L2') : 'L1';
-    const qualityGrade = field.name.includes('id') || field.name.includes('code') ? 'A' :
-        (Math.random() > 0.3 ? 'A' : 'B');
 
     const roleInfo = field.name.includes('id') ? { label: '标识符', color: 'purple' } :
-        field.name.includes('time') || field.name.includes('date') ? { label: '时间', color: 'blue' } :
+        field.name.includes('time') || field.name.includes('date') || field.name.includes('created') ? { label: '时间', color: 'blue' } :
             field.name.includes('status') || field.name.includes('state') ? { label: '状态', color: 'amber' } :
                 { label: '业务属性', color: 'slate' };
+
+    // Detect quality issues based on role
+    const qualityCheck = detectQualityIssue(field, roleInfo.label);
 
     return (
         <tr className="hover:bg-white transition-colors">
@@ -32,21 +94,31 @@ export const EnhancedFieldRow: React.FC<EnhancedFieldRowProps> = ({ field, index
             </td>
             <td className="px-2 py-1.5">
                 <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium ${securityLevel === 'L3' ? 'bg-red-50 text-red-600 border border-red-200' :
-                        securityLevel === 'L2' ? 'bg-orange-50 text-orange-600 border border-orange-200' :
-                            'bg-slate-100 text-slate-500'
+                    securityLevel === 'L2' ? 'bg-orange-50 text-orange-600 border border-orange-200' :
+                        'bg-slate-100 text-slate-500'
                     }`}>
                     {(securityLevel === 'L2' || securityLevel === 'L3') && <Lock size={10} />}
                     {securityLevel}
                 </span>
             </td>
+
+            {/* Quality Warning Column - Exception Driven */}
             <td className="px-2 py-1.5">
-                <span className={`w-5 h-5 inline-flex items-center justify-center rounded text-[10px] font-bold ${qualityGrade === 'A' ? 'bg-emerald-100 text-emerald-600' :
-                        qualityGrade === 'B' ? 'bg-blue-100 text-blue-600' :
-                            'bg-amber-100 text-amber-600'
-                    }`} title={qualityGrade === 'A' ? '空值率<5%, 唯一性100%' : '空值率<10%, 唯一性>90%'}>
-                    {qualityGrade}
-                </span>
+                {qualityCheck.hasIssue ? (
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${qualityCheck.severity === 'error'
+                            ? 'bg-red-50 text-red-600 border border-red-200'
+                            : 'bg-amber-50 text-amber-600 border border-amber-200'
+                        }`} title={`质量问题：${qualityCheck.message}`}>
+                        <AlertTriangle size={10} />
+                        {qualityCheck.message}
+                    </span>
+                ) : (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-emerald-600" title="无质量问题">
+                        <CheckCircle size={12} />
+                    </span>
+                )}
             </td>
+
             <td className="px-2 py-1.5 text-xs text-slate-400 truncate max-w-[150px]">
                 {field.comment || '-'}
             </td>

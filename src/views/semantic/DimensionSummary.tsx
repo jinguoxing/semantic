@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Table, Columns, ChevronDown, ChevronRight, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 import { TableSemanticProfile } from '../../types/semantic';
+import { calculateFieldStatistics, calculateThreeDimensionalMetrics } from '../../utils/fieldStatistics';
 
 interface RuleItem {
     code: string;
@@ -15,6 +16,10 @@ interface DimensionSummaryProps {
 
 export const DimensionSummary: React.FC<DimensionSummaryProps> = ({ profile }) => {
     const [isExpanded, setIsExpanded] = useState(false);
+
+    // V2.3F P4: Three-dimensional metrics expansion states
+    const [showCoverageDetail, setShowCoverageDetail] = useState(false);
+    const [showRiskDetail, setShowRiskDetail] = useState(false);
 
     // Table Dimension Rules - 用户友好的名称
     const tableRules: RuleItem[] = [
@@ -35,6 +40,7 @@ export const DimensionSummary: React.FC<DimensionSummaryProps> = ({ profile }) =
         { code: '命名', name: '字段命名规范', status: 'pass', value: '高' },
     ];
 
+
     const tablePassedCount = tableRules.filter(r => r.status === 'pass').length;
     const fieldPassedCount = fieldRules.filter(r => r.status === 'pass').length;
     const failedRules = tableRules.filter(r => r.status === 'fail');
@@ -42,8 +48,170 @@ export const DimensionSummary: React.FC<DimensionSummaryProps> = ({ profile }) =
     const tableScore = profile.ruleScore.total;
     const fieldScore = profile.fieldScore || 0.85;
 
+    // V2.3F P4: Calculate mutually exclusive field statistics
+    const fieldStats = calculateFieldStatistics(profile.fields);
+    const threeDimMetrics = calculateThreeDimensionalMetrics(profile.fields, profile);
+
     return (
         <div className="mb-4">
+            {/* V2.3F P4: Three-Dimensional Metrics Summary */}
+            {profile.fields && profile.fields.length > 0 && (
+                <div className="mb-4 bg-white rounded-lg border border-slate-200 p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                        <span className="text-lg font-bold text-slate-800">📋 审核摘要</span>
+                        <span className="text-xs text-slate-500">(共扫描 {threeDimMetrics.totalCount} 个字段)</span>
+                    </div>
+
+                    <div className="text-xs text-slate-400 mb-3 italic">
+                        注：基于互斥口径统计，确保总数匹配。
+                    </div>
+
+                    <div className="space-y-3">
+                        {/* Dimension 1: Coverage Rate */}
+                        <div className="flex items-center justify-between p-3 bg-blue-50/50 rounded-lg border border-blue-100">
+                            <div className="flex items-center gap-3">
+                                <span className="text-sm font-medium text-slate-700">① 字段识别覆盖率</span>
+                                <span className="text-lg font-bold text-blue-600">
+                                    {threeDimMetrics.coverageRate.toFixed(0)}%
+                                </span>
+                                <span className="text-xs text-slate-500">
+                                    ({threeDimMetrics.identifiedCount}/{threeDimMetrics.totalCount})
+                                </span>
+                            </div>
+                            <button
+                                onClick={() => setShowCoverageDetail(!showCoverageDetail)}
+                                className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                            >
+                                {showCoverageDetail ? (
+                                    <><ChevronDown size={12} /> 收起详情</>
+                                ) : (
+                                    <><ChevronRight size={12} /> 展开详情</>
+                                )}
+                            </button>
+                        </div>
+
+                        {/* Expanded Coverage Detail */}
+                        {showCoverageDetail && (
+                            <div className="pl-4 space-y-2 text-xs">
+                                <div className="grid grid-cols-4 gap-2">
+                                    <div className="bg-purple-50 p-2 rounded border border-purple-100">
+                                        <div className="text-purple-600 font-medium mb-1">标识符</div>
+                                        <div className="text-lg font-bold text-purple-700">
+                                            {fieldStats.identifiers}
+                                        </div>
+                                    </div>
+                                    <div className="bg-green-50 p-2 rounded border border-green-100">
+                                        <div className="text-green-600 font-medium mb-1">生命周期</div>
+                                        <div className="text-lg font-bold text-green-700">
+                                            {fieldStats.timeFields}
+                                        </div>
+                                    </div>
+                                    <div className="bg-orange-50 p-2 rounded border border-orange-100">
+                                        <div className="text-orange-600 font-medium mb-1">状态</div>
+                                        <div className="text-lg font-bold text-orange-700">
+                                            {fieldStats.stateFields}
+                                        </div>
+                                    </div>
+                                    <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                                        <div className="text-slate-600 font-medium mb-1">业务属性</div>
+                                        <div className="text-lg font-bold text-slate-700">
+                                            {fieldStats.busAttrs}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="text-slate-500 italic flex items-center gap-1">
+                                    <CheckCircle size={12} className="text-emerald-500" />
+                                    互斥统计验证：{fieldStats.identifiers + fieldStats.timeFields + fieldStats.stateFields + fieldStats.busAttrs} = {threeDimMetrics.totalCount}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Dimension 2: Completeness */}
+                        <div className="flex items-center justify-between p-3 bg-amber-50/50 rounded-lg border border-amber-100">
+                            <div className="flex items-center gap-3">
+                                <span className="text-sm font-medium text-slate-700">② 关键要素完整度</span>
+                                {threeDimMetrics.completenessStatus === 'complete' ? (
+                                    <span className="text-sm text-emerald-600 flex items-center gap-1">
+                                        <CheckCircle size={14} />
+                                        完整
+                                    </span>
+                                ) : (
+                                    <span className="text-sm text-amber-600 flex items-center gap-1">
+                                        <AlertTriangle size={14} />
+                                        {threeDimMetrics.completenessIssues.join('、')}
+                                    </span>
+                                )}
+                            </div>
+                            {threeDimMetrics.completenessStatus !== 'complete' && (
+                                <button className="text-xs text-amber-600 hover:text-amber-700">
+                                    去完善 →
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Dimension 3: Risk Items */}
+                        <div className="flex items-center justify-between p-3 bg-red-50/50 rounded-lg border border-red-100">
+                            <div className="flex items-center gap-3">
+                                <span className="text-sm font-medium text-slate-700">③ 风险项数量</span>
+                                <span className="text-lg font-bold text-red-600">
+                                    {threeDimMetrics.riskCount} 项
+                                </span>
+                            </div>
+                            <button
+                                onClick={() => setShowRiskDetail(!showRiskDetail)}
+                                className="text-xs text-red-600 hover:text-red-700 flex items-center gap-1"
+                            >
+                                {showRiskDetail ? (
+                                    <><ChevronDown size={12} /> 收起风险</>
+                                ) : (
+                                    <><ChevronRight size={12} /> 查看风险</>
+                                )}
+                            </button>
+                        </div>
+
+                        {/* Expanded Risk Detail */}
+                        {showRiskDetail && (
+                            <div className="pl-4 space-y-2 text-xs">
+                                {threeDimMetrics.sensitiveFieldCount > 0 && (
+                                    <div className="flex items-start gap-2">
+                                        <span className="text-red-600 mt-0.5">•</span>
+                                        <div>
+                                            <span className="font-medium text-red-700">
+                                                {threeDimMetrics.sensitiveFieldCount} 个敏感字段
+                                            </span>
+                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                {threeDimMetrics.riskDetails.sensitive.map((f: any) => (
+                                                    <span key={f.name} className="px-2 py-0.5 bg-red-100 text-red-700 rounded font-mono">
+                                                        {f.name} ({f.level})
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                                {threeDimMetrics.unknownTypeFieldCount > 0 && (
+                                    <div className="flex items-start gap-2">
+                                        <span className="text-amber-600 mt-0.5">•</span>
+                                        <div>
+                                            <span className="font-medium text-amber-700">
+                                                {threeDimMetrics.unknownTypeFieldCount} 个未知类型字段
+                                            </span>
+                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                {threeDimMetrics.riskDetails.unknown.map((name: string) => (
+                                                    <span key={name} className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded font-mono">
+                                                        {name}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Summary Line */}
             <div
                 className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors border border-slate-200"
