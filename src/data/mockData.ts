@@ -460,6 +460,36 @@ export const mockCatalogItems = [
 
 // BU-02: 扫描结果 (模拟)
 export const mockScanResults = [
+    // 🧪 V2.3 TEST: Low confidence table to demonstrate Confidence Boosting Panel
+    {
+        table: 't_test_low_confidence',
+        sourceId: 'DS_001',
+        sourceName: '卫健委_前置库_01',
+        sourceType: 'MySQL',
+        rows: '850K',
+        updateTime: '2024-05-23 09:30:00',
+        status: 'analyzed',
+        comment: '', // No comment - low quality indicator
+        confidence: 35, // 🔴 Low confidence to trigger P1 panel
+        aiSuggestion: '未识别业务类型',
+        semanticAnalysis: {
+            chineseName: '',
+            description: '',
+            scenarios: [],
+            coreFields: [],
+            qualityScore: 42,
+            privacyLevel: 'L2'
+        },
+        fields: [
+            // Few fields with poor comments to trigger low coverage
+            { name: 'id', type: 'bigint', comment: '' }, // No comment
+            { name: 'data1', type: 'varchar(100)', comment: '' }, // No comment
+            { name: 'data2', type: 'varchar(100)', comment: '' }, // No comment
+            { name: 'ext_json', type: 'text', comment: '' }, // JSON field without analysis
+            { name: 'created_time', type: 'datetime', comment: '创建时间' }, // Only time field has comment
+            { name: 'status', type: 'int', comment: '' }, // No comment
+        ]
+    },
     {
         table: 't_user_profile',
         sourceId: 'DS_001',

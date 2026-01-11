@@ -5,6 +5,8 @@ import { DimensionSummary } from './DimensionSummary';
 import { DeepAnalysisTabs } from './DeepAnalysisTabs';
 import { ConfidenceBoostingPanel } from './ConfidenceBoostingPanel';
 import { generateBoostingTasks } from '../../services/mockAiService';
+import { CommentGenerationModal } from './CommentGenerationModal';
+import { JsonFieldModal } from './JsonFieldModal';
 
 interface SemanticAnalysisCardProps {
     profile: TableSemanticProfile;
@@ -38,6 +40,96 @@ export const SemanticAnalysisCard: React.FC<SemanticAnalysisCardProps> = ({
 }) => {
     const [showLifecycle, setShowLifecycle] = useState(true);  // 优化: 默认展开
     const [showSecurity, setShowSecurity] = useState(true);    // 优化: 默认展开
+
+    // V2.3: Modal states for action buttons
+    const [showCommentModal, setShowCommentModal] = useState(false);
+    const [showJsonModal, setShowJsonModal] = useState(false);
+    const [activeTabOverride, setActiveTabOverride] = useState<string | null>(null);
+    const [highlightRole, setHighlightRole] = useState<string | null>(null);
+
+    // Action handler for Confidence Boosting Panel buttons
+    const handleActionClick = (actionType: string) => {
+        console.log('🎯 Action clicked:', actionType);
+
+        switch (actionType) {
+            case 'BATCH_GENERATE':
+                // Open comment generation modal
+                setShowCommentModal(true);
+                break;
+
+            case 'SPECIFY_PK':
+                // Switch to field list tab and highlight primary key selector
+                setActiveTabOverride('fields');
+                setHighlightRole('标识符');
+                // Clear highlighting after 3 seconds
+                setTimeout(() => {
+                    setHighlightRole(null);
+                    setActiveTabOverride(null);
+                }, 3000);
+                break;
+
+            case 'IDENTIFY_JSON':
+                // Open JSON field identification modal
+                setShowJsonModal(true);
+                break;
+
+            default:
+                console.warn('Unknown action type:', actionType);
+        }
+    };
+
+    // Generate mock comment suggestions
+    const generateCommentSuggestions = () => {
+        const fieldsWithoutComments = fields.filter(f => !f.comment || f.comment.trim() === '');
+        return fieldsWithoutComments.map(f => ({
+            fieldName: f.name,
+            fieldType: f.type,
+            currentComment: f.comment || '',
+            suggestedComment: `${f.name.includes('id') ? '唯一标识' :
+                f.name.includes('name') ? '名称' :
+                    f.name.includes('time') || f.name.includes('date') ? '时间' :
+                        f.name.includes('status') ? '状态' :
+                            f.name.includes('type') ? '类型' :
+                                '业务字段'}`
+        }));
+    };
+
+    // Generate mock JSON field suggestions
+    const generateJsonFieldSuggestions = () => {
+        const jsonFields = fields.filter(f =>
+            f.type.toLowerCase().includes('json') ||
+            f.type.toLowerCase().includes('text') && f.name.includes('ext')
+        );
+        return jsonFields.map(f => ({
+            fieldName: f.name,
+            fieldType: f.type,
+            sampleData: JSON.stringify({ status: 1, config: { theme: 'dark' } }, null, 2),
+            jsonStructure: { status: 1, config: { theme: 'dark' } }
+        }));
+    };
+
+    // Handle comment modal confirmation
+    const handleCommentConfirm = (updates: { fieldName: string; comment: string }[]) => {
+        console.log('✅ Applying comments:', updates);
+        // TODO: Update field comments in the parent component
+        setShowCommentModal(false);
+        // Show success toast (optional)
+    };
+
+    // Handle JSON field identification
+    const handleJsonIdentify = (fieldNames: string[]) => {
+        console.log('🔍 Identified as JSON:', fieldNames);
+        // TODO: Update field types
+        setShowJsonModal(false);
+    };
+
+    // Handle JSON field extension marking
+    const handleJsonMarkExtension = (fieldNames: string[]) => {
+        console.log('🏷️ Marked as extension:', fieldNames);
+        // TODO: Update field tags
+        setShowJsonModal(false);
+    };
+
 
     // Gate Result Logic for Display
     const isGateFailed = profile.gateResult.result !== 'PASS';
@@ -221,9 +313,7 @@ export const SemanticAnalysisCard: React.FC<SemanticAnalysisCardProps> = ({
                             <ConfidenceBoostingPanel
                                 currentScore={profile.aiScore}
                                 tasks={generateBoostingTasks(fields, profile.aiScore, profile)}
-                                onActionClick={(actionType) => {
-                                    console.log('🎯 Action clicked:', actionType);
-                                }}
+                                onActionClick={handleActionClick}
                             />
                         </div>
                     )}
@@ -354,6 +444,24 @@ export const SemanticAnalysisCard: React.FC<SemanticAnalysisCardProps> = ({
                     </div>
                 </div>
             </div>
+
+            {/* V2.3: Modals */}
+            {showCommentModal && (
+                <CommentGenerationModal
+                    fields={generateCommentSuggestions()}
+                    onConfirm={handleCommentConfirm}
+                    onCancel={() => setShowCommentModal(false)}
+                />
+            )}
+
+            {showJsonModal && (
+                <JsonFieldModal
+                    fields={generateJsonFieldSuggestions()}
+                    onIdentifyAsJson={handleJsonIdentify}
+                    onMarkAsExtension={handleJsonMarkExtension}
+                    onCancel={() => setShowJsonModal(false)}
+                />
+            )}
         </div>
     );
 };
