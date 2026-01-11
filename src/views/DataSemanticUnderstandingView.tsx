@@ -379,6 +379,24 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
         setEditMode(false);
     };
 
+    // Database logo icons (emoji)
+    const typeLogoConfig: Record<string, string> = {
+        MySQL: '🐬',           // Dolphin (MySQL mascot)
+        Oracle: '🔴',          // Red circle (Oracle brand color)
+        PostgreSQL: '🐘',      // Elephant (PostgreSQL mascot)
+        SQLServer: '🪟',       // Window (Microsoft)
+        MongoDB: '🍃',         // Leaf (MongoDB logo)
+        Redis: '⚡',           // Lightning (speed)
+        Elasticsearch: '🔍',   // Search magnifier
+        ClickHouse: '⚡',      // Lightning (speed)
+        TiDB: '⚙️',           // Gear (distributed)
+        OceanBase: '🌊',      // Ocean wave
+        达梦: '🗄️',           // Database cabinet
+        人大金仓: '🏛️',       // Classical building
+        GaussDB: '🔷',        // Blue diamond
+        Hive: '🐝'            // Bee (Hive)
+    };
+
     const typeConfig: Record<string, { color: string; bgColor: string }> = {
         MySQL: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
         Oracle: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
@@ -419,7 +437,9 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                             <div key={type} className="mb-1">
                                 <button onClick={() => toggleType(type)} className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 transition-colors text-slate-700">
                                     <ChevronRight size={14} className={`text-slate-400 transition-transform ${expandedTypes.includes(type) ? 'rotate-90' : ''}`} />
+                                    <span className="text-base">{typeLogoConfig[type] || '💾'}</span>
                                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${typeConfig[type]?.bgColor || 'bg-slate-100'} ${typeConfig[type]?.color || ''}`}>{type}</span>
+                                    <span className="ml-auto text-xs text-slate-400">{items.length}</span>
                                 </button>
                                 {expandedTypes.includes(type) && (
                                     <div className="ml-5 space-y-0.5 mt-1 border-l border-slate-100 pl-1">
