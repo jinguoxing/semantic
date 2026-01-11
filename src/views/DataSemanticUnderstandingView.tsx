@@ -380,19 +380,19 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
     };
 
     const typeConfig: Record<string, { color: string; bgColor: string }> = {
-        MySQL: { color: 'text-blue-600', bgColor: 'bg-blue-100' },
-        Oracle: { color: 'text-orange-600', bgColor: 'bg-orange-100' },
-        PostgreSQL: { color: 'text-emerald-600', bgColor: 'bg-emerald-100' },
-        SQLServer: { color: 'text-red-600', bgColor: 'bg-red-100' },
-        MongoDB: { color: 'text-green-600', bgColor: 'bg-green-100' },
-        Redis: { color: 'text-rose-600', bgColor: 'bg-rose-100' },
-        Elasticsearch: { color: 'text-yellow-600', bgColor: 'bg-yellow-100' },
-        ClickHouse: { color: 'text-amber-600', bgColor: 'bg-amber-100' },
-        TiDB: { color: 'text-cyan-600', bgColor: 'bg-cyan-100' },
-        OceanBase: { color: 'text-indigo-600', bgColor: 'bg-indigo-100' },
-        达梦: { color: 'text-purple-600', bgColor: 'bg-purple-100' },
-        人大金仓: { color: 'text-pink-600', bgColor: 'bg-pink-100' },
-        GaussDB: { color: 'text-teal-600', bgColor: 'bg-teal-100' }
+        MySQL: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
+        Oracle: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
+        PostgreSQL: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
+        SQLServer: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
+        MongoDB: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
+        Redis: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
+        Elasticsearch: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
+        ClickHouse: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
+        TiDB: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
+        OceanBase: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
+        达梦: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
+        人大金仓: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
+        GaussDB: { color: 'text-slate-700', bgColor: 'bg-slate-100' }
     };
 
     return (
@@ -568,11 +568,7 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                     </td>
                                                     <td className="px-4 py-4">
                                                         <div className="flex items-center gap-2">
-                                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${asset.sourceType === 'MySQL' ? 'bg-blue-100 text-blue-700' :
-                                                                asset.sourceType === 'Oracle' ? 'bg-orange-100 text-orange-700' :
-                                                                    asset.sourceType === 'PostgreSQL' ? 'bg-emerald-100 text-emerald-700' :
-                                                                        'bg-slate-100 text-slate-600'
-                                                                }`}>
+                                                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
                                                                 {asset.sourceType}
                                                             </span>
                                                         </div>
