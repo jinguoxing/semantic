@@ -389,7 +389,7 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
         Redis: '⚡',           // Lightning (speed)
         Elasticsearch: '🔍',   // Search magnifier
         ClickHouse: '⚡',      // Lightning (speed)
-        TiDB: '⚙️',           // Gear (distributed)
+        TiDB: '🟠',           // Orange circle (TiDB brand color)
         OceanBase: '🌊',      // Ocean wave
         达梦: '🗄️',           // Database cabinet
         人大金仓: '🏛️',       // Classical building
