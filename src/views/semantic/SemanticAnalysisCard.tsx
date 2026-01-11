@@ -7,6 +7,8 @@ import { ConfidenceBoostingPanel } from './ConfidenceBoostingPanel';
 import { generateBoostingTasks } from '../../services/mockAiService';
 import { CommentGenerationModal } from './CommentGenerationModal';
 import { JsonFieldModal } from './JsonFieldModal';
+import { TermAutocomplete } from '../../components/TermAutocomplete';
+import { getAllTerms, depositNewTerm } from '../../data/mockData';
 
 interface SemanticAnalysisCardProps {
     profile: TableSemanticProfile;
@@ -130,6 +132,16 @@ export const SemanticAnalysisCard: React.FC<SemanticAnalysisCardProps> = ({
         setShowJsonModal(false);
     };
 
+    // V2.3F P2: Handle business name change from TermAutocomplete
+    const handleBusinessNameChange = (value: string, isStandard: boolean) => {
+        onProfileChange?.({ businessName: value });
+
+        // Deposit new term if not standard
+        if (!isStandard && value.trim()) {
+            depositNewTerm(value, 'table');
+        }
+    };
+
 
     // Gate Result Logic for Display
     const isGateFailed = profile.gateResult.result !== 'PASS';
@@ -189,17 +201,17 @@ export const SemanticAnalysisCard: React.FC<SemanticAnalysisCardProps> = ({
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                {/* Business Name */}
+                                {/* Business Name - V2.3F P2: Term Naming Loop */}
                                 <div>
                                     <label className="block text-xs font-medium text-slate-500 mb-1">业务名称</label>
                                     <div className="flex items-center gap-2">
                                         {isEditing ? (
-                                            <input
-                                                type="text"
+                                            <TermAutocomplete
                                                 value={profile.businessName || ''}
-                                                onChange={(e) => onProfileChange?.({ businessName: e.target.value })}
+                                                onChange={handleBusinessNameChange}
+                                                standardTerms={getAllTerms('table')}
+                                                aiSuggestion={profile.aiScore > 0 ? profile.businessName : undefined}
                                                 placeholder="请输入业务名称..."
-                                                className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-200 outline-none text-sm"
                                             />
                                         ) : (
                                             <span className={`flex-1 px-3 py-2 bg-white rounded-lg border border-slate-200 text-sm ${!profile.businessName ? 'text-slate-400 italic' : ''}`}>

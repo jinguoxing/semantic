@@ -2,6 +2,72 @@
 // 模拟数据 (Mock Data)
 // ==========================================
 
+// V2.3F P2: Standard Term Library
+export const STANDARD_TERMS = {
+    tables: [
+        '用户基础信息表',
+        '用户行为日志表',
+        '订单明细表',
+        '订单汇总表',
+        '商品信息表',
+        '商品分类表',
+        '支付流水表',
+        '退款记录表',
+        '会员等级配置表',
+        '优惠券使用记录',
+        '库存明细表',
+        '物流跟踪表',
+        '评价反馈表',
+        '客服工单表',
+        '系统操作日志',
+        '数据字典表',
+        '权限配置表',
+        '部门组织表',
+        '员工信息表',
+        '岗位职级表',
+    ],
+    fields: [
+        '唯一标识',
+        '用户ID',
+        '订单编号',
+        '商品编号',
+        '创建时间',
+        '更新时间',
+        '删除时间',
+        '删除标记',
+        '状态',
+        '备注',
+        '扩展信息',
+    ]
+};
+
+// V2.3F P2: Deposited Terms Storage (simulated in-memory)
+export const DEPOSITED_TERMS: { tables: string[]; fields: string[] } = {
+    tables: [],
+    fields: []
+};
+
+// V2.3F P2: Deposit new term to library
+export function depositNewTerm(term: string, category: 'table' | 'field') {
+    const standardList = STANDARD_TERMS[category === 'table' ? 'tables' : 'fields'];
+    const depositedList = DEPOSITED_TERMS[category === 'table' ? 'tables' : 'fields'];
+
+    // Only deposit if it's truly new
+    if (!standardList.includes(term) && !depositedList.includes(term) && term.trim()) {
+        depositedList.push(term);
+        console.log(`📚 新术语已沉淀 [${category === 'table' ? '表' : '字段'}]: "${term}"`);
+        return true;
+    }
+    return false;
+}
+
+// V2.3F P2: Get all available terms (standard + deposited)
+export function getAllTerms(category: 'table' | 'field'): string[] {
+    const standardList = STANDARD_TERMS[category === 'table' ? 'tables' : 'fields'];
+    const depositedList = DEPOSITED_TERMS[category === 'table' ? 'tables' : 'fields'];
+    return [...standardList, ...depositedList];
+}
+
 // TD: 业务梳理数据 (原业务目标)
 export const mockBusinessGoals = [
     {
