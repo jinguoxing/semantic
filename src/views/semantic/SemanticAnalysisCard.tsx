@@ -49,6 +49,9 @@ export const SemanticAnalysisCard: React.FC<SemanticAnalysisCardProps> = ({
     const [activeTabOverride, setActiveTabOverride] = useState<string | null>(null);
     const [highlightRole, setHighlightRole] = useState<string | null>(null);
 
+    // V2.3F P3: Security detail expansion state
+    const [showSecurityDetail, setShowSecurityDetail] = useState(false);
+
     // Action handler for Confidence Boosting Panel buttons
     const handleActionClick = (actionType: string) => {
         console.log('🎯 Action clicked:', actionType);
@@ -142,6 +145,51 @@ export const SemanticAnalysisCard: React.FC<SemanticAnalysisCardProps> = ({
         }
     };
 
+
+    // V2.3F P3: Security analysis helper functions
+    const calculateHighestSecurityLevel = (fieldsList: any[]): 'L1' | 'L2' | 'L3' | 'L4' => {
+        if (!fieldsList || fieldsList.length === 0) return 'L1';
+
+        const levels = fieldsList.map(f => f.sensitivity || 'L1');
+        if (levels.includes('L4')) return 'L4';
+        if (levels.includes('L3')) return 'L3';
+        if (levels.includes('L2')) return 'L2';
+        return 'L1';
+    };
+
+    const getLevelColor = (level: string) => {
+        switch (level) {
+            case 'L4': return 'text-red-600';
+            case 'L3': return 'text-red-600';
+            case 'L2': return 'text-orange-600';
+            default: return 'text-slate-600';
+        }
+    };
+
+    const getLevelText = (level: string) => {
+        switch (level) {
+            case 'L4': return '机密';
+            case 'L3': return '敏感';
+            case 'L2': return '内部';
+            default: return '公开';
+        }
+    };
+
+    // P3: Calculate actual security level from fields (strong consistency)
+    const actualSecurityLevel = calculateHighestSecurityLevel(fields);
+
+    // P3: Categorize fields by security level
+    const securityBreakdown = {
+        L4: fields.filter(f => (f.sensitivity || 'L1') === 'L4'),
+        L3: fields.filter(f => (f.sensitivity || 'L1') === 'L3'),
+        L2: fields.filter(f => (f.sensitivity || 'L1') === 'L2'),
+        L1: fields.filter(f => (f.sensitivity || 'L1') === 'L1')
+    };
+
+    const sensitiveFieldCount = securityBreakdown.L4.length + securityBreakdown.L3.length + securityBreakdown.L2.length;
+    const topSensitiveFields = [...securityBreakdown.L4, ...securityBreakdown.L3]
+        .slice(0, 3)
+        .map(f => f.name);
 
     // Gate Result Logic for Display
     const isGateFailed = profile.gateResult.result !== 'PASS';
@@ -376,30 +424,108 @@ export const SemanticAnalysisCard: React.FC<SemanticAnalysisCardProps> = ({
                             </div>
                         </div>
 
-                        {/* Card 3: 安全合规 */}
+                        {/* Card 3: 安全合规 - V2.3F P3 Enhanced */}
                         <div className="bg-red-50/50 rounded-lg p-4 border border-red-100">
                             <div className="flex items-center gap-2 mb-3">
                                 <span className="text-2xl">🛡️</span>
                                 <span className="text-sm font-bold text-red-700">安全合规</span>
+                                <button
+                                    onClick={() => setShowSecurityDetail(!showSecurityDetail)}
+                                    className="ml-auto text-slate-400 hover:text-slate-600 transition-colors"
+                                >
+                                    <ChevronDown size={16} className={`transition-transform ${showSecurityDetail ? '' : '-rotate-90'}`} />
+                                </button>
                             </div>
                             <div className="space-y-2">
+                                {/* Primary: Highest Level (calculated from fields) */}
                                 <div>
-                                    <div className={`text-lg font-bold ${profile.securityLevel === 'L3' || profile.securityLevel === 'L4'
-                                        ? 'text-red-600'
-                                        : profile.securityLevel === 'L2'
-                                            ? 'text-orange-600'
-                                            : 'text-slate-600'
-                                        }`}>
-                                        {profile.securityLevel || 'L2'} {(profile.securityLevel === 'L3' || profile.securityLevel === 'L4') ? '敏感' : profile.securityLevel === 'L2' ? '内部' : profile.securityLevel === 'L1' ? '公开' : '内部'}
+                                    <div className={`text-lg font-bold ${getLevelColor(actualSecurityLevel)}`}>
+                                        {actualSecurityLevel} {getLevelText(actualSecurityLevel)}
                                     </div>
-                                    <div className="text-xs text-slate-500">最高安全等级</div>
+                                    <div className="text-xs text-slate-500">最高安全等级 (强一致性)</div>
                                 </div>
+
+                                {/* Secondary: Field Count */}
                                 <div className="pt-2 border-t border-red-100">
                                     <div className="text-sm text-slate-600">
-                                        {profile.fields.filter(f => f.sensitivity !== 'L1').length} 个敏感字段
+                                        {sensitiveFieldCount} 个敏感字段
                                     </div>
-                                    <div className="text-xs text-slate-400">包含 PII 数据</div>
+                                    <div className="text-xs text-slate-400">
+                                        {topSensitiveFields.length > 0
+                                            ? `包含 PII: ${topSensitiveFields.join(', ')}`
+                                            : '包含 PII 数据'}
+                                    </div>
                                 </div>
+
+                                {/* Expandable Detail: PII Field Breakdown */}
+                                {showSecurityDetail && (
+                                    <div className="pt-3 border-t border-red-100 space-y-3">
+                                        <div className="text-xs font-medium text-slate-600 mb-2">
+                                            📋 PII 字段来源透视
+                                        </div>
+
+                                        {/* L4 Fields */}
+                                        {securityBreakdown.L4.length > 0 && (
+                                            <div>
+                                                <div className="text-xs font-medium text-red-600 mb-1.5 flex items-center gap-1">
+                                                    <span>🔴</span>
+                                                    <span>L4 机密 ({securityBreakdown.L4.length}个)</span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {securityBreakdown.L4.map(f => (
+                                                        <span key={f.name} className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-mono">
+                                                            {f.name}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* L3 Fields */}
+                                        {securityBreakdown.L3.length > 0 && (
+                                            <div>
+                                                <div className="text-xs font-medium text-orange-600 mb-1.5 flex items-center gap-1">
+                                                    <span>🟠</span>
+                                                    <span>L3 敏感 ({securityBreakdown.L3.length}个)</span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {securityBreakdown.L3.map(f => (
+                                                        <span key={f.name} className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-[10px] font-mono">
+                                                            {f.name}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* L2 Fields */}
+                                        {securityBreakdown.L2.length > 0 && (
+                                            <div>
+                                                <div className="text-xs font-medium text-amber-600 mb-1.5 flex items-center gap-1">
+                                                    <span>🟡</span>
+                                                    <span>L2 内部 ({securityBreakdown.L2.length}个)</span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {securityBreakdown.L2.map(f => (
+                                                        <span key={f.name} className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-[10px] font-mono">
+                                                            {f.name}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* L1 Fields (optional, collapsed by default) */}
+                                        {securityBreakdown.L1.length > 0 && (
+                                            <div className="opacity-60">
+                                                <div className="text-xs font-medium text-slate-500 mb-1.5 flex items-center gap-1">
+                                                    <span>⚪</span>
+                                                    <span>L1 公开 ({securityBreakdown.L1.length}个)</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
