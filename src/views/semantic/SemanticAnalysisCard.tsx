@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Activity, CheckCircle, ChevronDown, ChevronRight, Bot } from 'lucide-react';
+import { Sparkles, Activity, CheckCircle, ChevronDown, ChevronRight, Bot, AlertTriangle } from 'lucide-react';
 import { TableSemanticProfile, BUSINESS_DOMAINS, ObjectType } from '../../types/semantic';
 import { DimensionSummary } from './DimensionSummary';
 import { DeepAnalysisTabs } from './DeepAnalysisTabs';
@@ -22,6 +22,7 @@ interface SemanticAnalysisCardProps {
     onProfileChange?: (updates: Partial<TableSemanticProfile>) => void;
     onSaveEdit?: () => void;
     onUpgradeAccepted?: (beforeState: TableSemanticProfile, afterState: any) => void;
+    existingBO?: any;
 }
 
 // Object type labels in Chinese
@@ -42,7 +43,8 @@ export const SemanticAnalysisCard: React.FC<SemanticAnalysisCardProps> = ({
     isEditing = false,
     onProfileChange,
     onSaveEdit,
-    onUpgradeAccepted
+    onUpgradeAccepted,
+    existingBO
 }) => {
     const [showLifecycle, setShowLifecycle] = useState(true);  // 优化: 默认展开
     const [showSecurity, setShowSecurity] = useState(true);    // 优化: 默认展开
@@ -614,10 +616,17 @@ export const SemanticAnalysisCard: React.FC<SemanticAnalysisCardProps> = ({
                                         保存修正
                                     </button>
                                 )}
-                                <button className="flex items-center gap-2 px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-all shadow-lg shadow-purple-200 hover:shadow-xl hover:-translate-y-0.5" onClick={onAccept}>
-                                    <CheckCircle size={18} />
-                                    加入候选业务对象
-                                </button>
+                                {existingBO ? (
+                                    <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-3 py-2 rounded-lg text-sm border border-amber-100">
+                                        <AlertTriangle size={14} />
+                                        <span>已生成业务对象: <span className="font-bold">{existingBO.name}</span></span>
+                                    </div>
+                                ) : (
+                                    <button className="flex items-center gap-2 px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-all shadow-lg shadow-purple-200 hover:shadow-xl hover:-translate-y-0.5" onClick={onAccept}>
+                                        <CheckCircle size={18} />
+                                        加入候选业务对象
+                                    </button>
+                                )}
                             </>
                         )}
                     </div>

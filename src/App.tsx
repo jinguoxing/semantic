@@ -82,7 +82,7 @@ export default function SemanticLayerApp() {
             case 'dashboard': return <DashboardView setActiveModule={setActiveModule} />;
             case 'td_goals': return <BusinessGoalsView />; // 新增路由
             case 'mapping': return <MappingStudioView selectedBO={selectedBO} showRuleEditor={showRuleEditor} setShowRuleEditor={setShowRuleEditor} businessObjects={businessObjects} />;
-            case 'bo_mapping': return <BOMappingStudioView selectedBO={selectedBO} showRuleEditor={showRuleEditor} setShowRuleEditor={setShowRuleEditor} businessObjects={businessObjects} />;
+            case 'bo_mapping': return <BOMappingStudioView selectedBO={selectedBO} showRuleEditor={showRuleEditor} setShowRuleEditor={setShowRuleEditor} businessObjects={businessObjects} setBusinessObjects={setBusinessObjects} />;
             case 'sg_candidate_confirm': return <CandidateConfirmationView
                 candidateResults={candidateResults}
                 setCandidateResults={setCandidateResults}

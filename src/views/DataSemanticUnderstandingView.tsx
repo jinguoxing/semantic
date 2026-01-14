@@ -971,83 +971,82 @@ const DataSemanticUnderstandingView = ({
                             <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
 
                                 {/* Analysis Progress / Result Area */}
-                                {(isAnalyzing || semanticProfile.analysisStep !== 'idle') && (
-                                    <div className="mb-6">
-                                        {isAnalyzing ? (
-                                            <AnalysisProgressPanel
-                                                tableName={selectedTable.table}
-                                                mockAnalysisResult={pendingAnalysisResult}
-                                                onComplete={(result) => {
-                                                    setSemanticProfile({
-                                                        ...result,
-                                                        analysisStep: 'done',
-                                                        relationships: semanticProfile.relationships
-                                                    });
-                                                    setEditMode(true);
-                                                    setIsAnalyzing(false);
-                                                    setPendingAnalysisResult(null);
+                                <div className="mb-6">
+                                    {isAnalyzing ? (
+                                        <AnalysisProgressPanel
+                                            tableName={selectedTable.table}
+                                            mockAnalysisResult={pendingAnalysisResult}
+                                            onComplete={(result) => {
+                                                setSemanticProfile({
+                                                    ...result,
+                                                    analysisStep: 'done',
+                                                    relationships: semanticProfile.relationships
+                                                });
+                                                setEditMode(true);
+                                                setIsAnalyzing(false);
+                                                setPendingAnalysisResult(null);
+                                            }}
+                                        />
+                                    ) : (
+                                        <>
+                                            <SemanticAnalysisCard
+                                                profile={semanticProfile}
+                                                fields={selectedTable.fields || []}
+                                                onAccept={handleSaveToMetadata}
+                                                onReject={handleIgnore}
+                                                onEdit={() => setEditMode(true)}
+                                                isEditing={editMode}
+                                                onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
+                                                onSaveEdit={() => {
+                                                    handleJustSave();
+                                                    setEditMode(false);
                                                 }}
+                                                onUpgradeAccepted={(beforeState, afterState) => {
+                                                    if (!selectedTable) return;
+                                                    recordUpgradeHistory(
+                                                        selectedTable.table,
+                                                        selectedTable.table,
+                                                        beforeState,
+                                                        afterState
+                                                    );
+                                                }}
+                                                existingBO={(businessObjects || []).find(bo => bo.code === selectedTable.table)}
                                             />
-                                        ) : (
-                                            <>
-                                                <SemanticAnalysisCard
-                                                    profile={semanticProfile}
-                                                    fields={selectedTable.fields || []}
-                                                    onAccept={handleSaveToMetadata}
-                                                    onReject={handleIgnore}
-                                                    onEdit={() => setEditMode(true)}
-                                                    isEditing={editMode}
-                                                    onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
-                                                    onSaveEdit={() => {
-                                                        handleJustSave();
-                                                        setEditMode(false);
-                                                    }}
-                                                    onUpgradeAccepted={(beforeState, afterState) => {
-                                                        if (!selectedTable) return;
-                                                        recordUpgradeHistory(
-                                                            selectedTable.table,
-                                                            selectedTable.table,
-                                                            beforeState,
-                                                            afterState
-                                                        );
-                                                    }}
-                                                />
-                                                {upgradeHistory.some(entry => entry.tableId === selectedTable.table) && (
-                                                    <div className="mt-4 bg-white rounded-lg border border-slate-200 p-4">
-                                                        <div className="text-sm font-medium text-slate-700 flex items-center gap-2 mb-3">
-                                                            <Clock size={14} className="text-slate-500" /> 升级操作记录
-                                                        </div>
-                                                        <div className="space-y-2 max-h-40 overflow-y-auto">
-                                                            {upgradeHistory
-                                                                .filter(entry => entry.tableId === selectedTable.table)
-                                                                .map(entry => (
-                                                                    <div key={entry.id} className="flex items-center justify-between text-xs bg-slate-50 rounded-md px-2 py-1.5">
-                                                                        <div className="text-slate-600">
-                                                                            <span className="font-mono text-slate-700">{entry.tableName}</span>
-                                                                            <span className="text-slate-400"> · {entry.timestamp}</span>
-                                                                            {entry.rolledBack && (
-                                                                                <span className="ml-2 text-orange-600">已撤销</span>
-                                                                            )}
-                                                                        </div>
-                                                                        <button
-                                                                            onClick={() => rollbackUpgrade(entry.id)}
-                                                                            disabled={entry.rolledBack}
-                                                                            className={`px-2 py-1 rounded ${entry.rolledBack
-                                                                                ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
-                                                                                : 'text-orange-600 bg-orange-50 hover:bg-orange-100'
-                                                                                }`}
-                                                                        >
-                                                                            撤销
-                                                                        </button>
-                                                                    </div>
-                                                                ))}
-                                                        </div>
+                                            {upgradeHistory.some(entry => entry.tableId === selectedTable.table) && (
+                                                <div className="mt-4 bg-white rounded-lg border border-slate-200 p-4">
+                                                    <div className="text-sm font-medium text-slate-700 flex items-center gap-2 mb-3">
+                                                        <Clock size={14} className="text-slate-500" /> 升级操作记录
                                                     </div>
-                                                )}
-                                            </>
-                                        )}
-                                    </div>
-                                )}
+                                                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                                                        {upgradeHistory
+                                                            .filter(entry => entry.tableId === selectedTable.table)
+                                                            .map(entry => (
+                                                                <div key={entry.id} className="flex items-center justify-between text-xs bg-slate-50 rounded-md px-2 py-1.5">
+                                                                    <div className="text-slate-600">
+                                                                        <span className="font-mono text-slate-700">{entry.tableName}</span>
+                                                                        <span className="text-slate-400"> · {entry.timestamp}</span>
+                                                                        {entry.rolledBack && (
+                                                                            <span className="ml-2 text-orange-600">已撤销</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <button
+                                                                        onClick={() => rollbackUpgrade(entry.id)}
+                                                                        disabled={entry.rolledBack}
+                                                                        className={`px-2 py-1 rounded ${entry.rolledBack
+                                                                            ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
+                                                                            : 'text-orange-600 bg-orange-50 hover:bg-orange-100'
+                                                                            }`}
+                                                                    >
+                                                                        撤销
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
 
 
                                 {/* Field List & Relationships (Tabs) - Hidden when SemanticAnalysisCard is shown (V2) */}
