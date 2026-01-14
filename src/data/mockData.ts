@@ -860,22 +860,25 @@ export const mockScanResults = [
         sourceType: 'MySQL',
         rows: '120',
         updateTime: '2024-06-20 10:00:00',
-        status: 'scanned',
+        status: 'analyzed',
         comment: '企业组织架构部门信息',
-        confidence: 0,
-        aiSuggestion: '',
+        confidence: 92,
+        aiSuggestion: 'Department: 部门',
         semanticAnalysis: {
-            analysisStep: 'idle',
-            businessName: '',
-            description: '',
-            scenarios: [],
-            coreFields: [],
-            qualityScore: 0,
-            securityLevel: 'L1',
+            analysisStep: 'done',
+            businessName: '部门信息表',
+            description: '企业组织架构与部门基础信息，包含部门层级关系',
+            scenarios: ['组织管理', '人员归属分析', '成本中心核算'],
+            coreFields: [
+                { field: 'dept_id', reason: '部门唯一标识' },
+                { field: 'dept_name', reason: '部门名称' }
+            ],
+            qualityScore: 90,
+            securityLevel: 'L2',
             objectType: 'entity',
             businessDomain: '组织人事域',
             dataGrain: '明细粒度',
-            updateStrategy: '全量更新'
+            updateStrategy: '缓慢变化维度'
         },
         fields: [
             { name: 'dept_id', type: 'int', comment: '部门ID' },

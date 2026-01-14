@@ -189,7 +189,7 @@ const DataSemanticUnderstandingView = ({
             setSemanticProfile({
                 ...emptyProfile,
                 ...asset.semanticAnalysis,
-                analysisStep: 'done'
+                analysisStep: asset.status === 'analyzed' ? 'done' : (asset.semanticAnalysis.analysisStep || 'idle')
             });
             setEditMode(false);
         } else {
