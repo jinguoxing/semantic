@@ -90,3 +90,39 @@ export interface TableSemanticProfile {
     qualityScore?: number;
     analysisStep?: 'idle' | 'analyzing' | 'done';
 }
+
+export interface PreviewField {
+    col: string;
+    type: string;
+    attr: string;
+    conf: 'High' | 'Medium' | 'Low';
+}
+
+export interface AICandidate {
+    id: string;
+    sourceTable: string;
+    suggestedName: string;
+    confidence: number;
+    reason: string;
+    scores: {
+        nameMatch: number;
+        fieldMatch: number;
+        dataSample: number;
+    };
+    mappedFields: number;
+    status: 'pending' | 'accepted' | 'ignored';
+    previewFields: PreviewField[];
+}
+
+export interface BusinessObject {
+    id: string;
+    name: string;
+    code: string;
+    domain: string;
+    owner: string;
+    status: 'draft' | 'published' | 'archived'; // Adjusted to match likely usage
+    version?: string;
+    description?: string;
+    sourceTables?: string[];
+    fields?: any[]; // Simplified for now
+}

@@ -165,6 +165,62 @@ export const mockMappings = [
     { boField: '出生体重', tblField: 'weight_kg', rule: 'Direct Copy' },
 ];
 
+export const mockAICandidates: any[] = [
+    {
+        id: 'AI_001',
+        sourceTable: 't_med_birth_cert',
+        suggestedName: '出生医学证明记录',
+        confidence: 0.92,
+        reason: '表名包含 "birth_cert"，字段包含 "cert_no", "issue_date"，高度匹配业务语义。',
+        scores: { nameMatch: 95, fieldMatch: 88, dataSample: 92 },
+        mappedFields: 4,
+        status: 'pending',
+        previewFields: [
+            { col: 'cert_id', type: 'varchar(32)', attr: '证明编号', conf: 'High' },
+            { col: 'issue_time', type: 'datetime', attr: '签发时间', conf: 'Medium' },
+            { col: 'baby_name', type: 'varchar(50)', attr: '新生儿姓名', conf: 'High' },
+            { col: 'hosp_code', type: 'varchar(20)', attr: '机构编码', conf: 'Low' }
+        ]
+    },
+    {
+        id: 'AI_002',
+        sourceTable: 't_vac_record',
+        suggestedName: '疫苗接种明细',
+        confidence: 0.85,
+        reason: '表名 "vac" 缩写匹配 Vaccine，数据量级较大，判定为明细事实表。',
+        scores: { nameMatch: 80, fieldMatch: 90, dataSample: 82 },
+        mappedFields: 3,
+        status: 'pending',
+        previewFields: [
+            { col: 'vac_code', type: 'varchar(20)', attr: '疫苗编码', conf: 'High' },
+            { col: 'inject_date', type: 'datetime', attr: '接种时间', conf: 'High' },
+            { col: 'dose_no', type: 'int', attr: '剂次', conf: 'High' }
+        ]
+    },
+    {
+        id: 'AI_004',
+        sourceTable: 't_newborn_archive_2023',
+        suggestedName: '新生儿 (Newborn)',
+        confidence: 0.78,
+        reason: '历史归档表，结构与主表一致。建议作为历史分区或独立快照对象。',
+        scores: { nameMatch: 70, fieldMatch: 95, dataSample: 60 },
+        mappedFields: 5,
+        status: 'pending',
+        previewFields: []
+    },
+    {
+        id: 'AI_003',
+        sourceTable: 'sys_log_2024',
+        suggestedName: '系统日志',
+        confidence: 0.45,
+        reason: '技术属性字段较多，业务语义不明显，建议忽略。',
+        scores: { nameMatch: 40, fieldMatch: 30, dataSample: 50 },
+        mappedFields: 0,
+        status: 'ignored',
+        previewFields: []
+    }
+];
+
 // BU: 数据源（包含关联表）
 export const mockDataSources = [
     {

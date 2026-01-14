@@ -7,7 +7,7 @@ interface HeaderProps {
 const Header = ({ activeModule }: HeaderProps) => (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-10">
         <div className="flex items-center text-sm breadcrumbs text-slate-500">
-            <span>Platform</span>
+            <span>数据语义治理</span>
             <ChevronRight size={14} className="mx-2" />
             <span className="font-medium text-slate-800 capitalize">{activeModule.replace('td_goals', '业务梳理').replace('_', ' ')}</span>
         </div>

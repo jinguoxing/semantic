@@ -614,9 +614,9 @@ export const SemanticAnalysisCard: React.FC<SemanticAnalysisCardProps> = ({
                                         保存修正
                                     </button>
                                 )}
-                                <button onClick={onAccept} className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow-sm font-medium transition-all flex items-center gap-2">
+                                <button className="flex items-center gap-2 px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-all shadow-lg shadow-purple-200 hover:shadow-xl hover:-translate-y-0.5" onClick={onAccept}>
                                     <CheckCircle size={18} />
-                                    确认并生成逻辑实体
+                                    加入候选业务对象
                                 </button>
                             </>
                         )}

@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Database, Search, ChevronRight, Cpu, CheckCircle, Star, Tag, FileText, Layers, ShieldCheck, Activity, ArrowLeft, Table, Clock, Server, RefreshCw, X, AlertCircle, Settings, AlertTriangle, Share2, Shield, Plus, Edit3, Sparkles, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Database, Search, ChevronRight, Cpu, CheckCircle, Star, Tag, FileText, Layers, ShieldCheck, Activity, ArrowLeft, Table, Clock, Server, RefreshCw, X, AlertCircle, Settings, AlertTriangle, Share2, Shield, Plus, Edit3, Sparkles, PanelLeftClose, PanelLeftOpen, Box, ListPlus } from 'lucide-react';
 import { checkGatekeeper, analyzeField } from '../logic/semantic/rules';
 import { calculateTableRuleScore, calculateFusionScore } from '../logic/semantic/scoring';
 import { analyzeTableWithMockAI } from '../services/mockAiService';
@@ -12,15 +12,32 @@ import { StreamingProgressPanel } from './semantic/StreamingProgressPanel';
 interface DataSemanticUnderstandingViewProps {
     scanResults: any[];
     setScanResults: (fn: (prev: any[]) => any[]) => void;
+    candidateResults?: any[];
+    setCandidateResults?: (fn: (prev: any[]) => any[]) => void;
+    businessObjects?: any[];
+    setBusinessObjects?: (fn: (prev: any[]) => any[]) => void;
+    setActiveModule?: (module: string) => void;
 }
 
-const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSemanticUnderstandingViewProps) => {
+const DataSemanticUnderstandingView = ({
+    scanResults,
+    setScanResults,
+    candidateResults,
+    setCandidateResults,
+    businessObjects,
+    setBusinessObjects,
+    setActiveModule
+}: DataSemanticUnderstandingViewProps) => {
     // State
     const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
     const [selectedDataSourceId, setSelectedDataSourceId] = useState<string | null>(null); // null means all
     const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
     const [expandedTypes, setExpandedTypes] = useState<string[]>(['MySQL', 'Oracle', 'PostgreSQL']);
     const [searchTerm, setSearchTerm] = useState('');
+    // Direct Generation State
+    const [showDirectGenModal, setShowDirectGenModal] = useState(false);
+    const [pendingGenData, setPendingGenData] = useState<any>(null);
+
     // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
@@ -436,32 +453,111 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
         ));
     };
 
-    const handleSaveToMetadata = () => {
-        if (!selectedTable) return;
+    const executeAddToCandidates = (table: any, profile: any) => {
+        const newCandidate = {
+            id: `CAND-${Date.now()}`,
+            tableName: table.table,
+            tableComment: table.comment,
+            sourceId: table.sourceId || 'DS1',
+            needsConfirmation: true,
+            hasConflict: false,
+            objectSuggestion: {
+                name: profile.businessName,
+                confidence: profile.aiScore || 0.85,
+                source: 'AI Semantic',
+                status: 'pending',
+                risk: 'low'
+            },
+            fieldSuggestions: (table.fields || []).map((f: any) => ({
+                field: f.name,
+                semanticRole: f.comment || 'Attribute',
+                confidence: 0.9,
+                status: 'pending'
+            }))
+        };
 
-        console.log('✅ 保存语义分析结果:', {
-            tableName: selectedTable.table,
-            businessName: semanticProfile.businessName,
-            objectType: semanticProfile.objectType
-        });
+        if (setCandidateResults) {
+            setCandidateResults((prev: any[]) => [...(prev || []), newCandidate]);
+        }
 
-        // Update scan results with analyzed status
+        // Update scan result
         setScanResults((prev: any[]) => prev.map((item: any) =>
-            item.table === selectedTable.table
-                ? { ...item, status: 'analyzed', semanticAnalysis: { ...semanticProfile } }
+            item.table === table.table
+                ? { ...item, status: 'analyzed', semanticAnalysis: { ...profile } }
                 : item
         ));
 
-        // Close edit mode
         setEditMode(false);
+        // Toast or specific feedback handled by UI
+        if (setActiveModule) setActiveModule('sg_candidate_confirm');
+    };
 
-        // Show success feedback (TODO: Replace with toast library)
-        alert('✅ 语义分析结果已保存！\n\n表名: ' + selectedTable.table + '\n业务名称: ' + (semanticProfile.businessName || '未定义'));
+    const executeDirectGenerate = (table: any, profile: any) => {
+        const newBO = {
+            id: `BO-${Date.now()}`,
+            name: profile.businessName,
+            code: table.table,
+            domain: 'Customer Domain', // Mock
+            owner: profile.owner || 'System',
+            status: 'Draft',
+            description: profile.description || table.comment,
+            fields: (table.fields || []).map((f: any) => ({
+                id: f.name,
+                name: f.comment || f.name,
+                code: f.name,
+                type: f.type,
+                isPrimary: f.name.includes('id'), // Simple heuristic
+                required: false
+            }))
+        };
 
-        // Optionally return to list view after 1.5 seconds
-        // setTimeout(() => {
-        //     setViewMode('list');
-        // }, 1500);
+        if (setBusinessObjects) {
+            setBusinessObjects((prev: any[]) => [...(prev || []), newBO]);
+        }
+
+        // Update scan result
+        setScanResults((prev: any[]) => prev.map((item: any) =>
+            item.table === table.table
+                ? { ...item, status: 'analyzed', semanticAnalysis: { ...profile } }
+                : item
+        ));
+
+        setEditMode(false);
+        setShowDirectGenModal(false);
+        if (setActiveModule) setActiveModule('td_modeling');
+    };
+
+    const handleJustSave = () => {
+        if (!selectedTable) return;
+
+        // Update scan result with current profile
+        setScanResults((prev: any[]) => prev.map((item: any) =>
+            item.table === selectedTable.table
+                ? { ...item, semanticAnalysis: { ...semanticProfile } } // Save current state
+                : item
+        ));
+
+        // Optional: show feedback (using alert for simplicity as no toast system is visible)
+        // In a real app, use toast.success('已保存');
+        alert('语义结论已保存');
+    };
+
+    const handleSaveToMetadata = () => {
+        if (!selectedTable) return;
+
+        // Check confidence - if high, offer direct generation
+        // Mocking high confidence for demo if name is filled
+        const isHighConfidence = semanticProfile.businessName && semanticProfile.businessName.length > 0;
+
+        if (isHighConfidence) {
+            setPendingGenData({
+                table: selectedTable,
+                profile: semanticProfile
+            });
+            setShowDirectGenModal(true);
+        } else {
+            executeAddToCandidates(selectedTable, semanticProfile);
+        }
     };
 
     // Database logo icons (emoji)
@@ -902,7 +998,10 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                     onEdit={() => setEditMode(true)}
                                                     isEditing={editMode}
                                                     onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
-                                                    onSaveEdit={() => setEditMode(false)}
+                                                    onSaveEdit={() => {
+                                                        handleJustSave();
+                                                        setEditMode(false);
+                                                    }}
                                                     onUpgradeAccepted={(beforeState, afterState) => {
                                                         if (!selectedTable) return;
                                                         recordUpgradeHistory(
@@ -2311,6 +2410,75 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                     </div>
                 )
             }
+            {/* Direct Generation Modal */}
+            {showDirectGenModal && pendingGenData && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
+                    <div className="bg-white rounded-xl shadow-2xl w-[500px] overflow-hidden">
+                        <div className="p-6">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="p-2 bg-purple-100 text-purple-600 rounded-lg">
+                                    <Sparkles size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold text-slate-800">高置信度识别结果</h3>
+                                    <p className="text-sm text-slate-500">
+                                        基于AI分析，对表
+                                        <span className="font-mono font-medium text-slate-700 mx-1">{pendingGenData.table.table}</span>
+                                        的识别置信度较高
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 mb-6">
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                        <span className="text-slate-500 block text-xs mb-1">建议业务对象名</span>
+                                        <span className="font-medium text-slate-800">{pendingGenData.profile.businessName}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-slate-500 block text-xs mb-1">识别置信度</span>
+                                        <span className="font-medium text-emerald-600">{(pendingGenData.profile.aiScore || 0.85) * 100}%</span>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <span className="text-slate-500 block text-xs mb-1">业务描述</span>
+                                        <span className="text-slate-600">{pendingGenData.profile.description || pendingGenData.table.comment || '无描述'}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <button
+                                    onClick={() => executeDirectGenerate(pendingGenData.table, pendingGenData.profile)}
+                                    className="w-full py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                                >
+                                    <Box size={18} /> 直接生成业务对象
+                                </button>
+
+                                <div className="relative flex py-1 items-center">
+                                    <div className="flex-grow border-t border-slate-200"></div>
+                                    <span className="flex-shrink-0 mx-4 text-slate-400 text-xs">或者</span>
+                                    <div className="flex-grow border-t border-slate-200"></div>
+                                </div>
+
+                                <button
+                                    onClick={() => executeAddToCandidates(pendingGenData.table, pendingGenData.profile)}
+                                    className="w-full py-3 bg-white border border-slate-200 text-slate-700 rounded-lg font-medium hover:bg-slate-50 flex items-center justify-center gap-2 transition-colors"
+                                >
+                                    <ListPlus size={18} /> 加入候选确认列表
+                                </button>
+                            </div>
+                        </div>
+                        <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 flex justify-center">
+                            <button
+                                onClick={() => setShowDirectGenModal(false)}
+                                className="text-sm text-slate-500 hover:text-slate-700"
+                            >
+                                取消操作
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 };

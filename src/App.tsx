@@ -31,6 +31,7 @@ import BookIcon from './components/common/BookIcon';
 import DashboardView from './views/DashboardView';
 import MappingStudioView from './views/MappingStudioView';
 import BOMappingStudioView from './views/BOMappingStudioView';
+import CandidateConfirmationView from './views/CandidateConfirmationView';
 import BusinessGoalsView from './views/BusinessGoalsView';
 import BusinessModelingView from './views/BusinessModelingView';
 import TechDiscoveryView from './views/TechDiscoveryView';
@@ -63,6 +64,9 @@ export default function SemanticLayerApp() {
     // Initialized with mock data to show logic view immediately
     const [scanResults, setScanResults] = useState<any[]>(mockScanResults || []);
 
+    // Lifted State: Candidate Results (Shared between Semantic view and Confirmation view)
+    const [candidateResults, setCandidateResults] = useState<any[]>([]);
+
     const handleAddBusinessObject = (newBO: any) => {
         setBusinessObjects([...businessObjects, newBO]);
     };
@@ -79,12 +83,27 @@ export default function SemanticLayerApp() {
             case 'td_goals': return <BusinessGoalsView />; // 新增路由
             case 'mapping': return <MappingStudioView selectedBO={selectedBO} showRuleEditor={showRuleEditor} setShowRuleEditor={setShowRuleEditor} businessObjects={businessObjects} />;
             case 'bo_mapping': return <BOMappingStudioView selectedBO={selectedBO} showRuleEditor={showRuleEditor} setShowRuleEditor={setShowRuleEditor} businessObjects={businessObjects} />;
+            case 'sg_candidate_confirm': return <CandidateConfirmationView
+                candidateResults={candidateResults}
+                setCandidateResults={setCandidateResults}
+                businessObjects={businessObjects}
+                setBusinessObjects={setBusinessObjects}
+                setActiveModule={setActiveModule}
+            />;
             case 'td_modeling': return <BusinessModelingView businessObjects={businessObjects} setBusinessObjects={setBusinessObjects} onNavigateToMapping={handleNavigateToMapping} />;
             case 'td_scenario': return <ScenarioOrchestrationView />;
             case 'bu_connect': return <DataSourceManagementView />;
             case 'bu_scan': return <AssetScanningView onNavigate={setActiveModule} onAddScanResults={(results) => setScanResults(prev => [...prev, ...results])} />;
             case 'bu_discovery': return <TechDiscoveryView onAddBusinessObject={handleAddBusinessObject} scanResults={scanResults} setScanResults={setScanResults} />;
-            case 'bu_semantic': return <DataSemanticUnderstandingView scanResults={scanResults} setScanResults={setScanResults} />;
+            case 'bu_semantic': return <DataSemanticUnderstandingView
+                scanResults={scanResults}
+                setScanResults={setScanResults}
+                candidateResults={candidateResults}
+                setCandidateResults={setCandidateResults}
+                businessObjects={businessObjects}
+                setBusinessObjects={setBusinessObjects}
+                setActiveModule={setActiveModule}
+            />;
             case 'bu_candidates': return <CandidateGenerationView scanResults={scanResults} setScanResults={setScanResults} onAddBusinessObject={handleAddBusinessObject} />;
             case 'governance': return <ConflictDetectionView />;
             case 'smart_data': return <SmartDataHubView businessObjects={businessObjects} />;
