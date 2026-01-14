@@ -540,7 +540,7 @@ const GenerateBusinessObjectWizard = ({
 
 
 // 子组件0: 识别任务概览页
-const IdentificationOverviewTab = ({ results, onNavigateToComparison, onNavigateToBatch, onNavigateToConflict }: any) => {
+const IdentificationOverviewTab = ({ results, onNavigateToComparison, onNavigateToBatch, onNavigateToConflict, onBatchGenerate }: any) => {
     const stats = {
         total: results.length,
         accepted: results.filter((r: any) => r.objectSuggestion?.status === 'accepted').length,
@@ -662,6 +662,14 @@ const IdentificationOverviewTab = ({ results, onNavigateToComparison, onNavigate
                                         </div>
                                     </td>
                                     <td className="px-4 py-3">
+                                        {result.needsConfirmation && (
+                                            <button
+                                                onClick={() => onBatchGenerate && onBatchGenerate([result])}
+                                                className="text-emerald-600 text-sm hover:underline whitespace-nowrap mr-3 font-medium"
+                                            >
+                                                确认
+                                            </button>
+                                        )}
                                         <button
                                             onClick={onNavigateToComparison}
                                             className="text-blue-600 text-sm hover:underline whitespace-nowrap"
@@ -1227,7 +1235,7 @@ const IdentificationComparisonTab = ({ results, setResults, dataSources, onNavig
 
 
 // 子组件2: 批量确认页
-const BatchConfirmationTab = ({ results, setResults, selectedItems, setSelectedItems, filter, setFilter, onGenerateBusinessObject }: any) => {
+const BatchConfirmationTab = ({ results, setResults, selectedItems, setSelectedItems, filter, setFilter, onGenerateBusinessObject, onBatchGenerate }: any) => {
     const filteredResults = results.filter((r: any) => {
         if (filter.needsConfirm && !r.needsConfirmation) return false;
         if (filter.hasConflict && !r.hasConflict) return false;
@@ -1235,30 +1243,37 @@ const BatchConfirmationTab = ({ results, setResults, selectedItems, setSelectedI
     });
 
     const handleBatchAccept = () => {
-        const now = new Date().toLocaleString('zh-CN');
-        const currentUser = '当前用户';
+        if (onBatchGenerate) {
+            const selectedResults = results.filter((r: any) => selectedItems.has(r.id));
+            onBatchGenerate(selectedResults);
+            setSelectedItems(new Set());
+        } else {
+            // Fallback: only update local status
+            const now = new Date().toLocaleString('zh-CN');
+            const currentUser = '当前用户';
 
-        setResults((prev: any[]) => prev.map((r: any) => {
-            if (selectedItems.has(r.id)) {
-                return {
-                    ...r,
-                    objectSuggestion: {
-                        ...r.objectSuggestion,
-                        status: 'accepted',
-                        auditTrail: {
-                            recordBy: currentUser,
-                            recordTime: now,
-                            action: 'accept',
-                            basis: r.objectSuggestion?.source?.includes('规则') ? 'rule' : 'ai',
-                            source: r.objectSuggestion?.source || 'AI + 规则'
-                        }
-                    },
-                    needsConfirmation: false
-                };
-            }
-            return r;
-        }));
-        setSelectedItems(new Set());
+            setResults((prev: any[]) => prev.map((r: any) => {
+                if (selectedItems.has(r.id)) {
+                    return {
+                        ...r,
+                        objectSuggestion: {
+                            ...r.objectSuggestion,
+                            status: 'accepted',
+                            auditTrail: {
+                                recordBy: currentUser,
+                                recordTime: now,
+                                action: 'accept',
+                                basis: r.objectSuggestion?.source?.includes('规则') ? 'rule' : 'ai',
+                                source: r.objectSuggestion?.source || 'AI + 规则'
+                            }
+                        },
+                        needsConfirmation: false
+                    };
+                }
+                return r;
+            }));
+            setSelectedItems(new Set());
+        }
     };
 
     return (
@@ -1548,6 +1563,9 @@ const CandidateConfirmationView = ({
     const [isWizardOpen, setIsWizardOpen] = useState(false);
     const [wizardResult, setWizardResult] = useState<any>(null);
 
+    // 批量生成成功弹窗状态
+    const [batchSuccessInfo, setBatchSuccessInfo] = useState<{ count: number } | null>(null);
+
     // 默认 Mock 数据 (作为 Fallback)
     const [defaultResults, setDefaultResults] = useState<any[]>([
         {
@@ -1636,6 +1654,75 @@ const CandidateConfirmationView = ({
         setIsWizardOpen(true);
     };
 
+    // 批量生成业务对象
+    const handleBatchGenerate = (items: any[]) => {
+        const now = new Date().toLocaleString('zh-CN');
+        const currentUser = '当前用户';
+
+        const newBOs = items.map((item, idx) => {
+            const businessName = (item.objectSuggestion?.name || item.tableName).replace(/（业务视图）/, '');
+            const tableName = item.tableName.replace(/^t_/, '');
+
+            return {
+                // Mapping from candidate result to Business Object
+                name: item.objectSuggestion?.name || item.tableName,
+                code: item.tableName, // Simplified code generation
+                domain: item.objectSuggestion?.businessDomain || '其他',
+                owner: currentUser,
+                status: 'Draft',
+                version: 'v1.0',
+                description: item.tableComment || `从表 ${item.tableName} 生成的业务对象`,
+                sourceTables: [item.tableName],
+                fields: (item.fieldSuggestions || []).map((f: any, i: number) => ({
+                    id: `f_${i}`,
+                    name: convertToCamelCase(f.field),
+                    code: f.field,
+                    type: 'String', // 简化处理，实际应根据映射转换
+                    length: '-',
+                    required: f.semanticRole === '标识',
+                    desc: f.aiExplanation || f.semanticRole
+                }))
+            };
+        });
+
+        if (setBusinessObjects) {
+            setBusinessObjects((prev: any[]) => [...(prev || []), ...newBOs]);
+        }
+
+        // 更新结果状态
+        setResults((prev: any[]) => prev.map((r: any) => {
+            if (items.some(i => i.id === r.id)) {
+                return {
+                    ...r,
+                    objectSuggestion: {
+                        ...r.objectSuggestion,
+                        status: 'accepted',
+                        auditTrail: {
+                            recordBy: currentUser,
+                            recordTime: now,
+                            action: 'accept',
+                            basis: 'batch',
+                            source: '批量处理'
+                        }
+                    },
+                    needsConfirmation: false
+                };
+            }
+            return r;
+        }));
+
+        // alert(`已成功批量生成 ${newBOs.length} 个业务对象`);
+        // if (setActiveModule) setActiveModule('td_modeling');
+        setBatchSuccessInfo({ count: newBOs.length });
+    };
+
+    const handleBatchSuccessClose = (action: 'stay' | 'navigate') => {
+        setBatchSuccessInfo(null);
+        if (action === 'navigate' && setActiveModule) {
+            setActiveModule('td_modeling');
+        }
+    };
+
     return (
         <div className="flex bg-slate-50 h-[calc(100vh-64px)] overflow-hidden">
             {/* 顶部导航与内容区 */}
@@ -1701,6 +1788,7 @@ const CandidateConfirmationView = ({
                             onNavigateToComparison={() => setActiveTab('comparison')}
                             onNavigateToBatch={() => setActiveTab('batch')}
                             onNavigateToConflict={() => setActiveTab('conflict')}
+                            onBatchGenerate={handleBatchGenerate}
                         />
                     )}
                     {activeTab === 'comparison' && (
@@ -1725,6 +1813,7 @@ const CandidateConfirmationView = ({
                             filter={filter}
                             setFilter={setFilter}
                             onGenerateBusinessObject={handleGenerateBusinessObject}
+                            onBatchGenerate={handleBatchGenerate}
                         />
                     )}
                     {activeTab === 'conflict' && (
@@ -1743,10 +1832,41 @@ const CandidateConfirmationView = ({
                 onClose={() => setIsWizardOpen(false)}
                 identificationResult={wizardResult}
                 dataSource={dataSources[0]} // 简化处理
-                businessObjects={[]} // 实际应从全局状态获取
-                setBusinessObjects={() => { }} // 实际应更新全局状态
-                setActiveModule={() => { }} // 实际应跳转路由
+                businessObjects={businessObjects}
+                setBusinessObjects={setBusinessObjects}
+                setActiveModule={setActiveModule}
             />
+
+            {/* 批量生成成功弹窗 */}
+            {batchSuccessInfo && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => handleBatchSuccessClose('stay')}>
+                    <div className="bg-white rounded-xl shadow-2xl w-96 p-6 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+                        <div className="flex flex-col items-center text-center">
+                            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4">
+                                <CheckCircle size={32} />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">批量生成成功</h3>
+                            <p className="text-slate-600 mb-6">
+                                已成功创建 <span className="font-bold text-emerald-600 text-lg">{batchSuccessInfo.count}</span> 个业务对象
+                            </p>
+                            <div className="flex flex-col gap-3 w-full">
+                                <button
+                                    onClick={() => handleBatchSuccessClose('navigate')}
+                                    className="w-full py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium transition-colors flex items-center justify-center gap-2"
+                                >
+                                    前往业务对象列表 <ArrowRight size={16} />
+                                </button>
+                                <button
+                                    onClick={() => handleBatchSuccessClose('stay')}
+                                    className="w-full py-2.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-medium transition-colors"
+                                >
+                                    留在当前页
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

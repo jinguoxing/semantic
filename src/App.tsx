@@ -32,10 +32,10 @@ import DashboardView from './views/DashboardView';
 import MappingStudioView from './views/MappingStudioView';
 import BOMappingStudioView from './views/BOMappingStudioView';
 import CandidateConfirmationView from './views/CandidateConfirmationView';
+import ScenarioOrchestrationView from './views/ScenarioOrchestrationView';
 import BusinessGoalsView from './views/BusinessGoalsView';
 import BusinessModelingView from './views/BusinessModelingView';
 import TechDiscoveryView from './views/TechDiscoveryView';
-import ScenarioOrchestrationView from './views/ScenarioOrchestrationView';
 import DataSemanticUnderstandingView from './views/DataSemanticUnderstandingView';
 import CandidateGenerationView from './views/CandidateGenerationView';
 import ConflictDetectionView from './views/ConflictDetectionView';
@@ -44,6 +44,8 @@ import ApiGatewayView from './views/ApiGatewayView';
 import CacheStrategyView from './views/CacheStrategyView';
 import DataSourceManagementView from './views/DataSourceManagementView';
 import AssetScanningView from './views/AssetScanningView';
+import AskDataView from './views/AskDataView';
+import SemanticAssetManagerView from './views/SemanticAssetManagerView';
 
 // ==========================================
 // 组件定义
@@ -51,7 +53,7 @@ import AssetScanningView from './views/AssetScanningView';
 
 
 export default function SemanticLayerApp() {
-    const [activeModule, setActiveModule] = useState('dashboard');
+    const [activeModule, setActiveModule] = useState('ask_data');
     // 确保 mockBusinessObjects 存在且不为空，避免 undefined 错误
     const [selectedBO, setSelectedBO] = useState(mockBusinessObjects && mockBusinessObjects.length > 0 ? mockBusinessObjects[0] : null);
     const [showRuleEditor, setShowRuleEditor] = useState(null);
@@ -83,7 +85,7 @@ export default function SemanticLayerApp() {
             case 'td_goals': return <BusinessGoalsView />; // 新增路由
             case 'mapping': return <MappingStudioView selectedBO={selectedBO} showRuleEditor={showRuleEditor} setShowRuleEditor={setShowRuleEditor} businessObjects={businessObjects} />;
             case 'bo_mapping': return <BOMappingStudioView selectedBO={selectedBO} showRuleEditor={showRuleEditor} setShowRuleEditor={setShowRuleEditor} businessObjects={businessObjects} setBusinessObjects={setBusinessObjects} />;
-            case 'sg_candidate_confirm': return <CandidateConfirmationView
+            case 'candidate_confirmation': return <CandidateConfirmationView
                 candidateResults={candidateResults}
                 setCandidateResults={setCandidateResults}
                 businessObjects={businessObjects}
@@ -91,7 +93,7 @@ export default function SemanticLayerApp() {
                 setActiveModule={setActiveModule}
             />;
             case 'td_modeling': return <BusinessModelingView businessObjects={businessObjects} setBusinessObjects={setBusinessObjects} onNavigateToMapping={handleNavigateToMapping} />;
-            case 'td_scenario': return <ScenarioOrchestrationView />;
+            case 'scenario_orchestration': return <ScenarioOrchestrationView businessObjects={businessObjects} />;
             case 'bu_connect': return <DataSourceManagementView />;
             case 'bu_scan': return <AssetScanningView onNavigate={setActiveModule} onAddScanResults={(results) => setScanResults(prev => [...prev, ...results])} />;
             case 'bu_discovery': return <TechDiscoveryView onAddBusinessObject={handleAddBusinessObject} scanResults={scanResults} setScanResults={setScanResults} />;
@@ -108,6 +110,9 @@ export default function SemanticLayerApp() {
             case 'governance': return <ConflictDetectionView />;
             case 'smart_data': return <SmartDataHubView businessObjects={businessObjects} />;
             case 'data_supermarket': return <SmartDataHubView businessObjects={businessObjects} />;
+            case 'term_mgmt': return <SemanticAssetManagerView initialTab="terms" />;
+            case 'tag_mgmt': return <SemanticAssetManagerView initialTab="tags" />;
+            case 'ask_data': return <AskDataView />;
             case 'ee_api': return <ApiGatewayView businessObjects={businessObjects} />;
             case 'ee_cache': return <CacheStrategyView />;
             default: return <DashboardView setActiveModule={setActiveModule} />;

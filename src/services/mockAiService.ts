@@ -167,6 +167,104 @@ export const analyzeTableWithMockAI = async (
         };
     }
 
+    // 👔 SG-DEMO: HR Scenario Mock Logic
+    if (tableName === 't_hr_employee') {
+        return {
+            aiScore: 0.96,
+            businessName: '员工档案',
+            description: '企业核心人力资源主数据，记录员工基础信息、职位及入职状态。',
+            scenarios: ['人力资源管理', '薪资核算', '组织架构分析'],
+            evidence: ['表名包含 employee', '字段包含 employee_id, department_id', '高置信度匹配 HR 领域模型'],
+            tags: ['HR', '核心实体', 'L3'],
+            objectType: 'entity',
+            objectTypeReason: '核心业务实体',
+            businessDomain: '组织人事域',
+            dataGrain: '明细粒度',
+            fieldSuggestions: generateFieldSuggestions(fields).map(f => {
+                if (f.name === 'employee_id') return { ...f, suggestedRole: '工号', description: '员工唯一标识 (工号)' };
+                if (f.name === 'name') return { ...f, suggestedRole: '姓名', sensitivity: 'L2' };
+                if (f.name === 'department_id') return { ...f, suggestedRole: '所属部门', description: '关联部门表 ID' };
+                return f;
+            })
+        };
+    }
+    if (tableName === 't_hr_department') {
+        return {
+            aiScore: 0.92,
+            businessName: '部门组织',
+            description: '企业组织架构层级信息，定义职能部门及其关系。',
+            scenarios: ['组织管理', '审批流配置'],
+            evidence: ['表名包含 department', '树形结构数据特征'],
+            tags: ['HR', '组织架构', 'L1'],
+            objectType: 'entity',
+            objectTypeReason: '组织实体',
+            businessDomain: '组织人事域',
+            dataGrain: '明细粒度',
+            fieldSuggestions: generateFieldSuggestions(fields)
+        };
+    }
+    if (tableName === 't_hr_payroll') {
+        return {
+            aiScore: 0.94,
+            businessName: '薪资发放记录',
+            description: '员工月度薪资计算及发放流水。',
+            scenarios: ['薪资发放', '人力成本核算'],
+            evidence: ['表名包含 payroll', '字段包含 amount, tax'],
+            tags: ['HR', '财务', 'L4'],
+            objectType: 'event',
+            objectTypeReason: '交易/行为记录',
+            businessDomain: '薪酬福利域',
+            dataGrain: '明细粒度',
+            fieldSuggestions: generateFieldSuggestions(fields)
+        };
+    }
+
+    if (tableName === 't_hr_attendance') {
+        return {
+            aiScore: 0.88,
+            businessName: '考勤明细',
+            description: '员工每日上下班打卡记录流水。',
+            scenarios: ['考勤统计', '工时计算'],
+            evidence: ['表名包含 attendance', '字段包含 check_in, device_id'],
+            tags: ['HR', '行为', 'L2'],
+            objectType: 'event',
+            objectTypeReason: '行为流水',
+            businessDomain: '考勤工时域',
+            dataGrain: '明细粒度',
+            fieldSuggestions: generateFieldSuggestions(fields)
+        };
+    }
+    if (tableName === 't_hr_performance') {
+        return {
+            aiScore: 0.91,
+            businessName: '绩效考核',
+            description: '纪录员工定期绩效评价结果。',
+            scenarios: ['人才盘点', '晋升评估'],
+            evidence: ['表名包含 performance', '字段包含 score, grade'],
+            tags: ['HR', '评价', 'L3'],
+            objectType: 'entity',
+            objectTypeReason: '评价记录',
+            businessDomain: '人才发展域',
+            dataGrain: '明细粒度',
+            fieldSuggestions: generateFieldSuggestions(fields)
+        };
+    }
+    if (tableName === 't_hr_position') {
+        return {
+            aiScore: 0.95,
+            businessName: '岗位职级',
+            description: '企业标准岗位及职级体系定义表。',
+            scenarios: ['组织管理', '招聘标准'],
+            evidence: ['表名包含 position', '字段包含 level_range'],
+            tags: ['HR', '规则', 'L1'],
+            objectType: 'rule',
+            objectTypeReason: '配置/规则数据',
+            businessDomain: '组织人事域',
+            dataGrain: '明细粒度',
+            fieldSuggestions: generateFieldSuggestions(fields)
+        };
+    }
+
     const { type, reason } = inferObjectType(tableName, fields);
 
     // Mock a high score for demonstration

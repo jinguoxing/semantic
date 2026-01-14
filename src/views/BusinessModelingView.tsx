@@ -4,6 +4,26 @@ import {
     FileText, Settings, Layers, Trash2
 } from 'lucide-react';
 
+// Domain Group Configuration
+const DOMAIN_GROUPS = [
+    {
+        title: '👥 组织与人力资源',
+        domains: ['组织人事域', '薪酬福利域', '考勤工时域', '人才发展域']
+    },
+    {
+        title: '📦 供应链中心',
+        domains: ['商品域', '采购域', '库存域', '物流域']
+    },
+    {
+        title: '👥 用户与交易',
+        domains: ['用户域', '交易域']
+    },
+    {
+        title: '🏛️ 政务服务场景',
+        domains: ['出生一件事']
+    }
+];
+
 interface BusinessModelingViewProps {
     businessObjects: any[];
     setBusinessObjects: (fn: (prev: any[]) => any[]) => void;
@@ -184,31 +204,70 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
                             业务域
                         </h3>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-1">
+                    <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-4">
                         <button
                             onClick={() => setSelectedDomain('ALL')}
                             className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between group ${selectedDomain === 'ALL' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
                         >
-                            <span>全部域</span>
+                            <span className="flex items-center gap-2"><Layers size={14} /> 全部域</span>
                             <span className={`text-xs px-2 py-0.5 rounded-full ${selectedDomain === 'ALL' ? 'bg-blue-200/50' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}>
                                 {businessObjects.length}
                             </span>
                         </button>
-                        {uniqueDomains.map(domain => {
-                            const count = businessObjects.filter(bo => bo.domain === domain).length;
-                            return (
-                                <button
-                                    key={domain}
-                                    onClick={() => setSelectedDomain(domain)}
-                                    className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between group ${selectedDomain === domain ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
-                                >
-                                    <span>{domain}</span>
-                                    <span className={`text-xs px-2 py-0.5 rounded-full ${selectedDomain === domain ? 'bg-blue-200/50' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}>
-                                        {count}
-                                    </span>
-                                </button>
-                            );
-                        })}
+
+                        {/* Render Groups */}
+                        {DOMAIN_GROUPS.map((group, idx) => (
+                            <div key={idx}>
+                                <h4 className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 mt-2">
+                                    {group.title}
+                                </h4>
+                                <div className="space-y-0.5">
+                                    {group.domains.map(domain => {
+                                        const count = businessObjects.filter(bo => bo.domain === domain).length;
+                                        return (
+                                            <button
+                                                key={domain}
+                                                onClick={() => setSelectedDomain(domain)}
+                                                className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors flex items-center justify-between group ml-2 border-l border-slate-100 ${selectedDomain === domain ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
+                                            >
+                                                <span>{domain}</span>
+                                                {count > 0 && (
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${selectedDomain === domain ? 'bg-blue-200/50' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}>
+                                                        {count}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))}
+
+                        {/* Render Others */}
+                        {uniqueDomains.filter(d => !DOMAIN_GROUPS.flatMap(g => g.domains).includes(d)).length > 0 && (
+                            <div>
+                                <h4 className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 mt-2">
+                                    📂 其他
+                                </h4>
+                                <div className="space-y-0.5">
+                                    {uniqueDomains.filter(d => !DOMAIN_GROUPS.flatMap(g => g.domains).includes(d)).map(domain => {
+                                        const count = businessObjects.filter(bo => bo.domain === domain).length;
+                                        return (
+                                            <button
+                                                key={domain}
+                                                onClick={() => setSelectedDomain(domain)}
+                                                className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors flex items-center justify-between group ml-2 border-l border-slate-100 ${selectedDomain === domain ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
+                                            >
+                                                <span>{domain}</span>
+                                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${selectedDomain === domain ? 'bg-blue-200/50' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}>
+                                                    {count}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 

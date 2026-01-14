@@ -24,7 +24,9 @@ export type ObjectType = 'entity' | 'event' | 'state' | 'rule' | 'attribute';
 // V2 Beta: Business Domain Options
 export const BUSINESS_DOMAINS = [
     '交易域', '用户域', '商品域', '营销域', '供应链域',
-    '财务域', '客服域', '风控域', '数据域', '其他'
+    '财务域', '客服域', '风控域', '数据域',
+    '组织人事域', '薪酬福利域', '考勤工时域', '人才发展域',
+    '其他'
 ] as const;
 export type BusinessDomain = typeof BUSINESS_DOMAINS[number];
 

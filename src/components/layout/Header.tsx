@@ -1,24 +1,39 @@
-import { AlertCircle, ChevronRight } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 
 interface HeaderProps {
     activeModule: string;
 }
+
+const moduleLabels: Record<string, string> = {
+    dashboard: '控制台',
+    ask_data: '问数',
+    data_supermarket: '找数',
+    td_goals: '业务梳理',
+    td_modeling: '业务对象建模',
+    bu_semantic: '逻辑视图',
+    candidate_confirmation: '候选业务对象',
+    scenario_orchestration: '场景编排',
+    bu_connect: '数据源管理',
+    bu_scan: '资产扫描',
+    bu_discovery: '技术发现',
+    bu_candidates: '候选生成',
+    mapping: '映射工作台',
+    bo_mapping: '业务对象映射',
+    governance: '冲突检测',
+    smart_data: '智能数据中心',
+    ee_api: 'API 网关',
+    ee_cache: '缓存策略'
+};
 
 const Header = ({ activeModule }: HeaderProps) => (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-10">
         <div className="flex items-center text-sm breadcrumbs text-slate-500">
             <span>数据语义治理</span>
             <ChevronRight size={14} className="mx-2" />
-            <span className="font-medium text-slate-800 capitalize">{activeModule.replace('td_goals', '业务梳理').replace('_', ' ')}</span>
+            <span className="font-medium text-slate-800">{moduleLabels[activeModule] || activeModule}</span>
         </div>
         <div className="flex items-center gap-4">
-            <button className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 relative">
-                <AlertCircle size={20} />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
-            </button>
-            <button className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 shadow-sm shadow-blue-200 transition-colors">
-                发布版本 (v1.0.4)
-            </button>
+            {/* 右侧预留空间 */}
         </div>
     </header>
 );

@@ -2,7 +2,9 @@ import { useState } from 'react';
 import {
     Layout, Database, GitMerge, Server, Layers,
     Search, FileText, Activity, Cpu, Link,
-    RefreshCw, ChevronRight, Shield, CheckCircle, FileCheck, CheckSquare, AlertTriangle, MessageCircle, ArrowRight, Sparkles, Box, Edit, XCircle, ZoomIn, ZoomOut, Eye, Share2, Network, GitBranch, Table, Globe, ChevronDown, Check
+    RefreshCw, ChevronRight, Shield, CheckSquare,
+    Plus, Upload, FileCheck, TrendingUp, MoreHorizontal, X, AlertTriangle, Users, Clock, MessageCircle, Send,
+    Book, Tag, CheckCircle, ArrowRight, Sparkles, Box, Edit, XCircle, ZoomIn, ZoomOut, Eye, Share2, Network, GitBranch, Table, Globe, ChevronDown, Check
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -14,23 +16,32 @@ const Sidebar = ({ activeModule, setActiveModule }: SidebarProps) => {
     const [isCollapsed, setIsCollapsed] = useState(false);
 
     const menus = [
-        { title: '概览', items: [{ id: 'dashboard', label: '控制台 Dashboard', icon: Activity }] },
         {
             title: '数据服务超市',
             color: 'text-indigo-400',
             items: [
-                { id: 'data_supermarket', label: '数据服务 (Market)', icon: Search }
+                { id: 'ask_data', label: '问数', icon: MessageCircle },
+                { id: 'data_supermarket', label: '找数', icon: Search }
             ]
         },
         {
             title: '语义建模',
             color: 'text-blue-400',
             items: [
+                { id: 'dashboard', label: '控制台', icon: Activity },
                 { id: 'td_goals', label: '业务梳理', icon: FileText },
                 { id: 'td_modeling', label: '业务对象建模', icon: Layout },
                 { id: 'bu_semantic', label: '逻辑视图', icon: FileText },
-                { id: 'sg_candidate_confirm', label: '候选业务对象', icon: CheckCircle },
-                { id: 'td_scenario', label: '场景编排', icon: Layers },
+                { id: 'candidate_confirmation', label: '候选业务对象', icon: CheckSquare },
+                { id: 'scenario_orchestration', label: '场景编排', icon: Layers }
+            ]
+        },
+        {
+            title: '语义资产管理',
+            color: 'text-purple-400',
+            items: [
+                { id: 'term_mgmt', label: '术语管理', icon: Book },
+                { id: 'tag_mgmt', label: '标签管理', icon: Tag }
             ]
         },
         {
@@ -75,7 +86,7 @@ const Sidebar = ({ activeModule, setActiveModule }: SidebarProps) => {
                 {!isCollapsed && (
                     <div className="ml-3 overflow-hidden">
                         <h1 className="font-bold text-white tracking-tight whitespace-nowrap">数据语义治理</h1>
-                        <p className="text-[10px] text-slate-500 uppercase tracking-wider whitespace-nowrap">Enterprise Edition</p>
+                        <p className="text-[10px] text-slate-500 tracking-wider whitespace-nowrap">企业版</p>
                     </div>
                 )}
             </div>

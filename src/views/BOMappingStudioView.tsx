@@ -21,11 +21,37 @@ const BOMappingStudioView = ({ selectedBO, showRuleEditor, setShowRuleEditor, bu
     const [selectedDataSourceId, setSelectedDataSourceId] = useState<string | null>(mockDataSources[0]?.id || null);
     const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
 
+    // Sync activeBOId with selectedBO prop
+    useEffect(() => {
+        if (selectedBO?.id) {
+            setActiveBOId(selectedBO.id);
+        }
+    }, [selectedBO]);
+
     // Get active BO from businessObjects
     const activeBO = businessObjects.find(bo => bo.id === activeBOId) || businessObjects[0];
 
     // Get associated table mapping
-    const tableMapping = mockBOTableMappings[activeBOId] || null;
+    // FIXED: Support dynamic mapping from BO sourceTables
+    let tableMapping = mockBOTableMappings[activeBOId] || null;
+    if (!tableMapping && activeBO && activeBO.sourceTables && activeBO.sourceTables.length > 0) {
+        const sourceTableName = activeBO.sourceTables[0];
+        // Try to auto-generate mapping for display
+        tableMapping = {
+            tableId: sourceTableName,
+            tableName: sourceTableName,
+            source: 'Auto-Generated',
+            mappings: activeBO.fields ? activeBO.fields.map((f: any) => ({
+                boField: f.name,
+                tblField: f.code || f.name,
+                rule: 'Direct Map'
+            })) : [],
+            fields: activeBO.fields ? activeBO.fields.map((f: any) => ({
+                name: f.code || f.name,
+                type: f.type || 'varchar'
+            })) : []
+        };
+    }
 
     // Calculate mapping stats
     const totalFields = activeBO?.fields?.length || 0;

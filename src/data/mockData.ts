@@ -1,7 +1,8 @@
 // ==========================================
 // 模拟数据 (Mock Data)
 // ==========================================
-
+// ==========================================
+import { BusinessObject } from '../types/semantic';
 // V2.3F P2: Standard Term Library
 export const STANDARD_TERMS = {
     tables: [
@@ -109,7 +110,7 @@ export const mockBusinessGoals = [
 ];
 
 // TD: 业务对象 (恢复丢失的数据)
-export const mockBusinessObjects = [
+export const mockBusinessObjects: BusinessObject[] = [
     {
         id: 'BO_NEWBORN',
         name: '新生儿 (Newborn)',
@@ -134,6 +135,106 @@ export const mockBusinessObjects = [
         owner: '医院管理处',
         status: 'draft',
         fields: []
+    },
+    {
+        id: 'BO_USER_PROFILE',
+        name: '用户画像',
+        code: 'biz_user_profile',
+        domain: '用户域',
+        owner: '用户中心',
+        status: 'published',
+        description: '用户基础画像信息，包含用户ID、姓名、联系方式等属性',
+        fields: [
+            { name: '用户ID', type: 'Long', required: true },
+            { name: '姓名', type: 'String', required: true },
+            { name: '手机号', type: 'String', required: false },
+        ]
+    },
+    {
+        id: 'BO_ORDER',
+        name: '订单',
+        code: 'biz_order',
+        domain: '交易域',
+        owner: '交易中心',
+        status: 'published',
+        description: '交易订单核心业务对象',
+        fields: [
+            { name: '订单ID', type: 'Long', required: true },
+            { name: '用户ID', type: 'Long', required: true },
+            { name: '订单金额', type: 'Decimal', required: true },
+            { name: '订单状态', type: 'Enum', required: true },
+        ]
+    },
+    {
+        id: 'BO_PRODUCT',
+        name: '商品',
+        code: 'biz_product',
+        domain: '商品域',
+        owner: '商品中心',
+        status: 'published',
+        description: '商品信息业务对象',
+        fields: [
+            { name: '商品ID', type: 'Long', required: true },
+            { name: '商品名称', type: 'String', required: true },
+            { name: '售价', type: 'Decimal', required: true },
+        ]
+    },
+    // 🚚 SG-DEMO: Supply Chain Business Objects
+    {
+        id: 'BO_SCM_SUPPLIER',
+        name: '供应商 (Supplier)',
+        code: 'biz_scm_supplier',
+        domain: '采购域',
+        owner: '供应链管理部',
+        status: 'published',
+        description: '记录供应商基础信息及评级',
+        fields: [
+            { name: '供应商ID', type: 'String', required: true },
+            { name: '供应商名称', type: 'String', required: true },
+            { name: '评级', type: 'Enum', required: true }
+        ]
+    },
+    {
+        id: 'BO_SCM_PO',
+        name: '采购订单 (PO)',
+        code: 'biz_scm_po',
+        domain: '采购域',
+        owner: '供应链管理部',
+        status: 'published',
+        description: '采购交易单据',
+        fields: [
+            { name: '订单主键', type: 'String', required: true },
+            { name: '交易金额', type: 'Decimal', required: true },
+            { name: '单据流转状态', type: 'Enum', required: true }
+        ]
+    },
+    {
+        id: 'BO_SCM_INVENTORY',
+        name: '库存 (Inventory)',
+        code: 'biz_scm_inventory',
+        domain: '库存域',
+        owner: '仓储物流部',
+        status: 'published', // Pre-publish so it exists, but mapping allows demo
+        description: '仓库实时库存快照',
+        fields: [
+            { name: '商品SKU', type: 'Long', required: true },
+            { name: '仓库维度', type: 'Int', required: true },
+            { name: '核心度量值', type: 'Int', required: true }
+        ]
+    },
+    {
+        id: 'BO_SCM_DELIVERY',
+        name: '物流运单 (Delivery)',
+        code: 'biz_scm_delivery',
+        domain: '物流域',
+        owner: '仓储物流部',
+        status: 'published',
+        description: '物流配送单据',
+        fields: [
+            { name: '运单号', type: 'String', required: true },
+            { name: '快递单号', type: 'String', required: true },
+            { name: '配送状态', type: 'Enum', required: true }
+        ]
     }
 ];
 
@@ -333,6 +434,46 @@ export const mockDataSources = [
                 ]
             }
         ]
+    },
+    // 👔 SG-DEMO: HR & Supply Chain Data Sources
+    {
+        id: 'DS_HR_01',
+        name: 'HR_Master_DB',
+        type: 'MySQL',
+        host: '10.5.20.88',
+        port: 3306,
+        dbName: 'hr_master',
+        status: 'connected',
+        lastScan: '2024-06-20 10:00',
+        tableCount: 45,
+        desc: '人力资源主数据',
+        tables: [] // Minimal info for tree
+    },
+    {
+        id: 'DS_HR_02',
+        name: 'Finance_DB',
+        type: 'PostgreSQL',
+        host: '10.5.20.90',
+        port: 5432,
+        dbName: 'finance_core',
+        status: 'connected',
+        lastScan: '2024-06-20 14:30',
+        tableCount: 120,
+        desc: '财务系统核心库',
+        tables: []
+    },
+    {
+        id: 'DS_SCM_01',
+        name: 'SCM_Supply_DB',
+        type: 'MySQL',
+        host: '10.8.10.12',
+        port: 3306,
+        dbName: 'scm_supply',
+        status: 'connected',
+        lastScan: '2024-06-15 08:30',
+        tableCount: 88,
+        desc: '供应链采购库',
+        tables: []
     }
 ];
 
@@ -369,6 +510,103 @@ export const mockBOTableMappings: Record<string, { tableId: string; tableName: s
             { name: 'issue_date', type: 'date' },
             { name: 'hospital_code', type: 'varchar(20)' },
             { name: 'mother_id', type: 'varchar(18)' }
+        ]
+    },
+    // 以下是与 mockScanResults 表名匹配的映射
+    'BO_USER_PROFILE': {
+        tableId: 'TBL_USER_PROFILE',
+        tableName: 't_user_profile',
+        source: '卫健委_前置库_01 (MySQL)',
+        mappings: [
+            { boField: '用户ID', tblField: 'user_id', rule: 'Direct Copy' },
+            { boField: '姓名', tblField: 'name', rule: 'Direct Copy' },
+            { boField: '手机号', tblField: 'mobile', rule: 'Direct Copy' },
+        ],
+        fields: [
+            { name: 'user_id', type: 'bigint', key: 'PK' },
+            { name: 'name', type: 'varchar(50)' },
+            { name: 'mobile', type: 'varchar(20)' }
+        ]
+    },
+    'BO_ORDER': {
+        tableId: 'TBL_ORDER',
+        tableName: 't_order',
+        source: '业务主库 (MySQL)',
+        mappings: [
+            { boField: '订单ID', tblField: 'order_id', rule: 'Direct Copy' },
+            { boField: '用户ID', tblField: 'user_id', rule: 'Direct Copy' },
+            { boField: '订单金额', tblField: 'total_amount', rule: 'Direct Copy' },
+            { boField: '订单状态', tblField: 'status', rule: 'Direct Copy' },
+        ],
+        fields: [
+            { name: 'order_id', type: 'bigint', key: 'PK' },
+            { name: 'user_id', type: 'bigint' },
+            { name: 'total_amount', type: 'decimal(10,2)' },
+            { name: 'status', type: 'int' },
+            { name: 'create_time', type: 'datetime' }
+        ]
+    },
+    'BO_PRODUCT': {
+        tableId: 'TBL_PRODUCT',
+        tableName: 't_product',
+        source: '商品库 (PostgreSQL)',
+        mappings: [
+            { boField: '商品ID', tblField: 'product_id', rule: 'Direct Copy' },
+            { boField: '商品名称', tblField: 'name', rule: 'Direct Copy' },
+            { boField: '售价', tblField: 'price', rule: 'Direct Copy' },
+        ],
+        fields: [
+            { name: 'product_id', type: 'bigint', key: 'PK' },
+            { name: 'name', type: 'varchar(200)' },
+            { name: 'price', type: 'decimal(10,2)' },
+            { name: 'category_id', type: 'int' }
+        ]
+    },
+    // 🚚 SG-DEMO: Supply Chain Mappings (Inventory intentionally omitted for demo)
+    'BO_SCM_SUPPLIER': {
+        tableId: 'TBL_SCM_SUPPLIER',
+        tableName: 't_scm_supplier',
+        source: 'SCM_Supply_DB (MySQL)',
+        mappings: [
+            { boField: '供应商ID', tblField: 'supplier_id', rule: 'Direct Copy' },
+            { boField: '供应商名称', tblField: 'supplier_name', rule: 'Direct Copy' },
+            { boField: '评级', tblField: 'rating', rule: 'Direct Copy' },
+        ],
+        fields: [
+            { name: 'supplier_id', type: 'varchar(20)', key: 'PK' },
+            { name: 'supplier_name', type: 'varchar(100)' },
+            { name: 'rating', type: 'char(1)' }
+        ]
+    },
+    'BO_SCM_PO': {
+        tableId: 'TBL_SCM_PO',
+        tableName: 't_scm_purchase_order',
+        source: 'SCM_Supply_DB (MySQL)',
+        mappings: [
+            { boField: '订单主键', tblField: 'po_id', rule: 'Direct Copy' },
+            { boField: '交易金额', tblField: 'total_amount', rule: 'Direct Copy' },
+            { boField: '单据流转状态', tblField: 'status', rule: 'Direct Copy' },
+        ],
+        fields: [
+            { name: 'po_id', type: 'varchar(20)', key: 'PK' },
+            { name: 'supplier_id', type: 'varchar(20)' },
+            { name: 'total_amount', type: 'decimal(12,2)' },
+            { name: 'status', type: 'int' }
+        ]
+    },
+    'BO_SCM_DELIVERY': {
+        tableId: 'TBL_SCM_DELIVERY',
+        tableName: 't_scm_delivery',
+        source: 'TMS_Transport_DB (Oracle)',
+        mappings: [
+            { boField: '运单号', tblField: 'delivery_id', rule: 'Direct Copy' },
+            { boField: '快递单号', tblField: 'tracking_no', rule: 'Direct Copy' },
+            { boField: '配送状态', tblField: 'status', rule: 'Direct Copy' },
+        ],
+        fields: [
+            { name: 'delivery_id', type: 'varchar(30)', key: 'PK' },
+            { name: 'tracking_no', type: 'varchar(50)' },
+            { name: 'status', type: 'varchar(20)' }
         ]
     }
 };
@@ -582,6 +820,338 @@ export const mockCatalogItems = [
 
 // BU-02: 扫描结果 (模拟)
 export const mockScanResults = [
+    // 👔 SG-DEMO: HR Scenario Tables (Pending Analysis for Interactive Demo)
+    {
+        table: 't_hr_employee',
+        sourceId: 'DS_HR_01',
+        sourceName: 'HR_Master_DB',
+        sourceType: 'MySQL',
+        rows: '3.5K',
+        updateTime: '2024-06-20 10:00:00',
+        status: 'scanned', // Ready for analysis
+        comment: '企业核心人力资源主数据',
+        confidence: 0,
+        aiSuggestion: '',
+        semanticAnalysis: {
+            analysisStep: 'idle', // Ready to start
+            businessName: '',
+            description: '',
+            scenarios: [],
+            coreFields: [],
+            qualityScore: 0,
+            securityLevel: 'L1',
+            objectType: 'entity',
+            businessDomain: '组织人事域',
+            dataGrain: '明细粒度',
+            updateStrategy: '全量更新'
+        },
+        fields: [
+            { name: 'employee_id', type: 'varchar(20)', comment: '工号' },
+            { name: 'name', type: 'varchar(50)', comment: '姓名' },
+            { name: 'department_id', type: 'int', comment: '部门ID' },
+            { name: 'level', type: 'varchar(10)', comment: '职级' },
+            { name: 'join_date', type: 'date', comment: '入职日期' }
+        ]
+    },
+    {
+        table: 't_hr_department',
+        sourceId: 'DS_HR_01',
+        sourceName: 'HR_Master_DB',
+        sourceType: 'MySQL',
+        rows: '120',
+        updateTime: '2024-06-20 10:00:00',
+        status: 'scanned',
+        comment: '企业组织架构部门信息',
+        confidence: 0,
+        aiSuggestion: '',
+        semanticAnalysis: {
+            analysisStep: 'idle',
+            businessName: '',
+            description: '',
+            scenarios: [],
+            coreFields: [],
+            qualityScore: 0,
+            securityLevel: 'L1',
+            objectType: 'entity',
+            businessDomain: '组织人事域',
+            dataGrain: '明细粒度',
+            updateStrategy: '全量更新'
+        },
+        fields: [
+            { name: 'dept_id', type: 'int', comment: '部门ID' },
+            { name: 'dept_name', type: 'varchar(100)', comment: '部门名称' },
+            { name: 'parent_id', type: 'int', comment: '上级部门ID' },
+            { name: 'manager_id', type: 'varchar(20)', comment: '部门负责人' }
+        ]
+    },
+    {
+        table: 't_hr_payroll',
+        sourceId: 'DS_HR_02',
+        sourceName: 'Finance_DB',
+        sourceType: 'PostgreSQL',
+        rows: '42.0K',
+        updateTime: '2024-06-20 14:30:00',
+        status: 'scanned',
+        comment: '员工薪资发放记录',
+        confidence: 0,
+        aiSuggestion: '',
+        semanticAnalysis: {
+            analysisStep: 'idle',
+            businessName: '',
+            description: '',
+            scenarios: [],
+            coreFields: [],
+            qualityScore: 0,
+            securityLevel: 'L1',
+            objectType: 'entity',
+            businessDomain: '薪酬福利域',
+            dataGrain: '明细粒度',
+            updateStrategy: '增量追加'
+        },
+        fields: [
+            { name: 'payroll_id', type: 'bigint', comment: '流水号' },
+            { name: 'employee_id', type: 'varchar(20)', comment: '员工工号' },
+            { name: 'amount', type: 'decimal(10,2)', comment: '实发金额' },
+            { name: 'pay_date', type: 'date', comment: '发放日期' },
+            { name: 'tax', type: 'decimal(10,2)', comment: '个税' }
+        ]
+    },
+    {
+        table: 't_hr_attendance',
+        sourceId: 'DS_HR_01',
+        sourceName: 'HR_Master_DB',
+        sourceType: 'MySQL',
+        rows: '850K',
+        updateTime: '2024-06-21 08:00:00',
+        status: 'scanned',
+        comment: 'Daily attendance logs',
+        confidence: 0,
+        aiSuggestion: '',
+        semanticAnalysis: {
+            analysisStep: 'idle',
+            businessName: '',
+            description: '',
+            scenarios: [],
+            coreFields: [],
+            qualityScore: 0,
+            securityLevel: 'L1',
+            objectType: 'event',
+            businessDomain: '考勤工时域',
+            dataGrain: '明细粒度',
+            updateStrategy: '增量追加'
+        },
+        fields: [
+            { name: 'record_id', type: 'bigint', comment: '记录ID' },
+            { name: 'employee_id', type: 'varchar(20)', comment: '员工ID' },
+            { name: 'check_in', type: 'datetime', comment: '打卡时间' },
+            { name: 'device_id', type: 'varchar(50)', comment: '打卡设备' },
+            { name: 'status', type: 'int', comment: '考勤状态' }
+        ]
+    },
+    {
+        table: 't_hr_performance',
+        sourceId: 'DS_HR_01',
+        sourceName: 'HR_Master_DB',
+        sourceType: 'MySQL',
+        rows: '12K',
+        updateTime: '2024-06-01 10:00:00',
+        status: 'scanned',
+        comment: 'Quarterly performance reviews',
+        confidence: 0,
+        aiSuggestion: '',
+        semanticAnalysis: {
+            analysisStep: 'idle',
+            businessName: '',
+            description: '',
+            scenarios: [],
+            coreFields: [],
+            qualityScore: 0,
+            securityLevel: 'L2',
+            objectType: 'entity',
+            businessDomain: '人才发展域',
+            dataGrain: '明细粒度',
+            updateStrategy: '全量更新'
+        },
+        fields: [
+            { name: 'review_id', type: 'varchar(30)', comment: '考核编号' },
+            { name: 'employee_id', type: 'varchar(20)', comment: '被考核人' },
+            { name: 'period', type: 'varchar(20)', comment: '考核周期' },
+            { name: 'score', type: 'decimal(5,2)', comment: '最终得分' },
+            { name: 'grade', type: 'char(1)', comment: '等级' }
+        ]
+    },
+    {
+        table: 't_hr_position',
+        sourceId: 'DS_HR_01',
+        sourceName: 'HR_Master_DB',
+        sourceType: 'MySQL',
+        rows: '80',
+        updateTime: '2024-05-15 14:00:00',
+        status: 'scanned',
+        comment: 'Job titles and descriptions',
+        confidence: 0,
+        aiSuggestion: '',
+        semanticAnalysis: {
+            analysisStep: 'idle',
+            businessName: '',
+            description: '',
+            scenarios: [],
+            coreFields: [],
+            qualityScore: 0,
+            securityLevel: 'L1',
+            objectType: 'entity',
+            businessDomain: '组织人事域',
+            dataGrain: '明细粒度',
+            updateStrategy: '全量更新'
+        },
+        fields: [
+            { name: 'post_id', type: 'varchar(20)', comment: '岗位编码' },
+            { name: 'post_name', type: 'varchar(50)', comment: '岗位名称' },
+            { name: 'level_range', type: 'varchar(20)', comment: '职级范围' },
+            { name: 'duty_desc', type: 'text', comment: '职责描述' }
+        ]
+    },
+    // 🚚 SG-DEMO: Supply Chain Scenario Tables (Unmapped for Demo Flow)
+    {
+        table: 't_scm_supplier',
+        sourceId: 'DS_SCM_01',
+        sourceName: 'SCM_Supply_DB',
+        sourceType: 'MySQL',
+        rows: '1.2K',
+        updateTime: '2024-06-15 08:30:00',
+        status: 'analyzed',
+        comment: '用于存储所有供应商的基础信息',
+        confidence: 98,
+        aiSuggestion: 'Supplier: 供应商主体',
+        semanticAnalysis: {
+            businessName: '供应商',
+            description: '供应链管理中的供应商主体，记录供应商的工商信息、联系方式及评级状态。',
+            scenarios: ['采购管理', '供应商绩效评估', '应付账款'],
+            coreFields: [
+                { field: 'supplier_id', reason: '供应商唯一标识' },
+                { field: 'supplier_name', reason: '供应商名称' },
+                { field: 'rating', reason: '业务评级关键指标' }
+            ],
+            qualityScore: 96,
+            securityLevel: 'L2',
+            objectType: 'entity',
+            businessDomain: '采购域',
+            dataGrain: '明细粒度',
+            updateStrategy: '实时更新'
+        },
+        fields: [
+            { name: 'supplier_id', type: 'varchar(20)', comment: '供应商ID', suggestion: 'id' },
+            { name: 'supplier_name', type: 'varchar(100)', comment: '供应商名称', suggestion: 'name' },
+            { name: 'contact_person', type: 'varchar(50)', comment: '联系人', suggestion: 'contact' },
+            { name: 'phone', type: 'varchar(20)', comment: '联系电话', suggestion: 'phone' },
+            { name: 'rating', type: 'char(1)', comment: '评级(A/B/C)', suggestion: 'level' },
+            { name: 'create_time', type: 'datetime', comment: '创建时间' }
+        ]
+    },
+    {
+        table: 't_scm_purchase_order',
+        sourceId: 'DS_SCM_01',
+        sourceName: 'SCM_Supply_DB',
+        sourceType: 'MySQL',
+        rows: '45.6K',
+        updateTime: '2024-06-15 09:15:00',
+        status: 'analyzed',
+        comment: '采购订单主表，记录采购交易详情',
+        confidence: 95,
+        aiSuggestion: 'Purchase Order: 采购订单',
+        semanticAnalysis: {
+            businessName: '采购订单',
+            description: '发生的采购交易单据，包含订单金额、状态及关联供应商。',
+            scenarios: ['采购执行', '库存补货', '财务结算'],
+            coreFields: [
+                { field: 'po_id', reason: '订单主键' },
+                { field: 'total_amount', reason: '交易金额' },
+                { field: 'status', reason: '单据流转状态' }
+            ],
+            qualityScore: 94,
+            securityLevel: 'L3',
+            objectType: 'entity',
+            businessDomain: '采购域',
+            dataGrain: '明细粒度',
+            updateStrategy: '增量追加'
+        },
+        fields: [
+            { name: 'po_id', type: 'varchar(20)', comment: '采购单号', suggestion: 'id' },
+            { name: 'supplier_id', type: 'varchar(20)', comment: '供应商ID', suggestion: 'supplier_ref' },
+            { name: 'total_amount', type: 'decimal(12,2)', comment: '订单总金额', suggestion: 'amount' },
+            { name: 'status', type: 'int', comment: '状态(0:待确认,1:已确认,2:已发货,3:已完成)', suggestion: 'status' },
+            { name: 'order_date', type: 'date', comment: '下单日期', suggestion: 'date' }
+        ]
+    },
+    {
+        table: 't_scm_inventory',
+        sourceId: 'DS_SCM_02',
+        sourceName: 'WMS_Warehouse_DB',
+        sourceType: 'PostgreSQL',
+        rows: '8.5K',
+        updateTime: '2024-06-15 10:00:00',
+        status: 'analyzed',
+        comment: '主要用于库存数量盘点',
+        confidence: 88,
+        aiSuggestion: 'Inventory: 库存',
+        semanticAnalysis: {
+            businessName: '库存',
+            description: '各仓库及SKU维度的实时库存快照。',
+            scenarios: ['库存查询', '缺货预警', '存货核算'],
+            coreFields: [
+                { field: 'sku_id', reason: '商品SKU' },
+                { field: 'warehouse_id', reason: '仓库维度' },
+                { field: 'quantity', reason: '核心度量值' }
+            ],
+            qualityScore: 85,
+            securityLevel: 'L2',
+            objectType: 'event', // Snapshot events
+            businessDomain: '库存域',
+            dataGrain: '快照粒度',
+            updateStrategy: '全量刷写'
+        },
+        fields: [
+            { name: 'sku_id', type: 'bigint', comment: 'SKU编号', suggestion: 'product_ref' },
+            { name: 'warehouse_id', type: 'int', comment: '仓库ID', suggestion: 'warehouse_ref' },
+            { name: 'quantity', type: 'int', comment: '当前库存量', suggestion: 'qty' },
+            { name: 'last_updated', type: 'timestamp', comment: '最后更新时间' }
+        ]
+    },
+    {
+        table: 't_scm_delivery',
+        sourceId: 'DS_SCM_03',
+        sourceName: 'TMS_Transport_DB',
+        sourceType: 'Oracle',
+        rows: '22.1K',
+        updateTime: '2024-06-15 11:30:00',
+        status: 'analyzed',
+        comment: '物流运输单据',
+        confidence: 90,
+        aiSuggestion: 'Delivery: 物流运单',
+        semanticAnalysis: {
+            businessName: '物流运单',
+            description: '记录采购或销售订单的物流配送信息及轨迹状态。',
+            scenarios: ['物流追踪', '履约时效分析'],
+            coreFields: [
+                { field: 'delivery_id', reason: '运单号' },
+                { field: 'tracking_no', reason: '快递单号' },
+                { field: 'status', reason: '配送状态' }
+            ],
+            qualityScore: 88,
+            securityLevel: 'L2',
+            objectType: 'event',
+            businessDomain: '物流域',
+            dataGrain: '明细粒度',
+            updateStrategy: '增量更新'
+        },
+        fields: [
+            { name: 'delivery_id', type: 'varchar(30)', comment: '系统运单号', suggestion: 'id' },
+            { name: 'order_id', type: 'varchar(20)', comment: '关联订单号', suggestion: 'order_ref' },
+            { name: 'logistics_company', type: 'varchar(50)', comment: '物流公司名称', suggestion: 'carrier' },
+            { name: 'tracking_no', type: 'varchar(50)', comment: '快递追踪号', suggestion: 'tracking' },
+            { name: 'status', type: 'varchar(20)', comment: '物流状态', suggestion: 'status' }
+        ]
+    },
     // 🧪 V2.3 TEST: Low confidence table to demonstrate Confidence Boosting Panel
     {
         table: 't_test_low_confidence',
@@ -1215,6 +1785,34 @@ export const mockScanResults = [
             { name: 'POSITION', type: 'VARCHAR2(50)', comment: '职位' },
             { name: 'HIRE_DATE', type: 'DATE', comment: '入职日期' },
             { name: 'SALARY', type: 'NUMBER(10,2)', comment: '薪资' }
+        ]
+    },
+    // HR Mock Data Source
+    {
+        id: 'DS_HR_01',
+        name: 'HR_Master_DB',
+        type: 'MySQL',
+        host: '192.168.1.100',
+        port: 3306,
+        dbName: 'hr_master',
+        status: 'active',
+        tables: [
+            {
+                id: 'TBL_HR_01', name: 't_hr_employee', comment: '企业核心人力资源主数据', rows: '3.5K', updateTime: '2024-06-20 10:00', columns: [
+                    { name: 'employee_id', type: 'varchar(20)', comment: '工号' },
+                    { name: 'name', type: 'varchar(50)', comment: '姓名' },
+                    { name: 'department_id', type: 'int', comment: '部门ID' },
+                    { name: 'level', type: 'varchar(10)', comment: '职级' },
+                    { name: 'join_date', type: 'date', comment: '入职日期' }
+                ]
+            },
+            {
+                id: 'TBL_HR_02', name: 't_hr_department', comment: '企业组织架构部门信息', rows: '120', updateTime: '2024-06-20 10:00', columns: [
+                    { name: 'dept_id', type: 'int', comment: '部门ID' },
+                    { name: 'dept_name', type: 'varchar(100)', comment: '部门名称' },
+                    { name: 'parent_id', type: 'int', comment: '上级部门ID' }
+                ]
+            }
         ]
     }
 ];

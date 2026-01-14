@@ -8,6 +8,7 @@ import { SemanticAnalysisCard } from './semantic/SemanticAnalysisCard';
 import { UpgradeSuggestionCard, generateUpgradeSuggestion } from './semantic/UpgradeSuggestionCard';
 import { AnalysisProgressPanel } from './semantic/AnalysisProgressPanel';
 import { StreamingProgressPanel } from './semantic/StreamingProgressPanel';
+import { mockBOTableMappings } from '../data/mockData';
 
 interface DataSemanticUnderstandingViewProps {
     scanResults: any[];
@@ -121,12 +122,16 @@ const DataSemanticUnderstandingView = ({
         index: null, targetTable: '', type: 'Many-to-One', key: ''
     });
 
+    // Mapping Details Modal State
+    const [viewMappingBO, setViewMappingBO] = useState<string | null>(null);
+
+
     // Derived Data
     // Get unique data sources from scan results (assuming scanResults contains source info)
     // Or we use a mock list of sources if scanResults doesn't have full source metadata, 
     // but usually scanResults items should have 'sourceId', 'sourceName', 'sourceType'.
     // We will extract unique sources from the assets list.
-    const assets = scanResults.filter(r => r.status === 'scanned' || r.status === 'analyzed');
+    const assets = scanResults.filter(r => ['scanned', 'analyzed', 'pending_review', 'pending'].includes(r.status));
 
     const dataSourcesMap = assets.reduce((acc: any, asset: any) => {
         if (!asset.sourceId) return acc;
@@ -463,6 +468,7 @@ const DataSemanticUnderstandingView = ({
             hasConflict: false,
             objectSuggestion: {
                 name: profile.businessName,
+                businessDomain: profile.businessDomain,
                 confidence: profile.aiScore || 0.85,
                 source: 'AI Semantic',
                 status: 'pending',
@@ -489,7 +495,7 @@ const DataSemanticUnderstandingView = ({
 
         setEditMode(false);
         // Toast or specific feedback handled by UI
-        if (setActiveModule) setActiveModule('sg_candidate_confirm');
+        if (setActiveModule) setActiveModule('candidate_confirmation');
     };
 
     const executeDirectGenerate = (table: any, profile: any) => {
@@ -707,7 +713,7 @@ const DataSemanticUnderstandingView = ({
                             {/* Data Grid */}
                             <div className="flex-1 overflow-auto">
                                 {/* Batch Action Toolbar */}
-                                <div className="flex items-center justify-between py-2 bg-slate-50 border-b border-slate-100">
+                                <div className="flex items-center justify-between py-2 bg-slate-50 border-b border-slate-100 sticky top-0 z-20">
                                     <div className="flex items-center">
                                         {/* Checkbox container - same width as table column */}
                                         <div className="w-10 px-3 flex items-center justify-center">
@@ -806,7 +812,30 @@ const DataSemanticUnderstandingView = ({
                                                     </td>
                                                     <td className="px-4 py-4">
                                                         {asset.semanticAnalysis?.businessName ? (
-                                                            <span className="text-slate-800 font-medium">{asset.semanticAnalysis.businessName}</span>
+                                                            <div className="flex flex-col items-start gap-1">
+                                                                <span className="text-slate-800 font-medium">{asset.semanticAnalysis.businessName}</span>
+                                                                {(() => {
+                                                                    // Check if mapped
+                                                                    const mappedEntry = Object.entries(mockBOTableMappings).find(([_, config]) => config.tableName === asset.table);
+                                                                    if (mappedEntry) {
+                                                                        const [boId, config] = mappedEntry;
+                                                                        const boName = businessObjects?.find(b => b.id === boId)?.name || boId;
+                                                                        return (
+                                                                            <span
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    setViewMappingBO(boId);
+                                                                                }}
+                                                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-100 cursor-pointer hover:bg-blue-100 transition-colors"
+                                                                            >
+                                                                                <Share2 size={10} />
+                                                                                已关联: {boName}
+                                                                            </span>
+                                                                        );
+                                                                    }
+                                                                    return null;
+                                                                })()}
+                                                            </div>
                                                         ) : (
                                                             <span className="text-slate-300 italic text-xs">- 未定义 -</span>
                                                         )}
@@ -1010,7 +1039,10 @@ const DataSemanticUnderstandingView = ({
                                                         afterState
                                                     );
                                                 }}
-                                                existingBO={(businessObjects || []).find(bo => bo.code === selectedTable.table)}
+                                                existingBO={(() => {
+                                                    const mappedEntry = Object.entries(mockBOTableMappings).find(([_, config]) => config.tableName === selectedTable.table);
+                                                    return mappedEntry ? (businessObjects || []).find(b => b.id === mappedEntry[0]) : undefined;
+                                                })()}
                                             />
                                             {upgradeHistory.some(entry => entry.tableId === selectedTable.table) && (
                                                 <div className="mt-4 bg-white rounded-lg border border-slate-200 p-4">
@@ -1916,11 +1948,11 @@ const DataSemanticUnderstandingView = ({
                                         })()}
                                     </div>
                                 )}
-                            </div >
-                        </div >
+                            </div>
+                        </div>
                     )}
-                </div >
-            </div >
+                </div>
+            </div>
 
             {/* Relationship Edit Modal */}
             {
@@ -2407,8 +2439,104 @@ const DataSemanticUnderstandingView = ({
                             </div>
                         </div>
                     </div>
-                )
-            }
+                )}
+
+            {/* Mapping Details Modal */}
+            {viewMappingBO && mockBOTableMappings[viewMappingBO] && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] backdrop-blur-sm">
+                    <div className="bg-white rounded-xl shadow-2xl w-[800px] max-h-[80vh] flex flex-col animate-fade-in-up">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                            <div>
+                                <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                                    <Share2 size={18} className="text-blue-500" />
+                                    业务对象映射详情
+                                </h3>
+                                <div className="text-sm text-slate-500 mt-1 flex items-center gap-2">
+                                    <span>{mockBOTableMappings[viewMappingBO].tableName}</span>
+                                    <ArrowLeft size={12} />
+                                    <span className="font-medium text-blue-600">
+                                        {businessObjects?.find(b => b.id === viewMappingBO)?.name || viewMappingBO}
+                                    </span>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setViewMappingBO(null)}
+                                className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="p-6 overflow-auto">
+                            {mockBOTableMappings[viewMappingBO].mappings.length > 0 ? (
+                                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-slate-50 text-slate-500 font-medium">
+                                            <tr>
+                                                <th className="px-4 py-3 text-right w-1/3">物理字段</th>
+                                                <th className="px-4 py-3 text-center w-24">映射规则</th>
+                                                <th className="px-4 py-3 text-left w-1/3">业务属性</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {mockBOTableMappings[viewMappingBO].mappings.map((m, idx) => (
+                                                <tr key={idx} className="hover:bg-slate-50/50">
+                                                    <td className="px-4 py-3 text-right font-mono text-slate-600">{m.tblField}</td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
+                                                            {m.rule === 'Direct Copy' ? '直连' : '转换'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-left font-medium text-blue-700">{m.boField}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div className="py-12 flex flex-col items-center text-slate-400">
+                                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-3">
+                                        <Share2 size={24} className="opacity-20" />
+                                    </div>
+                                    <p>暂无字段映射记录</p>
+                                </div>
+                            )}
+
+                            {/* Additional Info / Stats */}
+                            <div className="mt-6 grid grid-cols-3 gap-4">
+                                <div className="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                                    <div className="text-xs text-slate-500 mb-1">物理字段总数</div>
+                                    <div className="text-xl font-bold text-slate-800">
+                                        {mockBOTableMappings[viewMappingBO].fields.length}
+                                    </div>
+                                </div>
+                                <div className="p-4 bg-blue-50/50 rounded-lg border border-blue-100">
+                                    <div className="text-xs text-blue-500 mb-1">已映射字段</div>
+                                    <div className="text-xl font-bold text-blue-700">
+                                        {mockBOTableMappings[viewMappingBO].mappings.length}
+                                    </div>
+                                </div>
+                                <div className="p-4 bg-green-50/50 rounded-lg border border-green-100">
+                                    <div className="text-xs text-green-600 mb-1">覆盖率</div>
+                                    <div className="text-xl font-bold text-green-700">
+                                        {Math.round((mockBOTableMappings[viewMappingBO].mappings.length / Math.max(1, mockBOTableMappings[viewMappingBO].fields.length)) * 100)}%
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="px-6 py-4 border-t border-slate-100 flex justify-end">
+                            <button
+                                onClick={() => setViewMappingBO(null)}
+                                className="px-4 py-2 bg-slate-100 text-slate-600 font-medium rounded-lg hover:bg-slate-200 transition-colors"
+                            >
+                                关闭
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Direct Generation Modal */}
             {showDirectGenModal && pendingGenData && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
@@ -2463,7 +2591,7 @@ const DataSemanticUnderstandingView = ({
                                     onClick={() => executeAddToCandidates(pendingGenData.table, pendingGenData.profile)}
                                     className="w-full py-3 bg-white border border-slate-200 text-slate-700 rounded-lg font-medium hover:bg-slate-50 flex items-center justify-center gap-2 transition-colors"
                                 >
-                                    <ListPlus size={18} /> 加入候选确认列表
+                                    <ListPlus size={18} /> 加入候选业务对象
                                 </button>
                             </div>
                         </div>
