@@ -1787,6 +1787,40 @@ export const mockScanResults = [
             { name: 'SALARY', type: 'NUMBER(10,2)', comment: '薪资' }
         ]
     },
+    {
+        table: 't_hr_employee',
+        sourceId: 'DS_HR_01',
+        sourceName: 'HR_Master_DB',
+        sourceType: 'MySQL',
+        rows: '3.5K',
+        updateTime: '2024-06-20 10:00:00',
+        status: 'analyzed',
+        comment: '企业核心人力资源主数据',
+        confidence: 90,
+        aiSuggestion: 'Employee: 员工',
+        semanticAnalysis: {
+            businessName: '员工主档',
+            description: '记录企业所有在职及离职员工的基础信息，包括基本资料、职位信息及入职时间。',
+            scenarios: ['人事管理', '薪资计算', '组织架构'],
+            coreFields: [
+                { field: 'employee_id', reason: '员工唯一标识' },
+                { field: 'department_id', reason: '所属部门' }
+            ],
+            qualityScore: 95,
+            securityLevel: 'L4',
+            objectType: 'master',
+            businessDomain: '人力资源域',
+            dataGrain: '明细粒度',
+            updateStrategy: '缓慢变化维度(SCD)'
+        },
+        fields: [
+            { name: 'employee_id', type: 'varchar(20)', comment: '工号', suggestion: 'id' },
+            { name: 'name', type: 'varchar(50)', comment: '姓名', suggestion: 'name' },
+            { name: 'department_id', type: 'int', comment: '部门ID', suggestion: 'dept_ref' },
+            { name: 'level', type: 'varchar(10)', comment: '职级', suggestion: 'level' },
+            { name: 'join_date', type: 'date', comment: '入职日期', suggestion: 'date' }
+        ]
+    },
     // HR Mock Data Source
     {
         id: 'DS_HR_01',

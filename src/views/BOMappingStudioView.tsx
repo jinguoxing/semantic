@@ -77,12 +77,30 @@ const BOMappingStudioView = ({ selectedBO, showRuleEditor, setShowRuleEditor, bu
     // Effect: Auto-select mapped table when BO changes
     useEffect(() => {
         if (!activeBOId) return;
+
+        // 1. Try static mapping first
         const mapping = mockBOTableMappings[activeBOId];
+        let targetTableId: string | null = null;
+        let targetTableName: string | null = null;
+
         if (mapping) {
+            targetTableId = mapping.tableId;
+            targetTableName = mapping.tableName;
+        } else if (activeBO && activeBO.sourceTables && activeBO.sourceTables.length > 0) {
+            // 2. Try dynamic generation from BO sourceTables
+            targetTableName = activeBO.sourceTables[0];
+            // We might not have the ID, so we'll rely on name matching
+        }
+
+        if (targetTableId || targetTableName) {
             // Try to find the table in data sources
             let found = false;
             for (const ds of mockDataSources) {
-                const table = ds.tables?.find((t: any) => t.id === mapping.tableId || t.name === mapping.tableName);
+                const table = ds.tables?.find((t: any) =>
+                    (targetTableId && t.id === targetTableId) ||
+                    (targetTableName && t.name === targetTableName)
+                );
+
                 if (table) {
                     setSelectedDataSourceId(ds.id);
                     setSelectedTableId(table.id);
@@ -90,19 +108,18 @@ const BOMappingStudioView = ({ selectedBO, showRuleEditor, setShowRuleEditor, bu
                     break;
                 }
             }
-            // If not found in DS tree, still set the ID so our fallback can work
+
+            // If not found in DS tree (but we have a name), relies on fallback logic in render
             if (!found) {
-                // Keep current DS or clear it? Keeping current might be less jarring, but technically incorrect. 
-                // Let's rely on fallback logic which uses tableMapping directly.
-                setSelectedTableId(mapping.tableId);
+                // If we have a table name/id but couldn't find it in DS, 
+                // we set the ID so the fallback logic can construct a display object
+                setSelectedTableId(targetTableId || targetTableName || null);
             }
         } else {
-            // No mapping, clear selection or keep previous? 
-            // Better to clear to show "Select Table" state? Or maybe keep default.
-            // Let's clear table selection to indicate transparency.
+            // No mapping, clear selection
             setSelectedTableId(null);
         }
-    }, [activeBOId]);
+    }, [activeBOId, activeBO]);
 
     // Handle One-Click Generate
     const handleGenerateClick = () => {
