@@ -23,7 +23,7 @@ export const isIdentifier = (field: any): boolean => {
     if (field.role === 'Identifier') return true;
     if (field.key === 'PK' || field.key === 'FK') return true;
 
-    const name = field.name.toLowerCase();
+    const name = (field.fieldName || field.name || '').toLowerCase();
     return name.endsWith('_id') ||
         name.endsWith('_pk') ||
         name.endsWith('_fk') ||
@@ -36,7 +36,7 @@ export const isIdentifier = (field: any): boolean => {
 export const isTime = (field: any): boolean => {
     if (field.role === 'Time') return true;
 
-    const name = field.name.toLowerCase();
+    const name = (field.fieldName || field.name || '').toLowerCase();
     return name.includes('time') ||
         name.includes('date') ||
         name.includes('created') ||
@@ -52,7 +52,7 @@ export const isTime = (field: any): boolean => {
 export const isState = (field: any): boolean => {
     if (field.role === 'State') return true;
 
-    const name = field.name.toLowerCase();
+    const name = (field.fieldName || field.name || '').toLowerCase();
     return name.includes('status') ||
         name.includes('state') ||
         name.includes('flag') ||
@@ -151,8 +151,8 @@ export function calculateThreeDimensionalMetrics(fields: any[], profile?: any) {
         sensitiveFieldCount: sensitiveFields.length,
         unknownTypeFieldCount: unknownTypeFields.length,
         riskDetails: {
-            sensitive: sensitiveFields.map(f => ({ name: f.name, level: f.sensitivity })),
-            unknown: unknownTypeFields.map(f => f.name)
+            sensitive: sensitiveFields.map(f => ({ name: f.fieldName || f.name, level: f.sensitivity })),
+            unknown: unknownTypeFields.map(f => f.fieldName || f.name)
         }
     };
 }

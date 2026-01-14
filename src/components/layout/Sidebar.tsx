@@ -16,39 +16,46 @@ const Sidebar = ({ activeModule, setActiveModule }: SidebarProps) => {
     const menus = [
         { title: '概览', items: [{ id: 'dashboard', label: '控制台 Dashboard', icon: Activity }] },
         {
+            title: '数据服务超市',
+            color: 'text-indigo-400',
+            items: [
+                { id: 'data_supermarket', label: '数据服务 (Market)', icon: Search }
+            ]
+        },
+        {
             title: '业务建模',
             color: 'text-blue-400',
             items: [
-                { id: 'td_goals', label: '业务梳理 (TD-01)', icon: FileText },
-                { id: 'td_modeling', label: '业务对象建模 (TD-03)', icon: Layout },
-                { id: 'td_scenario', label: '场景编排 (TD-04)', icon: Layers },
+                { id: 'td_goals', label: '业务梳理', icon: FileText },
+                { id: 'td_modeling', label: '业务对象建模', icon: Layout },
+                { id: 'td_scenario', label: '场景编排', icon: Layers },
             ]
         },
         {
             title: '数据发现',
             color: 'text-emerald-400',
             items: [
-                { id: 'bu_connect', label: '数据源管理 (BU-01)', icon: Database },
-                { id: 'bu_scan', label: '资产扫描 (BU-02)', icon: Search },
-                { id: 'bu_semantic', label: '逻辑视图 (BU-03)', icon: FileText },
-                { id: 'bu_candidates', label: '候选生成 (BU-04)', icon: Cpu },
+                { id: 'bu_connect', label: '数据源管理', icon: Database },
+                { id: 'bu_scan', label: '资产扫描', icon: Search },
+                { id: 'bu_semantic', label: '逻辑视图', icon: FileText },
+                { id: 'bu_candidates', label: '候选生成', icon: Cpu },
             ]
         },
         {
             title: 'SG 语义治理中心',
             color: 'text-purple-400',
             items: [
-                { id: 'mapping', label: '映射工作台 (SG-01)', icon: GitMerge },
-                { id: 'governance', label: '冲突检测 (SG-02)', icon: Shield },
-                { id: 'smart_data', label: '智能数据中心 (SG-04)', icon: Cpu },
+                { id: 'mapping', label: '映射工作台', icon: GitMerge },
+                { id: 'governance', label: '冲突检测', icon: Shield },
+                { id: 'smart_data', label: '智能数据中心', icon: Cpu },
             ]
         },
         {
             title: 'EE 服务执行',
             color: 'text-orange-400',
             items: [
-                { id: 'ee_api', label: 'API 网关 (EE-05)', icon: Server },
-                { id: 'ee_cache', label: '缓存策略 (EE-06)', icon: RefreshCw },
+                { id: 'ee_api', label: 'API 网关', icon: Server },
+                { id: 'ee_cache', label: '缓存策略', icon: RefreshCw },
             ]
         },
     ];
@@ -62,7 +69,7 @@ const Sidebar = ({ activeModule, setActiveModule }: SidebarProps) => {
                 </div>
                 {!isCollapsed && (
                     <div className="ml-3 overflow-hidden">
-                        <h1 className="font-bold text-white tracking-tight whitespace-nowrap">SemanticLink</h1>
+                        <h1 className="font-bold text-white tracking-tight whitespace-nowrap">数据语义治理平台</h1>
                         <p className="text-[10px] text-slate-500 uppercase tracking-wider whitespace-nowrap">Enterprise Edition</p>
                     </div>
                 )}

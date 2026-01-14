@@ -1,10 +1,11 @@
 import { useState, useRef } from 'react';
-import { Database, Search, ChevronRight, Cpu, CheckCircle, Star, Tag, FileText, Layers, ShieldCheck, Activity, ArrowLeft, Table, Clock, Server, RefreshCw, X, AlertCircle, Settings, AlertTriangle, Share2, Shield, Plus, Edit3, Sparkles } from 'lucide-react';
+import { Database, Search, ChevronRight, Cpu, CheckCircle, Star, Tag, FileText, Layers, ShieldCheck, Activity, ArrowLeft, Table, Clock, Server, RefreshCw, X, AlertCircle, Settings, AlertTriangle, Share2, Shield, Plus, Edit3, Sparkles, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { checkGatekeeper, analyzeField } from '../logic/semantic/rules';
 import { calculateTableRuleScore, calculateFusionScore } from '../logic/semantic/scoring';
 import { analyzeTableWithMockAI } from '../services/mockAiService';
 import { TableSemanticProfile, FieldSemanticProfile } from '../types/semantic';
 import { SemanticAnalysisCard } from './semantic/SemanticAnalysisCard';
+import { UpgradeSuggestionCard, generateUpgradeSuggestion } from './semantic/UpgradeSuggestionCard';
 import { AnalysisProgressPanel } from './semantic/AnalysisProgressPanel';
 import { StreamingProgressPanel } from './semantic/StreamingProgressPanel';
 
@@ -37,6 +38,8 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
         scorePercent: number;
         needsReview?: boolean;
         userAction?: 'accepted' | 'rejected' | 'pending';
+        upgradeDecision?: 'accepted' | 'rejected' | 'later' | 'rolled_back';
+        upgradeRejectReason?: string;
         // Enhanced analysis details
         fieldStats?: { total: number; identifiers: number; status: number; busAttr: number; time: number };
         sensitiveFields?: { count: number; examples: string[] };
@@ -46,6 +49,15 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
     }[]>([]);
     const [showBatchReview, setShowBatchReview] = useState(false);
     const [expandedReviewItems, setExpandedReviewItems] = useState<string[]>([]);
+    const [upgradeHistory, setUpgradeHistory] = useState<{
+        id: string;
+        tableId: string;
+        tableName: string;
+        beforeState: any;
+        afterState: any;
+        timestamp: string;
+        rolledBack: boolean;
+    }[]>([]);
 
 
     // Detail View State
@@ -61,6 +73,8 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
     const [openConflictPopover, setOpenConflictPopover] = useState<string | null>(null);
     // Track user's sensitivity level overrides: fieldName -> sensitivityLevel
     const [sensitivityOverrides, setSensitivityOverrides] = useState<Record<string, 'L1' | 'L2' | 'L3' | 'L4'>>({});
+    // Left Tree Collapse State
+    const [isTreeCollapsed, setIsTreeCollapsed] = useState(false);
 
 
     // Default Empty Profile
@@ -123,7 +137,7 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
         const matchesSearch = searchTerm === '' ||
             asset.table.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (asset.comment || '').includes(searchTerm) ||
-            (asset.semanticAnalysis?.chineseName || '').includes(searchTerm);
+            (asset.semanticAnalysis?.businessName || '').includes(searchTerm);
         return matchesSource && matchesSearch;
     });
 
@@ -339,7 +353,7 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
 
             // Update scanResults with mock semantic analysis data for detail view
             const mockSemanticAnalysis = {
-                chineseName: businessName,
+                businessName: businessName,
                 description: `${businessName}的业务数据表`,
                 scenarios: ['数据查询', '报表分析'],
                 tags: ['核心业务', '交易数据'],
@@ -347,7 +361,12 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                 relationships: [
                     { targetTable: 't_user', type: 'Many-to-One', key: 'user_id', description: '用户关联' },
                     { targetTable: 't_product', type: 'Many-to-Many', key: 'product_id', description: '产品关联' }
-                ].slice(0, Math.floor(1 + Math.random() * 2))
+                ].slice(0, Math.floor(1 + Math.random() * 2)),
+                // V2 Beta: Add default dimension values
+                objectType: 'entity',
+                businessDomain: '交易域',
+                securityLevel: 'L2',
+                dataGrain: '明细粒度'
             };
 
             setScanResults((prev: any[]) => prev.map((item: any) =>
@@ -369,14 +388,80 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
         }
     };
 
+    const recordUpgradeHistory = (tableId: string, tableName: string, beforeState: any, afterState: any) => {
+        const id = `${tableId}-${Date.now()}`;
+        const timestamp = new Date().toISOString();
+        setUpgradeHistory(prev => ([
+            { id, tableId, tableName, beforeState, afterState, timestamp, rolledBack: false },
+            ...prev
+        ]));
+    };
+
+    const rollbackUpgrade = (entryId: string) => {
+        let target: {
+            id: string;
+            tableId: string;
+            tableName: string;
+            beforeState: any;
+            afterState: any;
+            timestamp: string;
+            rolledBack: boolean;
+        } | undefined;
+
+        setUpgradeHistory(prev => prev.map(entry => {
+            if (entry.id !== entryId || entry.rolledBack) return entry;
+            target = entry;
+            return { ...entry, rolledBack: true };
+        }));
+
+        if (!target) return;
+
+        setScanResults((prev: any[]) => prev.map((item: any) =>
+            item.table === target?.tableId
+                ? { ...item, semanticAnalysis: target?.beforeState }
+                : item
+        ));
+        if (selectedTable?.table === target?.tableId) {
+            setSemanticProfile(prev => ({
+                ...prev,
+                ...target?.beforeState,
+                analysisStep: 'done',
+                relationships: prev.relationships
+            }));
+        }
+        setBatchResults(prev => prev.map((r) =>
+            r.tableId === target?.tableId
+                ? { ...r, upgradeDecision: 'rolled_back', upgradeRejectReason: undefined }
+                : r
+        ));
+    };
+
     const handleSaveToMetadata = () => {
         if (!selectedTable) return;
+
+        console.log('✅ 保存语义分析结果:', {
+            tableName: selectedTable.table,
+            businessName: semanticProfile.businessName,
+            objectType: semanticProfile.objectType
+        });
+
+        // Update scan results with analyzed status
         setScanResults((prev: any[]) => prev.map((item: any) =>
             item.table === selectedTable.table
                 ? { ...item, status: 'analyzed', semanticAnalysis: { ...semanticProfile } }
                 : item
         ));
+
+        // Close edit mode
         setEditMode(false);
+
+        // Show success feedback (TODO: Replace with toast library)
+        alert('✅ 语义分析结果已保存！\n\n表名: ' + selectedTable.table + '\n业务名称: ' + (semanticProfile.businessName || '未定义'));
+
+        // Optionally return to list view after 1.5 seconds
+        // setTimeout(() => {
+        //     setViewMode('list');
+        // }, 1500);
     };
 
     // Database logo icons (emoji)
@@ -417,44 +502,88 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
         <>
             <div className="h-full flex animate-fade-in gap-4">
                 {/* Left Panel - Source Tree */}
-                <div className="w-64 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden shrink-0">
-                    <div className="p-4 border-b border-slate-100 bg-slate-50">
-                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                            <Database size={16} className="text-blue-600" /> 数据源视图
-                        </h3>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-2">
+                <div className={`${isTreeCollapsed ? 'w-12' : 'w-64'} bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden shrink-0 transition-all duration-300`}>
+                    <div className={`p-4 border-b border-slate-100 bg-slate-50 flex items-center ${isTreeCollapsed ? 'justify-center p-2' : 'justify-between'}`}>
+                        {!isTreeCollapsed && (
+                            <h3 className="font-bold text-slate-800 flex items-center gap-2 whitespace-nowrap overflow-hidden">
+                                <Database size={16} className="text-blue-600" /> 数据源视图
+                            </h3>
+                        )}
                         <button
-                            onClick={() => handleDataSourceSelect(null)}
-                            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm mb-2 font-medium transition-colors ${selectedDataSourceId === null ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
-                                }`}
+                            onClick={() => setIsTreeCollapsed(!isTreeCollapsed)}
+                            className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors"
+                            title={isTreeCollapsed ? "展开视图" : "收起视图"}
                         >
-                            <Layers size={14} />
-                            全部数据源
+                            {isTreeCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
                         </button>
+                    </div>
 
-                        {Object.entries(typeGroups).map(([type, items]: [string, any]) => (
-                            <div key={type} className="mb-1">
-                                <button onClick={() => toggleType(type)} className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 transition-colors text-slate-700">
-                                    <ChevronRight size={14} className={`text-slate-400 transition-transform ${expandedTypes.includes(type) ? 'rotate-90' : ''}`} />
-                                    <span className="text-base">{typeLogoConfig[type] || '💾'}</span>
-                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${typeConfig[type]?.bgColor || 'bg-slate-100'} ${typeConfig[type]?.color || ''}`}>{type}</span>
-                                    <span className="ml-auto text-xs text-slate-400">{items.length}</span>
-                                </button>
-                                {expandedTypes.includes(type) && (
-                                    <div className="ml-5 space-y-0.5 mt-1 border-l border-slate-100 pl-1">
+                    {!isTreeCollapsed ? (
+                        <div className="flex-1 overflow-y-auto p-2 opacity-100 transition-opacity duration-300">
+                            <button
+                                onClick={() => handleDataSourceSelect(null)}
+                                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm mb-2 font-medium transition-colors ${selectedDataSourceId === null ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
+                                    }`}
+                            >
+                                <Layers size={14} />
+                                全部数据源
+                            </button>
+
+                            {Object.entries(typeGroups).map(([type, items]: [string, any]) => (
+                                <div key={type} className="mb-1">
+                                    <button
+                                        onClick={() => toggleType(type)}
+                                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 transition-colors text-slate-700"
+                                    >
+                                        <ChevronRight
+                                            size={14}
+                                            className={`text-slate-400 transition-transform duration-200 ease-out ${expandedTypes.includes(type) ? 'rotate-90' : ''}`}
+                                        />
+                                        <span className="text-base">{typeLogoConfig[type] || '💾'}</span>
+                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${typeConfig[type]?.bgColor || 'bg-slate-100'} ${typeConfig[type]?.color || ''}`}>{type}</span>
+                                        <span className="ml-auto text-xs text-slate-400">{items.length}</span>
+                                    </button>
+                                    <div
+                                        className={`ml-5 space-y-0.5 mt-1 border-l border-slate-100 pl-1 overflow-hidden origin-top transition-all duration-300 ease-in-out ${expandedTypes.includes(type)
+                                            ? 'max-h-96 opacity-100'
+                                            : 'max-h-0 opacity-0 pointer-events-none'
+                                            }`}
+                                    >
                                         {items.map((ds: any) => (
-                                            <button key={ds.id} onClick={() => handleDataSourceSelect(ds.id)}
-                                                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-xs transition-colors ${selectedDataSourceId === ds.id ? 'bg-blue-50 text-blue-700 font-medium' : 'hover:bg-slate-50 text-slate-600'}`}>
+                                            <button
+                                                key={ds.id}
+                                                onClick={() => handleDataSourceSelect(ds.id)}
+                                                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-xs transition-colors ${selectedDataSourceId === ds.id ? 'bg-blue-50 text-blue-700 font-medium' : 'hover:bg-slate-50 text-slate-600'}`}
+                                            >
                                                 <Server size={12} className={selectedDataSourceId === ds.id ? 'text-blue-500' : 'text-slate-400'} />
                                                 <span className="truncate" title={ds.name}>{ds.name}</span>
                                             </button>
                                         ))}
                                     </div>
-                                )}
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="flex-1 flex flex-col items-center py-4 gap-3 animate-fade-in overflow-y-auto custom-scrollbar">
+                            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 mb-2 cursor-pointer hover:bg-blue-100 transition-colors" title="全部数据源" onClick={() => handleDataSourceSelect(null)}>
+                                <Layers size={16} />
                             </div>
-                        ))}
-                    </div>
+                            <div className="w-6 h-px bg-slate-100 mb-1"></div>
+                            {Object.entries(typeGroups).map(([type, items]: [string, any]) => (
+                                <div key={type} className="relative group cursor-pointer" title={`${type} (${items.length})`} onClick={() => {
+                                    setIsTreeCollapsed(false);
+                                    if (!expandedTypes.includes(type)) toggleType(type);
+                                }}>
+                                    <div className="w-8 h-8 flex items-center justify-center text-xl hover:bg-slate-50 rounded-lg transition-colors">
+                                        {typeLogoConfig[type] || '💾'}
+                                    </div>
+                                    <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-slate-100 border border-white text-[9px] font-bold text-slate-600 shadow-sm">
+                                        {items.length}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Right Panel - List or Detail */}
@@ -580,8 +709,8 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                         </div>
                                                     </td>
                                                     <td className="px-4 py-4">
-                                                        {asset.semanticAnalysis?.chineseName ? (
-                                                            <span className="text-slate-800 font-medium">{asset.semanticAnalysis.chineseName}</span>
+                                                        {asset.semanticAnalysis?.businessName ? (
+                                                            <span className="text-slate-800 font-medium">{asset.semanticAnalysis.businessName}</span>
                                                         ) : (
                                                             <span className="text-slate-300 italic text-xs">- 未定义 -</span>
                                                         )}
@@ -764,16 +893,59 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                 }}
                                             />
                                         ) : (
-                                            <SemanticAnalysisCard
-                                                profile={semanticProfile}
-                                                fields={selectedTable.fields || []}
-                                                onAccept={handleSaveToMetadata}
-                                                onReject={handleIgnore}
-                                                onEdit={() => setEditMode(true)}
-                                                isEditing={editMode}
-                                                onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
-                                                onSaveEdit={() => setEditMode(false)}
-                                            />
+                                            <>
+                                                <SemanticAnalysisCard
+                                                    profile={semanticProfile}
+                                                    fields={selectedTable.fields || []}
+                                                    onAccept={handleSaveToMetadata}
+                                                    onReject={handleIgnore}
+                                                    onEdit={() => setEditMode(true)}
+                                                    isEditing={editMode}
+                                                    onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
+                                                    onSaveEdit={() => setEditMode(false)}
+                                                    onUpgradeAccepted={(beforeState, afterState) => {
+                                                        if (!selectedTable) return;
+                                                        recordUpgradeHistory(
+                                                            selectedTable.table,
+                                                            selectedTable.table,
+                                                            beforeState,
+                                                            afterState
+                                                        );
+                                                    }}
+                                                />
+                                                {upgradeHistory.some(entry => entry.tableId === selectedTable.table) && (
+                                                    <div className="mt-4 bg-white rounded-lg border border-slate-200 p-4">
+                                                        <div className="text-sm font-medium text-slate-700 flex items-center gap-2 mb-3">
+                                                            <Clock size={14} className="text-slate-500" /> 升级操作记录
+                                                        </div>
+                                                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                                                            {upgradeHistory
+                                                                .filter(entry => entry.tableId === selectedTable.table)
+                                                                .map(entry => (
+                                                                    <div key={entry.id} className="flex items-center justify-between text-xs bg-slate-50 rounded-md px-2 py-1.5">
+                                                                        <div className="text-slate-600">
+                                                                            <span className="font-mono text-slate-700">{entry.tableName}</span>
+                                                                            <span className="text-slate-400"> · {entry.timestamp}</span>
+                                                                            {entry.rolledBack && (
+                                                                                <span className="ml-2 text-orange-600">已撤销</span>
+                                                                            )}
+                                                                        </div>
+                                                                        <button
+                                                                            onClick={() => rollbackUpgrade(entry.id)}
+                                                                            disabled={entry.rolledBack}
+                                                                            className={`px-2 py-1 rounded ${entry.rolledBack
+                                                                                ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
+                                                                                : 'text-orange-600 bg-orange-50 hover:bg-orange-100'
+                                                                                }`}
+                                                                        >
+                                                                            撤销
+                                                                        </button>
+                                                                    </div>
+                                                                ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </>
                                         )}
                                     </div>
                                 )}
@@ -1914,53 +2086,120 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                                         </ul>
                                                     </div>
                                                 )}
-                                                {/* Field List Section */}
                                                 {(() => {
                                                     const table = scanResults.find((t: any) => t.table === result.tableId);
                                                     const fields = table?.fields || [];
-                                                    return fields.length > 0 && (
-                                                        <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
-                                                            <div className="text-xs font-medium text-slate-600 mb-2 flex items-center gap-1">
-                                                                <Layers size={12} /> 字段列表 ({fields.length}个)
-                                                            </div>
-                                                            <div className="max-h-40 overflow-y-auto">
-                                                                <table className="w-full text-xs">
-                                                                    <thead className="bg-slate-100 sticky top-0">
-                                                                        <tr>
-                                                                            <th className="px-2 py-1 text-left text-slate-500">字段名</th>
-                                                                            <th className="px-2 py-1 text-left text-slate-500">类型</th>
-                                                                            <th className="px-2 py-1 text-left text-slate-500">语义角色</th>
-                                                                            <th className="px-2 py-1 text-left text-slate-500">说明</th>
-                                                                        </tr>
-                                                                    </thead>
-                                                                    <tbody className="divide-y divide-slate-100">
-                                                                        {fields.slice(0, 10).map((field: any, i: number) => (
-                                                                            <tr key={i} className="hover:bg-white">
-                                                                                <td className="px-2 py-1.5 font-mono text-blue-600">{field.name}</td>
-                                                                                <td className="px-2 py-1.5 text-slate-500">{field.type}</td>
-                                                                                <td className="px-2 py-1.5">
-                                                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${field.name.includes('id') ? 'bg-purple-100 text-purple-700' :
-                                                                                        field.name.includes('time') || field.name.includes('date') ? 'bg-blue-100 text-blue-700' :
-                                                                                            field.name.includes('status') ? 'bg-amber-100 text-amber-700' :
-                                                                                                'bg-slate-100 text-slate-600'
-                                                                                        }`}>
-                                                                                        {field.name.includes('id') ? '标识符' :
-                                                                                            field.name.includes('time') || field.name.includes('date') ? '时间' :
-                                                                                                field.name.includes('status') ? '状态' : '业务属性'}
-                                                                                    </span>
-                                                                                </td>
-                                                                                <td className="px-2 py-1.5 text-slate-400 truncate max-w-[120px]">{field.comment || '-'}</td>
-                                                                            </tr>
-                                                                        ))}
-                                                                    </tbody>
-                                                                </table>
-                                                                {fields.length > 10 && (
-                                                                    <div className="text-center text-xs text-slate-400 py-1">
-                                                                        还有 {fields.length - 10} 个字段...
+                                                    const derivedProfile = {
+                                                        ...(table?.semanticAnalysis || {}),
+                                                        fields,
+                                                        aiScore: (result.scorePercent || 0) / 100,
+                                                        fieldScore: table?.semanticAnalysis?.fieldScore
+                                                    };
+                                                    const upgradeSuggestion = generateUpgradeSuggestion(derivedProfile);
+
+                                                    return (
+                                                        <>
+                                                            {upgradeSuggestion && (
+                                                                <div className="bg-white rounded-lg p-3 border border-slate-100">
+                                                                    <div className="text-xs font-medium text-slate-600 mb-2 flex items-center gap-1">
+                                                                        <Activity size={12} /> 升级建议
                                                                     </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
+                                                                    {result.upgradeDecision && (
+                                                                        <div className={`text-xs mb-2 ${result.upgradeDecision === 'accepted' ? 'text-emerald-600' :
+                                                                            result.upgradeDecision === 'rejected' ? 'text-red-600' :
+                                                                                result.upgradeDecision === 'rolled_back' ? 'text-orange-600' :
+                                                                                    'text-slate-500'
+                                                                            }`}>
+                                                                            {result.upgradeDecision === 'accepted' && '已接受升级建议'}
+                                                                            {result.upgradeDecision === 'later' && '已标记为稍后处理'}
+                                                                            {result.upgradeDecision === 'rejected' && `已拒绝升级建议${result.upgradeRejectReason ? `：${result.upgradeRejectReason}` : ''}`}
+                                                                            {result.upgradeDecision === 'rolled_back' && '已撤销升级变更'}
+                                                                        </div>
+                                                                    )}
+                                                                    <UpgradeSuggestionCard
+                                                                        suggestion={upgradeSuggestion}
+                                                                        onAccept={() => {
+                                                                            const beforeState = table?.semanticAnalysis ? { ...table.semanticAnalysis } : {};
+                                                                            recordUpgradeHistory(
+                                                                                result.tableId,
+                                                                                result.tableName,
+                                                                                beforeState,
+                                                                                upgradeSuggestion.afterState
+                                                                            );
+                                                                            setBatchResults(prev => prev.map((r) =>
+                                                                                r.tableId === result.tableId
+                                                                                    ? { ...r, upgradeDecision: 'accepted', upgradeRejectReason: undefined }
+                                                                                    : r
+                                                                            ));
+                                                                            setScanResults((prev: any[]) => prev.map((item: any) =>
+                                                                                item.table === result.tableId
+                                                                                    ? { ...item, semanticAnalysis: { ...item.semanticAnalysis, ...upgradeSuggestion.afterState } }
+                                                                                    : item
+                                                                            ));
+                                                                        }}
+                                                                        onReject={(reason) => {
+                                                                            setBatchResults(prev => prev.map((r) =>
+                                                                                r.tableId === result.tableId
+                                                                                    ? { ...r, upgradeDecision: 'rejected', upgradeRejectReason: reason }
+                                                                                    : r
+                                                                            ));
+                                                                        }}
+                                                                        onLater={() => {
+                                                                            setBatchResults(prev => prev.map((r) =>
+                                                                                r.tableId === result.tableId
+                                                                                    ? { ...r, upgradeDecision: 'later', upgradeRejectReason: undefined }
+                                                                                    : r
+                                                                            ));
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            )}
+
+                                                            {fields.length > 0 && (
+                                                                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                                                                    <div className="text-xs font-medium text-slate-600 mb-2 flex items-center gap-1">
+                                                                        <Layers size={12} /> 字段列表 ({fields.length}个)
+                                                                    </div>
+                                                                    <div className="max-h-40 overflow-y-auto">
+                                                                        <table className="w-full text-xs">
+                                                                            <thead className="bg-slate-100 sticky top-0">
+                                                                                <tr>
+                                                                                    <th className="px-2 py-1 text-left text-slate-500">字段名</th>
+                                                                                    <th className="px-2 py-1 text-left text-slate-500">类型</th>
+                                                                                    <th className="px-2 py-1 text-left text-slate-500">语义角色</th>
+                                                                                    <th className="px-2 py-1 text-left text-slate-500">说明</th>
+                                                                                </tr>
+                                                                            </thead>
+                                                                            <tbody className="divide-y divide-slate-100">
+                                                                                {fields.slice(0, 10).map((field: any, i: number) => (
+                                                                                    <tr key={i} className="hover:bg-white">
+                                                                                        <td className="px-2 py-1.5 font-mono text-blue-600">{field.name}</td>
+                                                                                        <td className="px-2 py-1.5 text-slate-500">{field.type}</td>
+                                                                                        <td className="px-2 py-1.5">
+                                                                                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${field.name.includes('id') ? 'bg-purple-100 text-purple-700' :
+                                                                                                field.name.includes('time') || field.name.includes('date') ? 'bg-blue-100 text-blue-700' :
+                                                                                                    field.name.includes('status') ? 'bg-amber-100 text-amber-700' :
+                                                                                                        'bg-slate-100 text-slate-600'
+                                                                                                }`}>
+                                                                                                {field.name.includes('id') ? '标识符' :
+                                                                                                    field.name.includes('time') || field.name.includes('date') ? '时间' :
+                                                                                                        field.name.includes('status') ? '状态' : '业务属性'}
+                                                                                            </span>
+                                                                                        </td>
+                                                                                        <td className="px-2 py-1.5 text-slate-400 truncate max-w-[120px]">{field.comment || '-'}</td>
+                                                                                    </tr>
+                                                                                ))}
+                                                                            </tbody>
+                                                                        </table>
+                                                                        {fields.length > 10 && (
+                                                                            <div className="text-center text-xs text-slate-400 py-1">
+                                                                                还有 {fields.length - 10} 个字段...
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </>
                                                     );
                                                 })()}
 
@@ -1991,6 +2230,39 @@ const DataSemanticUnderstandingView = ({ scanResults, setScanResults }: DataSema
                                     </div>
                                 ))}
                             </div>
+
+                            {upgradeHistory.length > 0 && (
+                                <div className="px-6 pb-4">
+                                    <div className="bg-white rounded-lg border border-slate-100 p-3">
+                                        <div className="text-xs font-medium text-slate-600 mb-2 flex items-center gap-1">
+                                            <Clock size={12} /> 升级操作记录
+                                        </div>
+                                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                                            {upgradeHistory.map(entry => (
+                                                <div key={entry.id} className="flex items-center justify-between text-xs bg-slate-50 rounded-md px-2 py-1.5">
+                                                    <div className="text-slate-600">
+                                                        <span className="font-mono text-slate-700">{entry.tableName}</span>
+                                                        <span className="text-slate-400"> · {entry.timestamp}</span>
+                                                        {entry.rolledBack && (
+                                                            <span className="ml-2 text-orange-600">已撤销</span>
+                                                        )}
+                                                    </div>
+                                                    <button
+                                                        onClick={() => rollbackUpgrade(entry.id)}
+                                                        disabled={entry.rolledBack}
+                                                        className={`px-2 py-1 rounded ${entry.rolledBack
+                                                            ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
+                                                            : 'text-orange-600 bg-orange-50 hover:bg-orange-100'
+                                                            }`}
+                                                    >
+                                                        撤销
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Modal Footer */}
                             <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50">

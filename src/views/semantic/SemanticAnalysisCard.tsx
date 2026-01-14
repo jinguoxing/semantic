@@ -21,6 +21,7 @@ interface SemanticAnalysisCardProps {
     isEditing?: boolean;
     onProfileChange?: (updates: Partial<TableSemanticProfile>) => void;
     onSaveEdit?: () => void;
+    onUpgradeAccepted?: (beforeState: TableSemanticProfile, afterState: any) => void;
 }
 
 // Object type labels in Chinese
@@ -40,7 +41,8 @@ export const SemanticAnalysisCard: React.FC<SemanticAnalysisCardProps> = ({
     onEdit,
     isEditing = false,
     onProfileChange,
-    onSaveEdit
+    onSaveEdit,
+    onUpgradeAccepted
 }) => {
     const [showLifecycle, setShowLifecycle] = useState(true);  // 优化: 默认展开
     const [showSecurity, setShowSecurity] = useState(true);    // 优化: 默认展开
@@ -155,7 +157,9 @@ export const SemanticAnalysisCard: React.FC<SemanticAnalysisCardProps> = ({
         console.log('Upgrade accepted:', upgradeSuggestion);
         // Apply upgrade changes to profile
         if (onProfileChange) {
+            const beforeState = { ...profile };
             onProfileChange(upgradeSuggestion.afterState);
+            onUpgradeAccepted?.(beforeState, upgradeSuggestion.afterState);
         }
     };
 

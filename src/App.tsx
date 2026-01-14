@@ -30,6 +30,7 @@ import StepItem from './components/common/StepItem';
 import BookIcon from './components/common/BookIcon';
 import DashboardView from './views/DashboardView';
 import MappingStudioView from './views/MappingStudioView';
+import BOMappingStudioView from './views/BOMappingStudioView';
 import BusinessGoalsView from './views/BusinessGoalsView';
 import BusinessModelingView from './views/BusinessModelingView';
 import TechDiscoveryView from './views/TechDiscoveryView';
@@ -66,13 +67,19 @@ export default function SemanticLayerApp() {
         setBusinessObjects([...businessObjects, newBO]);
     };
 
+    const handleNavigateToMapping = (bo: any) => {
+        setSelectedBO(bo);
+        setActiveModule('bo_mapping');
+    };
+
     // 渲染主内容区域
     const renderContent = () => {
         switch (activeModule) {
             case 'dashboard': return <DashboardView setActiveModule={setActiveModule} />;
             case 'td_goals': return <BusinessGoalsView />; // 新增路由
             case 'mapping': return <MappingStudioView selectedBO={selectedBO} showRuleEditor={showRuleEditor} setShowRuleEditor={setShowRuleEditor} businessObjects={businessObjects} />;
-            case 'td_modeling': return <BusinessModelingView businessObjects={businessObjects} setBusinessObjects={setBusinessObjects} />;
+            case 'bo_mapping': return <BOMappingStudioView selectedBO={selectedBO} showRuleEditor={showRuleEditor} setShowRuleEditor={setShowRuleEditor} businessObjects={businessObjects} />;
+            case 'td_modeling': return <BusinessModelingView businessObjects={businessObjects} setBusinessObjects={setBusinessObjects} onNavigateToMapping={handleNavigateToMapping} />;
             case 'td_scenario': return <ScenarioOrchestrationView />;
             case 'bu_connect': return <DataSourceManagementView />;
             case 'bu_scan': return <AssetScanningView onNavigate={setActiveModule} onAddScanResults={(results) => setScanResults(prev => [...prev, ...results])} />;
@@ -80,7 +87,8 @@ export default function SemanticLayerApp() {
             case 'bu_semantic': return <DataSemanticUnderstandingView scanResults={scanResults} setScanResults={setScanResults} />;
             case 'bu_candidates': return <CandidateGenerationView scanResults={scanResults} setScanResults={setScanResults} onAddBusinessObject={handleAddBusinessObject} />;
             case 'governance': return <ConflictDetectionView />;
-            case 'smart_data': return <SmartDataHubView />;
+            case 'smart_data': return <SmartDataHubView businessObjects={businessObjects} />;
+            case 'data_supermarket': return <SmartDataHubView businessObjects={businessObjects} />;
             case 'ee_api': return <ApiGatewayView businessObjects={businessObjects} />;
             case 'ee_cache': return <CacheStrategyView />;
             default: return <DashboardView setActiveModule={setActiveModule} />;

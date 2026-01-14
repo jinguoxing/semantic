@@ -539,12 +539,17 @@ export const mockScanResults = [
         confidence: 35, // 🔴 Low confidence to trigger P1 panel
         aiSuggestion: '未识别业务类型',
         semanticAnalysis: {
-            chineseName: '',
+            businessName: '',
             description: '',
             scenarios: [],
             coreFields: [],
             qualityScore: 42,
-            privacyLevel: 'L2'
+            securityLevel: 'L2',
+            // V2 Beta: Add default dimension values
+            objectType: 'entity',
+            businessDomain: '其他',
+            dataGrain: '明细粒度',
+            updateStrategy: '增量追加'
         },
         fields: [
             // Few fields with poor comments to trigger low coverage
@@ -568,12 +573,17 @@ export const mockScanResults = [
         confidence: 95,
         aiSuggestion: 'User: 用户主体',
         semanticAnalysis: {
-            chineseName: '用户画像表',
+            businessName: '用户画像表',
             description: '记录核心用户基础画像信息，包含用户ID、姓名、联系方式等属性。',
             scenarios: ['客户管理', '画像分析'],
             coreFields: [{ field: 'user_id', reason: '用户唯一标识' }],
             qualityScore: 92,
-            privacyLevel: 'L3'
+            securityLevel: 'L3',
+            // V2 Beta: Add default dimension values
+            objectType: 'entity',
+            businessDomain: '用户域',
+            dataGrain: '明细粒度',
+            updateStrategy: '增量追加'
         },
         fields: [
             { name: 'user_id', type: 'bigint', comment: '用户ID', suggestion: 'id' },
@@ -593,12 +603,17 @@ export const mockScanResults = [
         confidence: 88,
         aiSuggestion: 'Order: 订单',
         semanticAnalysis: {
-            chineseName: '订单主表',
+            businessName: '订单主表',
             description: '存储订单核心交易信息。',
             scenarios: ['交易分析'],
             coreFields: [{ field: 'order_id', reason: '订单主键' }],
             qualityScore: 85,
-            privacyLevel: 'L2',
+            securityLevel: 'L2',
+            // V2 Beta: Add default dimension values
+            objectType: 'event',
+            businessDomain: '交易域',
+            dataGrain: '明细粒度',
+            updateStrategy: '增量追加',
             relationships: [
                 { targetTable: 't_user_profile', type: 'Many-to-One', key: 'user_id' },
                 { targetTable: 't_order_item', type: 'One-to-Many', key: 'order_id' },
@@ -679,12 +694,17 @@ export const mockScanResults = [
         confidence: 92,
         aiSuggestion: 'Enterprise: 企业',
         semanticAnalysis: {
-            chineseName: '企业综合档案',
+            businessName: '企业综合档案',
             description: '存储企业全生命周期信息，包含基础信息、经营信息、资质信息等120个字段。',
             scenarios: ['企业画像', '信用评估', '监管分析'],
             coreFields: [{ field: 'enterprise_id', reason: '企业唯一标识' }],
             qualityScore: 78,
-            privacyLevel: 'L2'
+            securityLevel: 'L2',
+            // V2 Beta: Add default dimension values
+            objectType: 'entity',
+            businessDomain: '其他',
+            dataGrain: '明细粒度',
+            updateStrategy: '增量追加'
         },
         fields: [
             // 基础标识 (1-10)
@@ -830,12 +850,17 @@ export const mockScanResults = [
         confidence: 87,
         aiSuggestion: 'Visit: 就诊记录',
         semanticAnalysis: {
-            chineseName: '就诊记录表',
+            businessName: '就诊记录表',
             description: '存储患者门诊/住院就诊信息',
             scenarios: ['医疗分析', '病历管理'],
             coreFields: [{ field: 'visit_id', reason: '就诊唯一标识' }],
             qualityScore: 85,
-            privacyLevel: 'L4'
+            securityLevel: 'L4',
+            // V2 Beta: Add default dimension values
+            objectType: 'event',
+            businessDomain: '其他',
+            dataGrain: '明细粒度',
+            updateStrategy: '增量追加'
         },
         fields: [
             { name: 'visit_id', type: 'bigint', comment: '就诊ID' },
@@ -879,12 +904,17 @@ export const mockScanResults = [
         confidence: 95,
         aiSuggestion: 'Metric: 统计指标',
         semanticAnalysis: {
-            chineseName: '页面访问统计',
+            businessName: '页面访问统计',
             description: '存储用户页面访问行为的聚合统计数据',
             scenarios: ['流量分析', '用户洞察'],
             coreFields: [{ field: 'page_id', reason: '页面标识' }],
             qualityScore: 92,
-            privacyLevel: 'L1'
+            securityLevel: 'L1',
+            // V2 Beta: Add default dimension values
+            objectType: 'event',
+            businessDomain: '其他',
+            dataGrain: '汇总粒度',
+            updateStrategy: '增量追加'
         },
         fields: [
             { name: 'page_id', type: 'String', comment: '页面ID' },
@@ -944,12 +974,17 @@ export const mockScanResults = [
         confidence: 91,
         aiSuggestion: 'Transaction: 交易流水',
         semanticAnalysis: {
-            chineseName: '金融交易流水',
+            businessName: '金融交易流水',
             description: '存储金融交易的详细流水记录',
             scenarios: ['交易分析', '风控审计'],
             coreFields: [{ field: 'trans_id', reason: '交易流水号' }],
             qualityScore: 94,
-            privacyLevel: 'L4'
+            securityLevel: 'L4',
+            // V2 Beta: Add default dimension values
+            objectType: 'event',
+            businessDomain: '交易域',
+            dataGrain: '明细粒度',
+            updateStrategy: '增量追加'
         },
         fields: [
             { name: 'trans_id', type: 'varchar(32)', comment: '交易流水号' },
@@ -973,12 +1008,17 @@ export const mockScanResults = [
         confidence: 88,
         aiSuggestion: 'Approval: 审批记录',
         semanticAnalysis: {
-            chineseName: '政务审批记录',
+            businessName: '政务审批记录',
             description: '存储政务服务审批的全流程记录',
             scenarios: ['政务服务', '效能监察'],
             coreFields: [{ field: 'approval_id', reason: '审批编号' }],
             qualityScore: 86,
-            privacyLevel: 'L2'
+            securityLevel: 'L2',
+            // V2 Beta: Add default dimension values
+            objectType: 'event',
+            businessDomain: '其他',
+            dataGrain: '明细粒度',
+            updateStrategy: '增量追加'
         },
         fields: [
             { name: 'approval_id', type: 'VARCHAR(32)', comment: '审批编号' },
@@ -1024,12 +1064,17 @@ export const mockScanResults = [
         confidence: 93,
         aiSuggestion: 'OrderDetail: 订单明细',
         semanticAnalysis: {
-            chineseName: '交易订单明细',
+            businessName: '交易订单明细',
             description: '存储电商交易订单的商品明细信息',
             scenarios: ['交易分析', '商品运营'],
             coreFields: [{ field: 'detail_id', reason: '明细ID' }],
             qualityScore: 91,
-            privacyLevel: 'L2'
+            securityLevel: 'L2',
+            // V2 Beta: Add default dimension values
+            objectType: 'event',
+            businessDomain: '交易域',
+            dataGrain: '明细粒度',
+            updateStrategy: '增量追加'
         },
         fields: [
             { name: 'detail_id', type: 'bigint', comment: '明细ID' },
@@ -1074,12 +1119,17 @@ export const mockScanResults = [
         confidence: 89,
         aiSuggestion: 'Product: 商品',
         semanticAnalysis: {
-            chineseName: '商品目录',
+            businessName: '商品目录',
             description: '存储商品基础信息和分类属性',
             scenarios: ['商品管理', '搜索推荐'],
             coreFields: [{ field: 'product_id', reason: '商品ID' }],
             qualityScore: 88,
-            privacyLevel: 'L1'
+            securityLevel: 'L1',
+            // V2 Beta: Add default dimension values
+            objectType: 'entity',
+            businessDomain: '商品域',
+            dataGrain: '明细粒度',
+            updateStrategy: '全量覆盖'
         },
         fields: [
             { name: 'product_id', type: 'varchar(20)', comment: '商品ID' },

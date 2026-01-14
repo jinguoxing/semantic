@@ -1,20 +1,24 @@
 import { useState } from 'react';
 import {
     Layout, Database, Search, CheckCircle, Plus, X,
-    FileText, Settings, Layers
+    FileText, Settings, Layers, Trash2
 } from 'lucide-react';
 
 interface BusinessModelingViewProps {
     businessObjects: any[];
     setBusinessObjects: (fn: (prev: any[]) => any[]) => void;
+    onNavigateToMapping: (bo: any) => void;
 }
 
-const BusinessModelingView = ({ businessObjects, setBusinessObjects }: BusinessModelingViewProps) => {
+const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateToMapping }: BusinessModelingViewProps) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingBO, setEditingBO] = useState<any>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [showFieldModal, setShowFieldModal] = useState(false);
     const [currentField, setCurrentField] = useState<any>(null);
+    const [selectedBoIds, setSelectedBoIds] = useState<string[]>([]);
+    const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+    const [selectedDomain, setSelectedDomain] = useState<string>('ALL');
 
     // Initial Form State
     const initialBoState = {
@@ -103,15 +107,39 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects }: BusinessM
         setBoFormData({ ...boFormData, fields: newFields });
     };
 
-    const filteredBOs = businessObjects.filter(bo =>
-        bo.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        bo.code.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const toggleSelection = (id: string) => {
+        setSelectedBoIds(prev =>
+            prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+        );
+    };
+
+    const handleBatchPublish = () => {
+        if (selectedBoIds.length === 0) return;
+        setShowPublishConfirm(true);
+    };
+
+    const confirmBatchPublish = () => {
+        setBusinessObjects(prev => prev.map(bo =>
+            selectedBoIds.includes(bo.id) ? { ...bo, status: 'published' } : bo
+        ));
+        setSelectedBoIds([]);
+        setShowPublishConfirm(false);
+        // Removed alert to be less intrusive, or could add a toast here
+    };
+
+    const uniqueDomains = Array.from(new Set(businessObjects.map(bo => bo.domain).filter(Boolean)));
+
+    const filteredBOs = businessObjects.filter(bo => {
+        const matchesSearch = bo.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            bo.code.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesDomain = selectedDomain === 'ALL' || bo.domain === selectedDomain;
+        return matchesSearch && matchesDomain;
+    });
 
     return (
-        <div className="space-y-6 max-w-7xl mx-auto animate-fade-in relative">
+        <div className="space-y-6 h-[calc(100vh-theme(spacing.24))] flex flex-col animate-fade-in relative">
             {/* Header & Controls */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 flex-shrink-0">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800 tracking-tight">业务对象建模</h2>
                     <p className="text-slate-500 mt-1">定义核心业务实体、属性及其数据标准</p>
@@ -127,6 +155,15 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects }: BusinessM
                             className="pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-64 text-sm shadow-sm"
                         />
                     </div>
+                    {selectedBoIds.length > 0 && (
+                        <button
+                            onClick={handleBatchPublish}
+                            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all shadow-sm shadow-emerald-200 font-medium animate-fade-in"
+                        >
+                            <CheckCircle size={18} />
+                            <span>批量发布 ({selectedBoIds.length})</span>
+                        </button>
+                    )}
                     <button
                         onClick={handleCreateBO}
                         className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all shadow-sm shadow-blue-200 font-medium"
@@ -137,36 +174,88 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects }: BusinessM
                 </div>
             </div>
 
-            {/* BO Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredBOs.map(bo => (
-                    <div key={bo.id} className="bg-white rounded-xl border border-slate-200 p-6 hover:shadow-lg transition-all group cursor-pointer relative" onClick={() => handleEditBO(bo)}>
-                        <div className="flex justify-between items-start mb-4">
-                            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
-                                <Layout size={20} />
-                            </div>
-                            <div className={`px-2 py-1 rounded text-xs font-semibold uppercase ${bo.status === 'published' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                                {bo.status}
-                            </div>
-                        </div>
-                        <h3 className="font-bold text-lg text-slate-800 mb-1">{bo.name}</h3>
-                        <p className="text-xs font-mono text-slate-500 mb-4 bg-slate-50 inline-block px-2 py-0.5 rounded">{bo.code}</p>
-                        <p className="text-sm text-slate-600 line-clamp-2 mb-6 h-10">{bo.description || '暂无描述'}</p>
-
-                        <div className="flex items-center justify-between pt-4 border-t border-slate-50">
-                            <div className="flex items-center gap-4 text-sm text-slate-500">
-                                <span className="flex items-center gap-1"><Layers size={14} /> {bo.domain}</span>
-                                <span className="flex items-center gap-1"><CheckCircle size={14} /> {bo.fields?.length || 0} 字段</span>
-                            </div>
-                        </div>
-
-                        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={(e) => { e.stopPropagation(); handleDeleteBO(bo.id); }} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full">
-                                <X size={16} />
-                            </button>
-                        </div>
+            {/* Main Content Area with Sidebar */}
+            <div className="flex gap-6 flex-1 min-h-0">
+                {/* Left Sidebar - Domain Tree */}
+                <div className="w-64 bg-white rounded-xl border border-slate-200 flex flex-col flex-shrink-0 overflow-hidden">
+                    <div className="p-4 border-b border-slate-100 bg-slate-50">
+                        <h3 className="font-bold text-slate-700 flex items-center gap-2">
+                            <Layers size={18} className="text-blue-500" />
+                            业务域
+                        </h3>
                     </div>
-                ))}
+                    <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-1">
+                        <button
+                            onClick={() => setSelectedDomain('ALL')}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between group ${selectedDomain === 'ALL' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                        >
+                            <span>全部域</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${selectedDomain === 'ALL' ? 'bg-blue-200/50' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}>
+                                {businessObjects.length}
+                            </span>
+                        </button>
+                        {uniqueDomains.map(domain => {
+                            const count = businessObjects.filter(bo => bo.domain === domain).length;
+                            return (
+                                <button
+                                    key={domain}
+                                    onClick={() => setSelectedDomain(domain)}
+                                    className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between group ${selectedDomain === domain ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                                >
+                                    <span>{domain}</span>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full ${selectedDomain === domain ? 'bg-blue-200/50' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}>
+                                        {count}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Right Grid - BO List */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-6">
+                        {filteredBOs.map(bo => (
+                            <div key={bo.id} className={`bg-white rounded-xl border p-6 hover:shadow-lg transition-all group cursor-pointer relative ${selectedBoIds.includes(bo.id) ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-50/10' : 'border-slate-200'}`} onClick={() => onNavigateToMapping(bo)}>
+                                {bo.status !== 'published' && (
+                                    <div onClick={(e) => { e.stopPropagation(); toggleSelection(bo.id); }} className="absolute top-4 left-4 z-10 p-2 -ml-2 -mt-2 hover:bg-slate-100 rounded-full">
+                                        <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedBoIds.includes(bo.id) ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`}>
+                                            {selectedBoIds.includes(bo.id) && <CheckCircle size={14} className="text-white" />}
+                                        </div>
+                                    </div>
+                                )}
+                                <div className="flex justify-between items-start mb-4 pl-8">
+                                    <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
+                                        <Layout size={20} />
+                                    </div>
+                                    <div className={`px-2 py-1 rounded text-xs font-semibold uppercase ${bo.status === 'published' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                                        {bo.status === 'published' ? '已发布' : (bo.status === 'draft' ? '草稿' : bo.status)}
+                                    </div>
+                                </div>
+                                <h3 className="font-bold text-lg text-slate-800 mb-1">{bo.name}</h3>
+                                <p className="text-xs font-mono text-slate-500 mb-4 bg-slate-50 inline-block px-2 py-0.5 rounded">{bo.code}</p>
+                                <p className="text-sm text-slate-600 line-clamp-2 mb-6 h-10">{bo.description || '暂无描述'}</p>
+
+                                <div className="flex items-center justify-between pt-4 border-t border-slate-50">
+                                    <div className="flex items-center gap-4 text-sm text-slate-500">
+                                        <span className="flex items-center gap-1"><Layers size={14} /> {bo.domain}</span>
+                                        <span className="flex items-center gap-1"><CheckCircle size={14} /> {bo.fields?.length || 0} 字段</span>
+                                    </div>
+                                    <div className="hidden group-hover:flex items-center gap-1 transition-opacity">
+                                        <button onClick={(e) => { e.stopPropagation(); handleEditBO(bo); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="编辑">
+                                            <Settings size={16} />
+                                        </button>
+                                        {bo.status !== 'published' && (
+                                            <button onClick={(e) => { e.stopPropagation(); handleDeleteBO(bo.id); }} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="删除">
+                                                <Trash2 size={16} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
             </div>
 
             {/* Create/Edit Modal */}
@@ -270,6 +359,58 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects }: BusinessM
                         <div className="px-8 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 rounded-b-xl">
                             <button onClick={() => setIsModalOpen(false)} className="px-5 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-md font-medium transition-colors">取消</button>
                             <button onClick={handleSaveBO} className="px-5 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-md font-medium shadow-sm shadow-blue-200 transition-colors">保存配置</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Publish Confirmation Modal */}
+            {showPublishConfirm && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-[60] flex items-center justify-center animate-fade-in">
+                    <div className="bg-white rounded-xl shadow-2xl w-[480px] p-0 animate-scale-up overflow-hidden">
+                        <div className="p-6">
+                            <div className="flex items-start gap-4">
+                                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 text-blue-600">
+                                    <Database size={20} />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="text-lg font-bold text-slate-800 mb-2">确认发布业务对象</h3>
+                                    <p className="text-sm text-slate-500 mb-4">
+                                        您即将发布 <span className="font-bold text-slate-800">{selectedBoIds.length}</span> 个业务对象到智能数据中心。
+                                        发布后，这些对象将对所有用户可见并可用于数据查询。
+                                    </p>
+
+                                    <div className="bg-slate-50 rounded-lg p-3 border border-slate-100 max-h-[150px] overflow-y-auto mb-2 custom-scrollbar">
+                                        <ul className="space-y-2">
+                                            {businessObjects
+                                                .filter(bo => selectedBoIds.includes(bo.id))
+                                                .map(bo => (
+                                                    <li key={bo.id} className="flex items-center gap-2 text-sm text-slate-700">
+                                                        <CheckCircle size={14} className="text-emerald-500" />
+                                                        <span className="font-medium">{bo.name}</span>
+                                                        <span className="text-slate-400 font-mono text-xs">({bo.code})</span>
+                                                    </li>
+                                                ))
+                                            }
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+                            <button
+                                onClick={() => setShowPublishConfirm(false)}
+                                className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={confirmBatchPublish}
+                                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-200 transition-colors flex items-center gap-2"
+                            >
+                                <CheckCircle size={16} />
+                                确认发布
+                            </button>
                         </div>
                     </div>
                 </div>

@@ -1,4 +1,4 @@
-# SemanticLink - 企业级语义治理平台
+# 业务治理平台 - 企业级语义治理平台
 
 <p align="center">
   <img src="https://img.shields.io/badge/React-18.x-blue?logo=react" alt="React">
@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/TailwindCSS-3.x-cyan?logo=tailwindcss" alt="TailwindCSS">
 </p>
 
-SemanticLink 是一个企业级语义数据治理平台，提供从业务对象建模到数据映射、智能数据发现与分析的完整解决方案。
+业务治理平台是一个企业级语义数据治理平台，提供从业务对象建模到数据映射、智能数据发现与分析的完整解决方案。
 
 ## ✨ 核心功能
 

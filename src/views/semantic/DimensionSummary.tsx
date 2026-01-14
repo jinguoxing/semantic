@@ -150,27 +150,40 @@ export const DimensionSummary: React.FC<DimensionSummaryProps> = ({ profile }) =
                         </div>
 
                         {/* Dimension 3: Risk Items */}
-                        <div className="flex items-center justify-between p-3 bg-red-50/50 rounded-lg border border-red-100">
+                        <div className={`flex items-center justify-between p-3 rounded-lg border ${threeDimMetrics.riskCount === 0
+                                ? 'bg-emerald-50/50 border-emerald-100'
+                                : 'bg-red-50/50 border-red-100'
+                            }`}>
                             <div className="flex items-center gap-3">
                                 <span className="text-sm font-medium text-slate-700">③ 风险项数量</span>
-                                <span className="text-lg font-bold text-red-600">
-                                    {threeDimMetrics.riskCount} 项
-                                </span>
-                            </div>
-                            <button
-                                onClick={() => setShowRiskDetail(!showRiskDetail)}
-                                className="text-xs text-red-600 hover:text-red-700 flex items-center gap-1"
-                            >
-                                {showRiskDetail ? (
-                                    <><ChevronDown size={12} /> 收起风险</>
+                                {threeDimMetrics.riskCount === 0 ? (
+                                    <span className="text-sm text-emerald-600 flex items-center gap-1">
+                                        <CheckCircle size={14} />
+                                        无风险
+                                    </span>
                                 ) : (
-                                    <><ChevronRight size={12} /> 查看风险</>
+                                    <span className="text-lg font-bold text-red-600">
+                                        {threeDimMetrics.riskCount} 项
+                                    </span>
                                 )}
-                            </button>
+                            </div>
+
+                            {threeDimMetrics.riskCount > 0 && (
+                                <button
+                                    onClick={() => setShowRiskDetail(!showRiskDetail)}
+                                    className="text-xs text-red-600 hover:text-red-700 flex items-center gap-1"
+                                >
+                                    {showRiskDetail ? (
+                                        <><ChevronDown size={12} /> 收起风险</>
+                                    ) : (
+                                        <><ChevronRight size={12} /> 查看风险</>
+                                    )}
+                                </button>
+                            )}
                         </div>
 
                         {/* Expanded Risk Detail */}
-                        {showRiskDetail && (
+                        {showRiskDetail && threeDimMetrics.riskCount > 0 && (
                             <div className="pl-4 space-y-2 text-xs">
                                 {threeDimMetrics.sensitiveFieldCount > 0 && (
                                     <div className="flex items-start gap-2">

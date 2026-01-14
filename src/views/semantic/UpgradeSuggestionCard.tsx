@@ -130,7 +130,7 @@ export function generateUpgradeSuggestion(profile: any): UpgradeSuggestion | nul
     // Example: Suggest upgrading from Entity to Event if conditions met
     if (profile.objectType === 'entity') {
         const hasTimeFields = profile.fields?.some((f: any) =>
-            f.role === 'Time' || f.name.includes('time') || f.name.includes('created')
+            f.role === 'Time' || f.fieldName?.includes('time') || f.fieldName?.includes('created')
         );
 
         if (hasTimeFields && profile.aiScore < 0.8) {

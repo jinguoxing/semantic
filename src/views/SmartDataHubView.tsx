@@ -2,7 +2,11 @@ import { useState } from 'react';
 import { Search, Database, Layout, FileText, Send, MessageCircle, ChevronRight, CheckCircle, Plus } from 'lucide-react';
 import { mockCatalogItems, mockBusinessObjects } from '../data/mockData';
 
-const SmartDataHubView = () => {
+interface SmartDataHubViewProps {
+    businessObjects?: any[];
+}
+
+const SmartDataHubView = ({ businessObjects = [] }: SmartDataHubViewProps) => {
     const [activeTab, setActiveTab] = useState<'find' | 'ask'>('find');
     const [searchTerm, setSearchTerm] = useState('');
     const [assetTypeFilter, setAssetTypeFilter] = useState('all');
@@ -16,7 +20,28 @@ const SmartDataHubView = () => {
     const [isLoading, setIsLoading] = useState(false);
 
     // Mock catalog data
-    const catalogAssets = mockCatalogItems || [];
+    // Merge mock items with dynamic published business objects
+    const publishedBOs = businessObjects
+        .filter(bo => bo.status === 'published')
+        .map(bo => ({
+            id: bo.id,
+            type: 'bo', // Use 'bo' type to match existing logic
+            name: bo.name,
+            code: bo.code,
+            description: bo.description,
+            domain: bo.domain,
+            status: bo.status,
+            tags: ['业务对象', bo.domain], // Add some default tags
+            fieldCount: bo.fields?.length || 0,
+            mappingCount: 0, // Placeholder
+            lastUpdated: new Date().toISOString().split('T')[0], // Today
+            createdAt: new Date().toISOString().split('T')[0]
+        }));
+
+    // Filter out mock BOs if we have dynamic ones to avoid duplication or confusion, 
+    // OR just append. For this feature, appending is safer to see the new ones.
+    // Let's prepend the dynamic ones so they show up first.
+    const catalogAssets = [...publishedBOs, ...(mockCatalogItems || [])];
 
     const filteredAssets = catalogAssets.filter(asset => {
         const matchesSearch = asset.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
