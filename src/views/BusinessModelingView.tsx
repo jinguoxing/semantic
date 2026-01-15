@@ -1,25 +1,28 @@
 import { useState } from 'react';
 import {
     Layout, Database, Search, CheckCircle, Plus, X,
-    FileText, Settings, Layers, Trash2
+    FileText, Settings, Layers, Trash2, ChevronDown, ChevronRight,
+    Folder, FolderOpen, Box, Grid, PanelLeftClose, PanelLeftOpen,
+    ChevronsDown, ChevronsUp
 } from 'lucide-react';
 
 // Domain Group Configuration
+// Domain Group Configuration
 const DOMAIN_GROUPS = [
     {
-        title: '👥 组织与人力资源',
+        title: '组织与人力资源',
         domains: ['组织人事域', '薪酬福利域', '考勤工时域', '人才发展域']
     },
     {
-        title: '📦 供应链中心',
+        title: '供应链中心',
         domains: ['商品域', '采购域', '库存域', '物流域']
     },
     {
-        title: '👥 用户与交易',
+        title: '用户与交易',
         domains: ['用户域', '交易域']
     },
     {
-        title: '🏛️ 政务服务场景',
+        title: '政务服务场景',
         domains: ['出生一件事']
     }
 ];
@@ -39,6 +42,13 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
     const [selectedBoIds, setSelectedBoIds] = useState<string[]>([]);
     const [showPublishConfirm, setShowPublishConfirm] = useState(false);
     const [selectedDomain, setSelectedDomain] = useState<string>('ALL');
+    const [domainSearch, setDomainSearch] = useState('');
+    const [collapseAllDomains, setCollapseAllDomains] = useState(false);
+    const [collapseDomainPanel, setCollapseDomainPanel] = useState(false);
+    const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+    const [filterStatus, setFilterStatus] = useState('all');
+    const [filterOwner, setFilterOwner] = useState('all');
+    const [sortBy, setSortBy] = useState('recent');
 
     // Initial Form State
     const initialBoState = {
@@ -127,6 +137,22 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
         setBoFormData({ ...boFormData, fields: newFields });
     };
 
+    const getMappingStatus = (bo: any) => {
+        if (!bo.fields || bo.fields.length === 0) {
+            return { label: '未映射', tone: 'bg-slate-100 text-slate-500' };
+        }
+        if (bo.status === 'published') {
+            return { label: '已映射', tone: 'bg-emerald-50 text-emerald-600' };
+        }
+        return { label: '部分映射', tone: 'bg-amber-50 text-amber-600' };
+    };
+
+    const getMappingProgress = (bo: any) => {
+        if (!bo.fields || bo.fields.length === 0) return 0;
+        if (bo.status === 'published') return 100;
+        return Math.min(70, 40 + bo.fields.length * 5);
+    };
+
     const toggleSelection = (id: string) => {
         setSelectedBoIds(prev =>
             prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
@@ -134,7 +160,8 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
     };
 
     const handleBatchPublish = () => {
-        if (selectedBoIds.length === 0) return;
+        const hasDraft = businessObjects.some(bo => selectedBoIds.includes(bo.id) && bo.status !== 'published');
+        if (!hasDraft) return;
         setShowPublishConfirm(true);
     };
 
@@ -147,13 +174,48 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
         // Removed alert to be less intrusive, or could add a toast here
     };
 
+    const handleBatchArchive = () => {
+        if (selectedBoIds.length === 0) return;
+        if (!confirm('确认归档所选业务对象吗？')) return;
+        setBusinessObjects(prev => prev.map(bo =>
+            selectedBoIds.includes(bo.id) ? { ...bo, status: 'archived' } : bo
+        ));
+        setSelectedBoIds([]);
+    };
+
+    const handleBatchDelete = () => {
+        if (selectedBoIds.length === 0) return;
+        if (!confirm('确认删除所选业务对象吗？此操作不可撤销。')) return;
+        setBusinessObjects(prev => prev.filter(bo => !selectedBoIds.includes(bo.id)));
+        setSelectedBoIds([]);
+    };
+
     const uniqueDomains = Array.from(new Set(businessObjects.map(bo => bo.domain).filter(Boolean)));
+    const normalizedDomainSearch = domainSearch.trim().toLowerCase();
+    const showDomainList = (!collapseAllDomains || normalizedDomainSearch.length > 0) && !collapseDomainPanel;
+    const filteredDomainGroups = DOMAIN_GROUPS.map(group => ({
+        ...group,
+        domains: group.domains.filter(domain => domain.toLowerCase().includes(normalizedDomainSearch))
+    })).filter(group => group.domains.length > 0);
+    const otherDomains = uniqueDomains.filter(d => !DOMAIN_GROUPS.flatMap(g => g.domains).includes(d));
+    const filteredOtherDomains = otherDomains.filter(domain => domain.toLowerCase().includes(normalizedDomainSearch));
+    const uniqueOwners = Array.from(new Set(businessObjects.map(bo => bo.owner).filter(Boolean)));
 
     const filteredBOs = businessObjects.filter(bo => {
         const matchesSearch = bo.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             bo.code.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesDomain = selectedDomain === 'ALL' || bo.domain === selectedDomain;
-        return matchesSearch && matchesDomain;
+        const matchesStatus = filterStatus === 'all' || bo.status === filterStatus;
+        const matchesOwner = filterOwner === 'all' || (bo.owner || '未设置') === filterOwner;
+        return matchesSearch && matchesDomain && matchesStatus && matchesOwner;
+    }).sort((a, b) => {
+        if (sortBy === 'fields') {
+            return (b.fields?.length || 0) - (a.fields?.length || 0);
+        }
+        if (sortBy === 'mapping') {
+            return getMappingProgress(b) - getMappingProgress(a);
+        }
+        return 0;
     });
 
     return (
@@ -175,15 +237,38 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
                             className="pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-64 text-sm shadow-sm"
                         />
                     </div>
-                    {selectedBoIds.length > 0 && (
-                        <button
-                            onClick={handleBatchPublish}
-                            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all shadow-sm shadow-emerald-200 font-medium animate-fade-in"
-                        >
-                            <CheckCircle size={18} />
-                            <span>批量发布 ({selectedBoIds.length})</span>
-                        </button>
-                    )}
+                    <select
+                        value={filterStatus}
+                        onChange={(e) => setFilterStatus(e.target.value)}
+                        className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="all">全部状态</option>
+                        <option value="published">已发布</option>
+                        <option value="draft">草稿</option>
+                        <option value="archived">归档</option>
+                    </select>
+                    <select
+                        value={filterOwner}
+                        onChange={(e) => setFilterOwner(e.target.value)}
+                        className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="all">全部负责人</option>
+                        {uniqueOwners.map(owner => (
+                            <option key={owner} value={owner}>{owner}</option>
+                        ))}
+                        {!uniqueOwners.includes('未设置') && (
+                            <option value="未设置">未设置</option>
+                        )}
+                    </select>
+                    <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="recent">最近更新</option>
+                        <option value="fields">字段数</option>
+                        <option value="mapping">映射完整度</option>
+                    </select>
                     <button
                         onClick={handleCreateBO}
                         className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all shadow-sm shadow-blue-200 font-medium"
@@ -194,112 +279,250 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
                 </div>
             </div>
 
+            {selectedBoIds.length > 0 && (
+                <div className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-4 py-3 shadow-sm">
+                    <div className="text-sm text-slate-600">
+                        已选 <span className="font-semibold text-slate-800">{selectedBoIds.length}</span> 个对象
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleBatchPublish}
+                            className="flex items-center gap-2 px-3 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+                        >
+                            <CheckCircle size={16} />
+                            发布
+                        </button>
+                        <button
+                            onClick={handleBatchArchive}
+                            className="flex items-center gap-2 px-3 py-2 text-sm bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors"
+                        >
+                            归档
+                        </button>
+                        <button
+                            onClick={handleBatchDelete}
+                            className="flex items-center gap-2 px-3 py-2 text-sm bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition-colors"
+                        >
+                            <Trash2 size={16} />
+                            删除
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Main Content Area with Sidebar */}
             <div className="flex gap-6 flex-1 min-h-0">
                 {/* Left Sidebar - Domain Tree */}
-                <div className="w-64 bg-white rounded-xl border border-slate-200 flex flex-col flex-shrink-0 overflow-hidden">
-                    <div className="p-4 border-b border-slate-100 bg-slate-50">
-                        <h3 className="font-bold text-slate-700 flex items-center gap-2">
-                            <Layers size={18} className="text-blue-500" />
-                            业务域
-                        </h3>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-4">
-                        <button
-                            onClick={() => setSelectedDomain('ALL')}
-                            className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between group ${selectedDomain === 'ALL' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
-                        >
-                            <span className="flex items-center gap-2"><Layers size={14} /> 全部域</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${selectedDomain === 'ALL' ? 'bg-blue-200/50' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}>
-                                {businessObjects.length}
-                            </span>
-                        </button>
-
-                        {/* Render Groups */}
-                        {DOMAIN_GROUPS.map((group, idx) => (
-                            <div key={idx}>
-                                <h4 className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 mt-2">
-                                    {group.title}
-                                </h4>
-                                <div className="space-y-0.5">
-                                    {group.domains.map(domain => {
-                                        const count = businessObjects.filter(bo => bo.domain === domain).length;
-                                        return (
-                                            <button
-                                                key={domain}
-                                                onClick={() => setSelectedDomain(domain)}
-                                                className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors flex items-center justify-between group ml-2 border-l border-slate-100 ${selectedDomain === domain ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
-                                            >
-                                                <span>{domain}</span>
-                                                {count > 0 && (
-                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${selectedDomain === domain ? 'bg-blue-200/50' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}>
-                                                        {count}
-                                                    </span>
-                                                )}
-                                            </button>
-                                        );
-                                    })}
+                <div className={`${collapseDomainPanel ? 'w-14' : 'w-64'} bg-white rounded-xl border border-slate-200 flex flex-col flex-shrink-0 overflow-hidden transition-all duration-200`}>
+                    <div className="p-3 border-b border-slate-100 bg-slate-50">
+                        <div className="flex items-center justify-between h-7">
+                            <h3 className={`font-bold text-slate-700 flex items-center gap-2 ${collapseDomainPanel ? 'justify-center w-full' : ''}`}>
+                                {collapseDomainPanel ? (
+                                    <button
+                                        onClick={() => setCollapseDomainPanel(false)}
+                                        className="text-slate-400 hover:text-blue-600 transition-colors"
+                                        title="展开面板"
+                                    >
+                                        <PanelLeftOpen size={20} />
+                                    </button>
+                                ) : (
+                                    <>
+                                        <Layers size={18} className="text-blue-500" />
+                                        <span>业务域</span>
+                                    </>
+                                )}
+                            </h3>
+                            {!collapseDomainPanel && (
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => setCollapseAllDomains(prev => !prev)}
+                                        className="p-1 text-slate-400 hover:text-blue-600 hover:bg-slate-200 rounded transition-colors"
+                                        title={collapseAllDomains ? '展开全部' : '收起全部'}
+                                    >
+                                        {collapseAllDomains ? <ChevronsDown size={16} /> : <ChevronsUp size={16} />}
+                                    </button>
+                                    <button
+                                        onClick={() => setCollapseDomainPanel(true)}
+                                        className="p-1 text-slate-400 hover:text-blue-600 hover:bg-slate-200 rounded transition-colors"
+                                        title="收起面板"
+                                    >
+                                        <PanelLeftClose size={16} />
+                                    </button>
                                 </div>
+                            )}
+                        </div>
+                    </div>
+                    {!collapseDomainPanel && (
+                        <div className="p-3 border-b border-slate-100">
+                            <div className="relative">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                <input
+                                    type="text"
+                                    value={domainSearch}
+                                    onChange={(e) => setDomainSearch(e.target.value)}
+                                    placeholder="搜索业务域..."
+                                    className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-blue-500"
+                                />
                             </div>
-                        ))}
+                        </div>
+                    )}
+                    {!collapseDomainPanel && (
+                        <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+                            {/* Tree Root: All Domains */}
+                            <div className="mb-2">
+                                <button
+                                    onClick={() => setSelectedDomain('ALL')}
+                                    className={`w-full text-left px-2 py-1.5 rounded-lg text-sm transition-colors flex items-center justify-between group ${selectedDomain === 'ALL' ? 'bg-blue-100 text-blue-700 font-medium' : 'text-slate-600 hover:bg-slate-100'}`}
+                                >
+                                    <span className="flex items-center gap-2"><Grid size={16} className={selectedDomain === 'ALL' ? 'text-blue-600' : 'text-slate-400'} /> 全部业务域</span>
+                                    <span className={`text-xs px-1.5 min-w-[20px] text-center rounded-full ${selectedDomain === 'ALL' ? 'bg-white text-blue-600' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}>
+                                        {businessObjects.length}
+                                    </span>
+                                </button>
+                            </div>
 
-                        {/* Render Others */}
-                        {uniqueDomains.filter(d => !DOMAIN_GROUPS.flatMap(g => g.domains).includes(d)).length > 0 && (
-                            <div>
-                                <h4 className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 mt-2">
-                                    📂 其他
-                                </h4>
-                                <div className="space-y-0.5">
-                                    {uniqueDomains.filter(d => !DOMAIN_GROUPS.flatMap(g => g.domains).includes(d)).map(domain => {
-                                        const count = businessObjects.filter(bo => bo.domain === domain).length;
-                                        return (
+                            {/* Domain Groups (Folders) */}
+                            <div className="space-y-1">
+                                {showDomainList && filteredDomainGroups.map((group, idx) => {
+                                    const isCollapsed = collapsedGroups[group.title];
+                                    const groupActive = group.domains.includes(selectedDomain);
+                                    return (
+                                        <div key={idx} className="select-none">
                                             <button
-                                                key={domain}
-                                                onClick={() => setSelectedDomain(domain)}
-                                                className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors flex items-center justify-between group ml-2 border-l border-slate-100 ${selectedDomain === domain ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
+                                                onClick={() => setCollapsedGroups(prev => ({ ...prev, [group.title]: !prev[group.title] }))}
+                                                className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-lg transition-colors hover:bg-slate-50 ${groupActive ? 'text-blue-800' : 'text-slate-700'}`}
                                             >
-                                                <span>{domain}</span>
-                                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${selectedDomain === domain ? 'bg-blue-200/50' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}>
-                                                    {count}
+                                                <span className="text-slate-400 transition-transform duration-200" style={{ transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>
+                                                    <ChevronDown size={14} />
                                                 </span>
+                                                {isCollapsed ? (
+                                                    <Folder size={16} className={groupActive ? 'text-blue-500' : 'text-amber-400'} fill="currentColor" fillOpacity={0.2} />
+                                                ) : (
+                                                    <FolderOpen size={16} className={groupActive ? 'text-blue-500' : 'text-amber-400'} fill="currentColor" fillOpacity={0.2} />
+                                                )}
+                                                <span className="font-medium truncate flex-1 text-left">{group.title}</span>
                                             </button>
-                                        );
-                                    })}
-                                </div>
+
+                                            {!isCollapsed && (
+                                                <div className="mt-0.5 ml-6 space-y-0.5 border-l border-slate-200 pl-1">
+                                                    {group.domains.map(domain => {
+                                                        const count = businessObjects.filter(bo => bo.domain === domain).length;
+                                                        const isActive = selectedDomain === domain;
+                                                        return (
+                                                            <button
+                                                                key={domain}
+                                                                onClick={() => setSelectedDomain(domain)}
+                                                                className={`w-full text-left px-2 py-1.5 rounded-md text-sm transition-colors flex items-center justify-between group relative ${isActive ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                                                            >
+                                                                <div className="flex items-center gap-2 overflow-hidden">
+                                                                    <Layers size={14} className={isActive ? 'text-blue-500' : 'text-slate-400'} />
+                                                                    <span className="truncate">{domain}</span>
+                                                                </div>
+                                                                {count > 0 && (
+                                                                    <span className={`text-[10px] px-1.5 rounded-full ${isActive ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}>
+                                                                        {count}
+                                                                    </span>
+                                                                )}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
-                        )}
-                    </div>
+
+                            {/* Others Group */}
+                            {showDomainList && filteredOtherDomains.length > 0 && (
+                                <div className="mt-1 select-none">
+                                    <button
+                                        onClick={() => setCollapsedGroups(prev => ({ ...prev, '其他': !prev['其他'] }))}
+                                        className="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-lg transition-colors hover:bg-slate-50 text-slate-700"
+                                    >
+                                        <span className="text-slate-400 transition-transform duration-200" style={{ transform: collapsedGroups['其他'] ? 'rotate(-90deg)' : 'rotate(0deg)' }}>
+                                            <ChevronDown size={14} />
+                                        </span>
+                                        {collapsedGroups['其他'] ? (
+                                            <Folder size={16} className="text-slate-400" fill="currentColor" fillOpacity={0.2} />
+                                        ) : (
+                                            <FolderOpen size={16} className="text-slate-400" fill="currentColor" fillOpacity={0.2} />
+                                        )}
+                                        <span className="font-medium truncate flex-1 text-left">未分组</span>
+                                    </button>
+
+                                    {!collapsedGroups['其他'] && (
+                                        <div className="mt-0.5 ml-6 space-y-0.5 border-l border-slate-200 pl-1">
+                                            {filteredOtherDomains.map(domain => {
+                                                const count = businessObjects.filter(bo => bo.domain === domain).length;
+                                                const isActive = selectedDomain === domain;
+                                                return (
+                                                    <button
+                                                        key={domain}
+                                                        onClick={() => setSelectedDomain(domain)}
+                                                        className={`w-full text-left px-2 py-1.5 rounded-md text-sm transition-colors flex items-center justify-between group ${isActive ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                                                    >
+                                                        <div className="flex items-center gap-2 overflow-hidden">
+                                                            <Box size={14} className={isActive ? 'text-blue-500' : 'text-slate-400'} />
+                                                            <span className="truncate">{domain}</span>
+                                                        </div>
+                                                        <span className={`text-[10px] px-1.5 rounded-full ${isActive ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}>
+                                                            {count}
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Right Grid - BO List */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-6">
                         {filteredBOs.map(bo => (
                             <div key={bo.id} className={`bg-white rounded-xl border p-6 hover:shadow-lg transition-all group cursor-pointer relative ${selectedBoIds.includes(bo.id) ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-50/10' : 'border-slate-200'}`} onClick={() => onNavigateToMapping(bo)}>
-                                {bo.status !== 'published' && (
-                                    <div onClick={(e) => { e.stopPropagation(); toggleSelection(bo.id); }} className="absolute top-4 left-4 z-10 p-2 -ml-2 -mt-2 hover:bg-slate-100 rounded-full">
-                                        <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedBoIds.includes(bo.id) ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`}>
-                                            {selectedBoIds.includes(bo.id) && <CheckCircle size={14} className="text-white" />}
-                                        </div>
+                                <div onClick={(e) => { e.stopPropagation(); toggleSelection(bo.id); }} className="absolute top-4 left-4 z-10 p-2 -ml-2 -mt-2 hover:bg-slate-100 rounded-full">
+                                    <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedBoIds.includes(bo.id) ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`}>
+                                        {selectedBoIds.includes(bo.id) && <CheckCircle size={14} className="text-white" />}
                                     </div>
-                                )}
+                                </div>
                                 <div className="flex justify-between items-start mb-4 pl-8">
                                     <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
                                         <Layout size={20} />
                                     </div>
-                                    <div className={`px-2 py-1 rounded text-xs font-semibold uppercase ${bo.status === 'published' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                                        {bo.status === 'published' ? '已发布' : (bo.status === 'draft' ? '草稿' : bo.status)}
+                                    <div className={`px-2 py-1 rounded text-xs font-semibold uppercase ${bo.status === 'published' ? 'bg-emerald-100 text-emerald-700' : bo.status === 'archived' ? 'bg-slate-200 text-slate-600' : 'bg-slate-100 text-slate-600'}`}>
+                                        {bo.status === 'published' ? '已发布' : (bo.status === 'draft' ? '草稿' : bo.status === 'archived' ? '归档' : bo.status)}
                                     </div>
                                 </div>
                                 <h3 className="font-bold text-lg text-slate-800 mb-1">{bo.name}</h3>
                                 <p className="text-xs font-mono text-slate-500 mb-4 bg-slate-50 inline-block px-2 py-0.5 rounded">{bo.code}</p>
-                                <p className="text-sm text-slate-600 line-clamp-2 mb-6 h-10">{bo.description || '暂无描述'}</p>
+                                <p className="text-sm text-slate-600 line-clamp-2 mb-4 h-10">{bo.description || '暂无描述'}</p>
 
-                                <div className="flex items-center justify-between pt-4 border-t border-slate-50">
-                                    <div className="flex items-center gap-4 text-sm text-slate-500">
-                                        <span className="flex items-center gap-1"><Layers size={14} /> {bo.domain}</span>
-                                        <span className="flex items-center gap-1"><CheckCircle size={14} /> {bo.fields?.length || 0} 字段</span>
-                                    </div>
+                                <div className="flex items-center justify-between text-xs text-slate-500 mb-3">
+                                    <span className="flex items-center gap-1"><Layers size={14} /> {bo.domain}</span>
+                                    <span className="flex items-center gap-1"><CheckCircle size={14} /> {bo.fields?.length || 0} 字段</span>
+                                </div>
+
+                                <div className="flex items-center justify-between text-xs">
+                                    <span className={`px-2 py-0.5 rounded-full ${getMappingStatus(bo).tone}`}>
+                                        {getMappingStatus(bo).label}
+                                    </span>
+                                    <span className="text-slate-400">映射完整度 {getMappingProgress(bo)}%</span>
+                                </div>
+                                <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className="h-full bg-blue-500" style={{ width: `${getMappingProgress(bo)}%` }} />
+                                </div>
+
+                                <div className="flex items-center justify-between pt-4 border-t border-slate-50 mt-4">
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); onNavigateToMapping(bo); }}
+                                        className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                                    >
+                                        去映射
+                                    </button>
                                     <div className="hidden group-hover:flex items-center gap-1 transition-opacity">
                                         <button onClick={(e) => { e.stopPropagation(); handleEditBO(bo); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="编辑">
                                             <Settings size={16} />

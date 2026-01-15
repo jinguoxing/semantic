@@ -1,10 +1,12 @@
 import { useState, useRef } from 'react';
-import { Database, Search, ChevronRight, Cpu, CheckCircle, Star, Tag, FileText, Layers, ShieldCheck, Activity, ArrowLeft, Table, Clock, Server, RefreshCw, X, AlertCircle, Settings, AlertTriangle, Share2, Shield, Plus, Edit3, Sparkles, PanelLeftClose, PanelLeftOpen, Box, ListPlus } from 'lucide-react';
+import { Sparkles, Activity, CheckCircle, ChevronDown, ChevronRight, Bot, AlertTriangle, ArrowLeft, RefreshCw, Table, Share2, Layers, Shield, Database, Search, Settings, Filter, Plus, FileText, Key, Hash, CheckCircle2, XCircle, Info, PanelLeftOpen, PanelLeftClose, Server, Clock, Edit3, X, Box, ListPlus, Cpu, Star, Tag, ShieldCheck, AlertCircle } from 'lucide-react';
 import { checkGatekeeper, analyzeField } from '../logic/semantic/rules';
 import { calculateTableRuleScore, calculateFusionScore } from '../logic/semantic/scoring';
 import { analyzeTableWithMockAI } from '../services/mockAiService';
 import { TableSemanticProfile, FieldSemanticProfile } from '../types/semantic';
 import { SemanticAnalysisCard } from './semantic/SemanticAnalysisCard';
+import { SemanticConclusionCard } from './semantic/SemanticConclusionCard';
+import { DeepAnalysisTabs } from './semantic/DeepAnalysisTabs';
 import { UpgradeSuggestionCard, generateUpgradeSuggestion } from './semantic/UpgradeSuggestionCard';
 import { AnalysisProgressPanel } from './semantic/AnalysisProgressPanel';
 import { StreamingProgressPanel } from './semantic/StreamingProgressPanel';
@@ -1016,9 +1018,14 @@ const DataSemanticUnderstandingView = ({
                                                 setPendingAnalysisResult(null);
                                             }}
                                         />
+                                    ) : semanticProfile.analysisStep === 'idle' ? (
+                                        // V2.3 Phase 2: Hide Analysis Engine and Conclusion in Pending State
+                                        // Only show the header and the field list (rendered below)
+                                        null
                                     ) : (
                                         <>
-                                            <SemanticAnalysisCard
+                                            {/* 1. Conclusion Card (Top Priority) */}
+                                            <SemanticConclusionCard
                                                 profile={semanticProfile}
                                                 fields={selectedTable.fields || []}
                                                 onAccept={handleSaveToMetadata}
@@ -1030,20 +1037,39 @@ const DataSemanticUnderstandingView = ({
                                                     handleJustSave();
                                                     setEditMode(false);
                                                 }}
-                                                onUpgradeAccepted={(beforeState, afterState) => {
-                                                    if (!selectedTable) return;
-                                                    recordUpgradeHistory(
-                                                        selectedTable.table,
-                                                        selectedTable.table,
-                                                        beforeState,
-                                                        afterState
-                                                    );
-                                                }}
                                                 existingBO={(() => {
                                                     const mappedEntry = Object.entries(mockBOTableMappings).find(([_, config]) => config.tableName === selectedTable.table);
                                                     return mappedEntry ? (businessObjects || []).find(b => b.id === mappedEntry[0]) : undefined;
                                                 })()}
                                             />
+
+                                            {/* 2. Analysis Details (Secondary) */}
+                                            <div className="mt-6">
+                                                <SemanticAnalysisCard
+                                                    profile={semanticProfile}
+                                                    fields={selectedTable.fields || []}
+                                                    onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
+                                                    onUpgradeAccepted={(beforeState, afterState) => {
+                                                        if (!selectedTable) return;
+                                                        recordUpgradeHistory(
+                                                            selectedTable.table,
+                                                            selectedTable.table,
+                                                            beforeState,
+                                                            afterState
+                                                        );
+                                                    }}
+                                                />
+                                            </div>
+
+                                            {/* 3. Deep Analysis Tabs (Details) */}
+                                            <div className="mt-6">
+                                                <DeepAnalysisTabs
+                                                    profile={semanticProfile}
+                                                    fields={selectedTable.fields || []}
+                                                    onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
+                                                />
+                                            </div>
+
                                             {upgradeHistory.some(entry => entry.tableId === selectedTable.table) && (
                                                 <div className="mt-4 bg-white rounded-lg border border-slate-200 p-4">
                                                     <div className="text-sm font-medium text-slate-700 flex items-center gap-2 mb-3">
@@ -1091,15 +1117,18 @@ const DataSemanticUnderstandingView = ({
                                             >
                                                 <Table size={16} /> 字段结构 ({selectedTable.fields?.length || 0})
                                             </button>
+                                            {semanticProfile.analysisStep !== 'idle' && (
+                                                <button
+                                                    onClick={() => setDetailTab('graph')}
+                                                    className={`px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors ${detailTab === 'graph' ? 'border-blue-500 text-blue-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'}`}
+                                                >
+                                                    <Share2 size={16} /> 关系图谱 ({semanticProfile.relationships?.length || 0})
+                                                </button>
+                                            )}
                                             <button
-                                                onClick={() => setDetailTab('graph')}
-                                                className={`px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors ${detailTab === 'graph' ? 'border-blue-500 text-blue-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'}`}
-                                            >
-                                                <Share2 size={16} /> 关系图谱 ({semanticProfile.relationships?.length || 0})
-                                            </button>
-                                            <button
-                                                onClick={() => setDetailTab('dimensions')}
-                                                className={`px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors ${detailTab === 'dimensions' ? 'border-blue-500 text-blue-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'}`}
+                                                onClick={() => semanticProfile.analysisStep !== 'idle' && setDetailTab('dimensions')}
+                                                title={semanticProfile.analysisStep === 'idle' ? "需语义理解" : ""}
+                                                className={`px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors ${detailTab === 'dimensions' ? 'border-blue-500 text-blue-600 bg-white' : semanticProfile.analysisStep === 'idle' ? 'border-transparent text-slate-300 cursor-not-allowed' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'}`}
                                             >
                                                 <Layers size={16} /> 语义维度
                                             </button>
@@ -1687,261 +1716,339 @@ const DataSemanticUnderstandingView = ({
 
                                             return (
                                                 // Fields Tab (default)
-                                                <div className="overflow-x-auto">
-                                                    {/* Batch Action Toolbar */}
-                                                    <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
-                                                        <div className="flex items-center gap-4 text-xs">
-                                                            {/* Search Input */}
-                                                            <div className="relative">
-                                                                <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="搜索字段..."
-                                                                    value={fieldSearchTerm}
-                                                                    onChange={(e) => setFieldSearchTerm(e.target.value)}
-                                                                    className="pl-7 pr-7 py-1.5 text-xs border border-slate-200 rounded-lg w-40 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                                />
-                                                                {fieldSearchTerm && (
-                                                                    <button
-                                                                        onClick={() => setFieldSearchTerm('')}
-                                                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                                                                    >
-                                                                        <X size={12} />
-                                                                    </button>
-                                                                )}
+                                                <div className="space-y-4">
+                                                    {/* 1. Statistics Dashboard (New Design) */}
+                                                    <div className="grid grid-cols-4 gap-4">
+                                                        {/* Total Fields */}
+                                                        <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm relative overflow-hidden group hover:border-blue-300 transition-colors">
+                                                            <div>
+                                                                <div className="text-slate-500 text-xs font-medium mb-1">总字段数</div>
+                                                                <div className="text-2xl font-bold text-slate-800">{allFields.length}</div>
                                                             </div>
-                                                            <span className="text-slate-600">
-                                                                {fieldSearchTerm ? (
-                                                                    <>匹配 <span className="font-bold text-blue-600">{filteredFields.length}</span> / {allFields.length} 字段</>
-                                                                ) : (
-                                                                    <>共 <span className="font-bold text-slate-800">{allFields.length}</span> 个字段</>
-                                                                )}
-                                                            </span>
-                                                            {/* Show complementary analysis stats */}
-                                                            <span className="flex items-center gap-1 text-emerald-600">
-                                                                <Layers size={12} />
-                                                                融合分析完成
-                                                            </span>
-                                                            {/* Sensitivity stats */}
-                                                            {allFields.filter((f: any) => {
-                                                                const name = f.name.toLowerCase();
-                                                                return name.includes('id_card') || name.includes('sfz') || name.includes('bank') ||
-                                                                    name.includes('mobile') || name.includes('phone') || name.includes('address');
-                                                            }).length > 0 && (
-                                                                    <span className="flex items-center gap-1 text-orange-600">
-                                                                        <Shield size={12} />
-                                                                        <span className="font-medium">{allFields.filter((f: any) => {
-                                                                            const name = f.name.toLowerCase();
-                                                                            return name.includes('id_card') || name.includes('sfz') || name.includes('bank') ||
-                                                                                name.includes('mobile') || name.includes('phone') || name.includes('address');
-                                                                        }).length}</span> 敏感字段
-                                                                    </span>
-                                                                )}
+                                                            <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center group-hover:bg-blue-50 transition-colors">
+                                                                <Table size={20} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Primary Keys */}
+                                                        <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm relative overflow-hidden group hover:border-amber-300 transition-colors">
+                                                            <div>
+                                                                <div className="text-slate-500 text-xs font-medium mb-1">主键/标识</div>
+                                                                <div className="text-2xl font-bold text-slate-800">{allFields.filter((f: any) => f.key === 'PK' || f.name.endsWith('_id')).length}</div>
+                                                            </div>
+                                                            <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center group-hover:bg-amber-50 transition-colors">
+                                                                <Key size={20} className="text-slate-400 group-hover:text-amber-500 transition-colors" />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Sensitive Fields */}
+                                                        <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm relative overflow-hidden group hover:border-red-300 transition-colors">
+                                                            <div>
+                                                                <div className="text-slate-500 text-xs font-medium mb-1">敏感字段</div>
+                                                                <div className="text-2xl font-bold text-slate-800">{allFields.filter((f: any) => {
+                                                                    const name = f.name.toLowerCase();
+                                                                    return name.includes('id_card') || name.includes('sfz') || name.includes('bank') ||
+                                                                        name.includes('mobile') || name.includes('phone') || name.includes('address');
+                                                                }).length}</div>
+                                                            </div>
+                                                            <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center group-hover:bg-red-50 transition-colors">
+                                                                <Shield size={20} className="text-slate-400 group-hover:text-red-500 transition-colors" />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Required Fields */}
+                                                        <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm relative overflow-hidden group hover:border-emerald-300 transition-colors">
+                                                            <div>
+                                                                <div className="text-slate-500 text-xs font-medium mb-1">必填字段</div>
+                                                                <div className="text-2xl font-bold text-slate-800">{allFields.filter((f: any) => f.required !== false).length}</div>
+                                                            </div>
+                                                            <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center group-hover:bg-emerald-50 transition-colors">
+                                                                <CheckCircle2 size={20} className="text-slate-400 group-hover:text-emerald-500 transition-colors" />
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                    {/* Large dataset warning */}
-                                                    {allFields.length > 50 && (
-                                                        <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 text-xs text-blue-600 flex items-center gap-2">
-                                                            <Layers size={14} />
-                                                            大表提示: 该表包含 {allFields.length} 个字段，建议使用批量操作或筛选功能
+
+                                                    {/* 2. Table Section */}
+                                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                                        {/* Toolbar */}
+                                                        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="relative">
+                                                                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="搜索字段名称、描述..."
+                                                                        value={fieldSearchTerm}
+                                                                        onChange={(e) => setFieldSearchTerm(e.target.value)}
+                                                                        className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white"
+                                                                    />
+                                                                </div>
+                                                                <div className="h-4 w-[1px] bg-slate-200"></div>
+                                                                <span className="text-xs text-slate-500">
+                                                                    显示 <span className="font-medium text-slate-900">{filteredFields.length}</span> / {allFields.length} 字段
+                                                                </span>
+                                                            </div>
+
+                                                            {/* Analysis Status Badge */}
+                                                            {semanticProfile.analysisStep !== 'idle' && (
+                                                                <div className="px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-100 flex items-center gap-1.5">
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                                                                    <span className="text-xs font-medium text-emerald-700">语义分析已完成</span>
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                    )}
-                                                    <div className={allFields.length > 30 ? "max-h-[500px] overflow-y-auto" : ""}>
-                                                        <table className="w-full text-sm text-left">
-                                                            <thead className="bg-slate-50 text-slate-500 border-b border-slate-100">
-                                                                <tr>
-                                                                    <th className="px-3 py-2.5 w-10 text-xs">#</th>
-                                                                    <th className="px-3 py-2.5 text-xs">物理字段</th>
-                                                                    <th className="px-3 py-2.5 text-xs w-24">类型</th>
-                                                                    <th className="px-3 py-2.5 text-xs w-36">
-                                                                        <span className="flex items-center gap-1 text-purple-600"><Settings size={12} /> 规则判定</span>
-                                                                    </th>
-                                                                    <th className="px-3 py-2.5 text-xs w-40">
-                                                                        <span className="flex items-center gap-1 text-blue-600"><Sparkles size={12} /> AI 语义</span>
-                                                                    </th>
-                                                                    <th className="px-3 py-2.5 text-xs w-28">
-                                                                        <span className="flex items-center gap-1 text-slate-500"><Database size={12} /> 采样值</span>
-                                                                    </th>
-                                                                    <th className="px-3 py-2.5 text-xs w-24">
-                                                                        <span className="flex items-center gap-1 text-orange-600"><Shield size={12} /> 敏感等级</span>
-                                                                    </th>
-                                                                    <th className="px-3 py-2.5 text-xs text-center w-32">
-                                                                        <span className="flex items-center justify-center gap-1 text-emerald-600"><Layers size={12} /> 融合结果</span>
-                                                                    </th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody className="divide-y divide-slate-50">
-                                                                {filteredFields.length === 0 && fieldSearchTerm ? (
+
+                                                        {/* Large Dataset Warning */}
+                                                        {allFields.length > 30 && (
+                                                            <div className="px-4 py-2 bg-blue-50/50 border-b border-blue-100 text-xs text-blue-600 flex items-center gap-2">
+                                                                <Layers size={14} />
+                                                                <span>大表提示: 当前表字段较多，建议使用搜索功能快速定位。</span>
+                                                            </div>
+                                                        )}
+
+                                                        <div className={allFields.length > 30 ? "max-h-[500px] overflow-y-auto" : ""}>
+                                                            <table className="w-full text-sm text-left">
+                                                                <thead className="bg-slate-50 text-slate-500 border-b border-slate-100 sticky top-0 z-10 shadow-sm">
                                                                     <tr>
-                                                                        <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
-                                                                            <Search size={24} className="mx-auto mb-2 opacity-50" />
-                                                                            <div className="text-sm">未找到匹配 "{fieldSearchTerm}" 的字段</div>
-                                                                            <button
-                                                                                onClick={() => setFieldSearchTerm('')}
-                                                                                className="mt-2 text-xs text-blue-500 hover:underline"
-                                                                            >
-                                                                                清除搜索
-                                                                            </button>
-                                                                        </td>
+                                                                        <th className="px-4 py-3.5 w-12 text-xs font-semibold">#</th>
+                                                                        <th className="px-4 py-3.5 text-xs w-48 font-semibold">物理字段</th>
+                                                                        <th className="px-4 py-3.5 text-xs w-48 font-semibold">业务描述</th>
+                                                                        <th className="px-4 py-3.5 text-xs w-32 font-semibold">数据类型</th>
+                                                                        <th className="px-4 py-3.5 text-xs w-36 font-semibold">
+                                                                            <span className="flex items-center gap-1.5 text-purple-600"><Settings size={13} /> 规则判定</span>
+                                                                        </th>
+                                                                        <th className="px-4 py-3.5 text-xs w-40 font-semibold">
+                                                                            <span className="flex items-center gap-1.5 text-blue-600"><Sparkles size={13} /> AI 语义</span>
+                                                                        </th>
+                                                                        <th className="px-4 py-3.5 text-xs w-28 font-semibold">
+                                                                            <span className="flex items-center gap-1.5 text-slate-500"><Database size={13} /> 采样值</span>
+                                                                        </th>
+                                                                        <th className="px-4 py-3.5 text-xs w-24 font-semibold">
+                                                                            <span className="flex items-center gap-1.5 text-orange-600"><Shield size={13} /> 敏感级</span>
+                                                                        </th>
+                                                                        <th className="px-4 py-3.5 text-xs text-center w-32 font-semibold">
+                                                                            <span className="flex items-center justify-center gap-1.5 text-emerald-600"><Layers size={13} /> 融合结果</span>
+                                                                        </th>
                                                                     </tr>
-                                                                ) : filteredFields.map((field: any, idx: number) => {
-                                                                    // Rule-based role determination with reasoning
-                                                                    const getRuleResult = (name: string, type: string) => {
-                                                                        if (name.endsWith('_id') || name === 'id') return { role: 'Identifier', reason: '字段名含_id后缀', confidence: 95 };
-                                                                        if (name.includes('time') || name.includes('date') || type.includes('datetime') || type.includes('timestamp')) return { role: 'EventHint', reason: '时间类型字段', confidence: 90 };
-                                                                        if (name.includes('status') || name.includes('state') || name.includes('type')) return { role: 'Status', reason: '状态/类型字段', confidence: 85 };
-                                                                        if (name.includes('amount') || name.includes('price') || name.includes('total') || type.includes('decimal')) return { role: 'Measure', reason: '金额/数量字段', confidence: 80 };
-                                                                        return { role: 'BusAttr', reason: '默认业务属性', confidence: 60 };
-                                                                    };
-                                                                    const ruleResult = getRuleResult(field.name, field.type);
-                                                                    const ruleRole = ruleResult.role;
-
-                                                                    // AI semantic analysis with business meaning
-                                                                    const getAIResult = (name: string) => {
-                                                                        const aiMappings: Record<string, { role: string; meaning: string; scenario: string; confidence: number }> = {
-                                                                            'id': { role: 'id', meaning: '记录标识', scenario: '主键关联', confidence: 92 },
-                                                                            'user_id': { role: 'user_id', meaning: '用户标识', scenario: '用户关联查询', confidence: 95 },
-                                                                            'name': { role: 'name', meaning: '名称属性', scenario: '展示/搜索', confidence: 88 },
-                                                                            'mobile': { role: 'phone', meaning: '手机号码', scenario: '联系/验证', confidence: 90 },
-                                                                            'phone': { role: 'phone', meaning: '电话号码', scenario: '联系方式', confidence: 90 },
-                                                                            'email': { role: 'email', meaning: '电子邮箱', scenario: '通知/登录', confidence: 92 },
-                                                                            'status': { role: 'status', meaning: '状态标识', scenario: '状态流转', confidence: 85 },
-                                                                            'create_time': { role: 'create_time', meaning: '创建时间', scenario: '审计追踪', confidence: 95 },
-                                                                            'update_time': { role: 'update_time', meaning: '更新时间', scenario: '变更追踪', confidence: 95 },
-                                                                            'address': { role: 'address', meaning: '地址信息', scenario: '配送/定位', confidence: 85 },
-                                                                            'amount': { role: 'amount', meaning: '金额数值', scenario: '财务统计', confidence: 88 },
-                                                                            'order_id': { role: 'order_id', meaning: '订单标识', scenario: '订单关联', confidence: 95 },
-                                                                        };
-                                                                        // Find matching AI result
-                                                                        const key = Object.keys(aiMappings).find(k => name.includes(k));
-                                                                        if (key) return aiMappings[key];
-                                                                        return { role: 'unknown', meaning: '待识别', scenario: '-', confidence: 0 };
-                                                                    };
-                                                                    const aiResult = getAIResult(field.name);
-                                                                    const aiRole = field.suggestion || aiResult.role;
-
-                                                                    // Sample values for the field
-                                                                    const getSampleValues = (name: string, type: string): string[] => {
-                                                                        if (name.includes('id')) return ['1001', '1002', '1003'];
-                                                                        if (name.includes('name')) return ['张三', '李四', '王五'];
-                                                                        if (name.includes('mobile') || name.includes('phone')) return ['138****1234', '159****5678'];
-                                                                        if (name.includes('status')) return ['1', '2', '3'];
-                                                                        if (name.includes('time') || name.includes('date')) return ['2024-01-15', '2024-02-20'];
-                                                                        if (name.includes('amount') || name.includes('price')) return ['99.00', '188.50', '520.00'];
-                                                                        if (type.includes('varchar')) return ['示例值A', '示例值B'];
-                                                                        return ['-'];
-                                                                    };
-                                                                    const sampleValues = getSampleValues(field.name, field.type);
-
-                                                                    // Check if user has resolved this conflict
-                                                                    const override = fieldRoleOverrides[field.name];
-                                                                    const isResolved = !!override;
-                                                                    const hasConflict = ruleRole.toLowerCase() !== aiRole.toLowerCase() && aiRole !== 'unknown' && !isResolved;
-                                                                    const displayRole = override?.role || ruleRole;
-
-                                                                    // Sensitivity level inference (with override support)
-                                                                    const getInferredSensitivity = (name: string): 'L1' | 'L2' | 'L3' | 'L4' => {
-                                                                        if (name.includes('id_card') || name.includes('sfz') || name.includes('bank')) return 'L4';
-                                                                        if (name.includes('mobile') || name.includes('phone') || name.includes('name') || name.includes('address')) return 'L3';
-                                                                        if (name.includes('user') || name.includes('employee')) return 'L2';
-                                                                        return 'L1';
-                                                                    };
-                                                                    const inferredSensitivity = getInferredSensitivity(field.name);
-                                                                    const sensitivity = sensitivityOverrides[field.name] || inferredSensitivity;
-                                                                    const isOverridden = !!sensitivityOverrides[field.name];
-
-                                                                    const sensitivityConfig: Record<string, { bg: string, text: string, label: string, selectBg: string }> = {
-                                                                        'L1': { bg: 'bg-slate-100', text: 'text-slate-600', label: 'L1 公开', selectBg: 'bg-slate-50' },
-                                                                        'L2': { bg: 'bg-blue-50', text: 'text-blue-600', label: 'L2 内部', selectBg: 'bg-blue-50' },
-                                                                        'L3': { bg: 'bg-orange-50', text: 'text-orange-600', label: 'L3 敏感', selectBg: 'bg-orange-50' },
-                                                                        'L4': { bg: 'bg-red-50', text: 'text-red-600', label: 'L4 高敏', selectBg: 'bg-red-50' },
-                                                                    };
-
-                                                                    return (
-                                                                        <tr key={idx} className={`hover:bg-slate-50 ${hasConflict ? 'bg-amber-50/30' : ''}`}>
-                                                                            <td className="px-3 py-2.5 text-slate-400 text-xs font-mono">{idx + 1}</td>
-                                                                            <td className="px-3 py-2.5 font-mono text-blue-600 font-medium text-sm">{field.name}</td>
-                                                                            <td className="px-3 py-2.5 text-xs text-slate-500">{field.type}</td>
-                                                                            {/* Enhanced Rule Judgment Column */}
-                                                                            <td className="px-3 py-2">
-                                                                                <div className={`px-2 py-1 rounded ${override?.source === 'rule' ? 'border-2 border-purple-400 bg-purple-100' : 'bg-purple-50 border border-purple-100'}`}>
-                                                                                    <div className="text-xs font-medium text-purple-700">{ruleRole}</div>
-                                                                                    <div className="text-[10px] text-purple-500">{ruleResult.reason}</div>
-                                                                                    <div className="text-[10px] text-purple-400">置信度 {ruleResult.confidence}%</div>
-                                                                                </div>
-                                                                            </td>
-                                                                            {/* Enhanced AI Semantic Column */}
-                                                                            <td className="px-3 py-2">
-                                                                                {isAnalyzing ? (
-                                                                                    <div className="animate-pulse bg-slate-200 h-12 w-full rounded"></div>
-                                                                                ) : (
-                                                                                    <div className={`px-2 py-1 rounded ${override?.source === 'ai' ? 'border-2 border-blue-400 bg-blue-100' : 'bg-blue-50 border border-blue-100'}`}>
-                                                                                        <div className="text-xs font-medium text-blue-700">{aiResult.meaning}</div>
-                                                                                        <div className="text-[10px] text-blue-500">@{aiRole}</div>
-                                                                                        <div className="text-[10px] text-blue-400">场景: {aiResult.scenario}</div>
-                                                                                    </div>
-                                                                                )}
-                                                                            </td>
-                                                                            {/* Sample Values Column */}
-                                                                            <td className="px-3 py-2.5">
-                                                                                <div className="flex flex-wrap gap-1">
-                                                                                    {sampleValues.slice(0, 3).map((val, i) => (
-                                                                                        <span key={i} className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-mono truncate max-w-[60px]" title={val}>
-                                                                                            {val}
-                                                                                        </span>
-                                                                                    ))}
-                                                                                </div>
-                                                                            </td>
-                                                                            {/* Sensitivity Column */}
-                                                                            <td className="px-3 py-2.5">
-                                                                                <select
-                                                                                    value={sensitivity}
-                                                                                    onChange={(e) => setSensitivityOverrides(prev => ({
-                                                                                        ...prev,
-                                                                                        [field.name]: e.target.value as 'L1' | 'L2' | 'L3' | 'L4'
-                                                                                    }))}
-                                                                                    className={`px-2 py-1 rounded text-xs font-medium cursor-pointer outline-none border transition-all w-full ${isOverridden ? 'border-2 border-emerald-400' : 'border-transparent'} ${sensitivityConfig[sensitivity].bg} ${sensitivityConfig[sensitivity].text}`}
+                                                                </thead>
+                                                                <tbody className="divide-y divide-slate-50">
+                                                                    {filteredFields.length === 0 && fieldSearchTerm ? (
+                                                                        <tr>
+                                                                            <td colSpan={9} className="px-4 py-12 text-center text-slate-400 bg-slate-50/30">
+                                                                                <Search size={32} className="mx-auto mb-3 opacity-30" />
+                                                                                <div className="text-sm font-medium">未找到匹配 "{fieldSearchTerm}" 的字段</div>
+                                                                                <button
+                                                                                    onClick={() => setFieldSearchTerm('')}
+                                                                                    className="mt-3 text-xs text-blue-500 hover:text-blue-600 hover:underline"
                                                                                 >
-                                                                                    <option value="L1" className="bg-white text-slate-600">L1 公开</option>
-                                                                                    <option value="L2" className="bg-white text-blue-600">L2 内部</option>
-                                                                                    <option value="L3" className="bg-white text-orange-600">L3 敏感</option>
-                                                                                    <option value="L4" className="bg-white text-red-600">L4 高敏</option>
-                                                                                </select>
-                                                                            </td>
-                                                                            {/* Enhanced Merge Result Column */}
-                                                                            <td className="px-3 py-2.5 text-center">
-                                                                                <div className="space-y-1">
-                                                                                    {/* Conflict indicator */}
-                                                                                    {hasConflict && (
-                                                                                        <div className="flex items-center justify-center gap-1 text-amber-600 text-[10px]">
-                                                                                            <AlertTriangle size={10} /> 待确认
-                                                                                        </div>
-                                                                                    )}
-                                                                                    <div className="flex flex-wrap items-center justify-center gap-1">
-                                                                                        {/* Rule role */}
-                                                                                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-600 border border-purple-100">
-                                                                                            {ruleRole}
-                                                                                        </span>
-                                                                                        {/* AI supplement if different */}
-                                                                                        {aiRole.toLowerCase() !== ruleRole.toLowerCase() && aiRole !== 'unknown' && (
-                                                                                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-50 text-blue-600 border border-blue-100">
-                                                                                                +{aiResult.meaning}
-                                                                                            </span>
-                                                                                        )}
-                                                                                        {/* Sensitivity tag for L3/L4 */}
-                                                                                        {(sensitivity === 'L3' || sensitivity === 'L4') && (
-                                                                                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${sensitivity === 'L4' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-orange-50 text-orange-600 border border-orange-100'}`}>
-                                                                                                {sensitivity === 'L4' ? '高敏' : '敏感'}
-                                                                                            </span>
-                                                                                        )}
-                                                                                    </div>
-                                                                                </div>
+                                                                                    清除搜索条件
+                                                                                </button>
                                                                             </td>
                                                                         </tr>
-                                                                    );
-                                                                })}
-                                                            </tbody>
-                                                        </table>
+                                                                    ) : filteredFields.map((field: any, idx: number) => {
+                                                                        // Rule-based role determination with reasoning
+                                                                        const getRuleResult = (name: string, type: string) => {
+                                                                            if (name.endsWith('_id') || name === 'id') return { role: 'Identifier', reason: '字段名含_id后缀', confidence: 95 };
+                                                                            if (name.includes('time') || name.includes('date') || type.includes('datetime') || type.includes('timestamp')) return { role: 'EventHint', reason: '时间类型字段', confidence: 90 };
+                                                                            if (name.includes('status') || name.includes('state') || name.includes('type')) return { role: 'Status', reason: '状态/类型字段', confidence: 85 };
+                                                                            if (name.includes('amount') || name.includes('price') || name.includes('total') || type.includes('decimal')) return { role: 'Measure', reason: '金额/数量字段', confidence: 80 };
+                                                                            return { role: 'BusAttr', reason: '默认业务属性', confidence: 60 };
+                                                                        };
+                                                                        const ruleResult = getRuleResult(field.name, field.type);
+                                                                        const ruleRole = ruleResult.role;
+
+                                                                        // AI semantic analysis with business meaning
+                                                                        const getAIResult = (name: string) => {
+                                                                            const aiMappings: Record<string, { role: string; meaning: string; scenario: string; confidence: number }> = {
+                                                                                'id': { role: 'id', meaning: '记录标识', scenario: '主键关联', confidence: 92 },
+                                                                                'user_id': { role: 'user_id', meaning: '用户标识', scenario: '用户关联查询', confidence: 95 },
+                                                                                'name': { role: 'name', meaning: '名称属性', scenario: '展示/搜索', confidence: 88 },
+                                                                                'mobile': { role: 'phone', meaning: '手机号码', scenario: '联系/验证', confidence: 90 },
+                                                                                'phone': { role: 'phone', meaning: '电话号码', scenario: '联系方式', confidence: 90 },
+                                                                                'email': { role: 'email', meaning: '电子邮箱', scenario: '通知/登录', confidence: 92 },
+                                                                                'status': { role: 'status', meaning: '状态标识', scenario: '状态流转', confidence: 85 },
+                                                                                'create_time': { role: 'create_time', meaning: '创建时间', scenario: '审计追踪', confidence: 95 },
+                                                                                'update_time': { role: 'update_time', meaning: '更新时间', scenario: '变更追踪', confidence: 95 },
+                                                                                'address': { role: 'address', meaning: '地址信息', scenario: '配送/定位', confidence: 85 },
+                                                                                'amount': { role: 'amount', meaning: '金额数值', scenario: '财务统计', confidence: 88 },
+                                                                                'order_id': { role: 'order_id', meaning: '订单标识', scenario: '订单关联', confidence: 95 },
+                                                                            };
+                                                                            // Find matching AI result
+                                                                            const key = Object.keys(aiMappings).find(k => name.includes(k));
+                                                                            if (key) return aiMappings[key];
+                                                                            return { role: 'unknown', meaning: '待识别', scenario: '-', confidence: 0 };
+                                                                        };
+                                                                        const aiResult = getAIResult(field.name);
+                                                                        const aiRole = field.suggestion || aiResult.role;
+
+                                                                        // Sample values for the field
+                                                                        const getSampleValues = (name: string, type: string): string[] => {
+                                                                            if (name.includes('id')) return ['1001', '1002', '1003'];
+                                                                            if (name.includes('name')) return ['张三', '李四', '王五'];
+                                                                            if (name.includes('mobile') || name.includes('phone')) return ['138****1234', '159****5678'];
+                                                                            if (name.includes('status')) return ['1', '2', '3'];
+                                                                            if (name.includes('time') || name.includes('date')) return ['2024-01-15', '2024-02-20'];
+                                                                            if (name.includes('amount') || name.includes('price')) return ['99.00', '188.50', '520.00'];
+                                                                            if (type.includes('varchar')) return ['示例值A', '示例值B'];
+                                                                            return ['-'];
+                                                                        };
+                                                                        const sampleValues = getSampleValues(field.name, field.type);
+
+                                                                        // Check if user has resolved this conflict
+                                                                        const override = fieldRoleOverrides[field.name];
+                                                                        const isResolved = !!override;
+                                                                        const hasConflict = ruleRole.toLowerCase() !== aiRole.toLowerCase() && aiRole !== 'unknown' && !isResolved;
+                                                                        const displayRole = override?.role || ruleRole; // Unused but kept for logic consistency if needed
+
+                                                                        // Sensitivity level inference (with override support)
+                                                                        const getInferredSensitivity = (name: string): 'L1' | 'L2' | 'L3' | 'L4' => {
+                                                                            if (name.includes('id_card') || name.includes('sfz') || name.includes('bank')) return 'L4';
+                                                                            if (name.includes('mobile') || name.includes('phone') || name.includes('name') || name.includes('address')) return 'L3';
+                                                                            if (name.includes('user') || name.includes('employee')) return 'L2';
+                                                                            return 'L1';
+                                                                        };
+                                                                        const inferredSensitivity = getInferredSensitivity(field.name);
+                                                                        const sensitivity = sensitivityOverrides[field.name] || inferredSensitivity;
+                                                                        const isOverridden = !!sensitivityOverrides[field.name];
+
+                                                                        const sensitivityConfig: Record<string, { bg: string, text: string, label: string }> = {
+                                                                            'L1': { bg: 'bg-slate-100', text: 'text-slate-600', label: 'L1 公开' },
+                                                                            'L2': { bg: 'bg-blue-50', text: 'text-blue-600', label: 'L2 内部' },
+                                                                            'L3': { bg: 'bg-orange-50', text: 'text-orange-600', label: 'L3 敏感' },
+                                                                            'L4': { bg: 'bg-red-50', text: 'text-red-600', label: 'L4 高敏' },
+                                                                        };
+
+                                                                        return (
+                                                                            <tr key={idx} className={`group hover:bg-slate-50/80 transition-colors ${hasConflict ? 'bg-amber-50/30' : ''}`}>
+                                                                                <td className="px-4 py-3 text-slate-400 text-xs font-mono">{idx + 1}</td>
+                                                                                {/* Enhanced Physical Field */}
+                                                                                <td className="px-4 py-3">
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        <span className="font-mono text-sm font-bold text-slate-700">{field.name}</span>
+                                                                                        {field.key === 'PK' && (
+                                                                                            <span title="主键" className="bg-amber-100 text-amber-600 p-1 rounded-md"><Key size={12} className="fill-amber-100" /></span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </td>
+                                                                                {/* Business Description */}
+                                                                                <td className="px-4 py-3">
+                                                                                    <div className="text-sm text-slate-600 flex items-center gap-1">
+                                                                                        {field.comment ? (
+                                                                                            <span>{field.comment}</span>
+                                                                                        ) : (
+                                                                                            <span className="text-slate-300 italic text-xs">--</span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </td>
+                                                                                {/* Enhanced Type Column */}
+                                                                                <td className="px-4 py-3">
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-medium border ${field.type.toLowerCase().includes('int') || field.type.toLowerCase().includes('long') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                                                                            field.type.toLowerCase().includes('date') || field.type.toLowerCase().includes('time') ? 'bg-orange-50 text-orange-700 border-orange-100' :
+                                                                                                'bg-blue-50 text-blue-700 border-blue-100'
+                                                                                            }`}>
+                                                                                            {field.type}
+                                                                                        </span>
+                                                                                        {field.required !== false ? (
+                                                                                            <span title="必填"><CheckCircle2 size={14} className="text-emerald-500/50" /></span>
+                                                                                        ) : (
+                                                                                            <span title="非必填" className="w-3.5 h-3.5 rounded-full border border-slate-200 bg-slate-50"></span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </td>
+                                                                                {/* Enhanced Rule Judgment Column */}
+                                                                                <td className="px-4 py-2">
+                                                                                    {semanticProfile.analysisStep === 'idle' ? (
+                                                                                        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-100/50 border border-slate-200/50 w-fit">
+                                                                                            <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
+                                                                                            <span className="text-xs text-slate-400">待分析</span>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <div className={`px-2 py-1 rounded w-fit ${override?.source === 'rule' ? 'border-2 border-purple-400 bg-purple-100' : 'bg-purple-50 border border-purple-100'}`}>
+                                                                                            <div className="text-xs font-medium text-purple-700">{ruleRole}</div>
+                                                                                            <div className="text-[10px] text-purple-500/80">{ruleResult.reason}</div>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </td>
+                                                                                {/* Enhanced AI Semantic Column */}
+                                                                                <td className="px-4 py-2">
+                                                                                    {isAnalyzing ? (
+                                                                                        <div className="animate-pulse bg-slate-100 h-8 w-24 rounded"></div>
+                                                                                    ) : semanticProfile.analysisStep === 'idle' ? (
+                                                                                        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-100/50 border border-slate-200/50 w-fit">
+                                                                                            <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
+                                                                                            <span className="text-xs text-slate-400">待分析</span>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <div className={`px-2 py-1 rounded w-fit ${override?.source === 'ai' ? 'border-2 border-blue-400 bg-blue-100' : 'bg-blue-50 border border-blue-100'}`}>
+                                                                                            <div className="text-xs font-medium text-blue-700">{aiResult.meaning}</div>
+                                                                                            <div className="text-[10px] text-blue-500/80">场景: {aiResult.scenario}</div>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </td>
+                                                                                {/* Sample Values Column */}
+                                                                                <td className="px-4 py-2.5">
+                                                                                    <div className="flex flex-wrap gap-1">
+                                                                                        {sampleValues.slice(0, 2).map((val, i) => (
+                                                                                            <span key={i} className="px-1.5 py-0.5 bg-slate-50 text-slate-500 border border-slate-100 rounded text-[10px] font-mono truncate max-w-[60px]" title={val}>
+                                                                                                {val}
+                                                                                            </span>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                </td>
+                                                                                {/* Sensitivity Column */}
+                                                                                <td className="px-4 py-2.5">
+                                                                                    {semanticProfile.analysisStep === 'idle' ? (
+                                                                                        <span className="text-xs text-slate-300">-</span>
+                                                                                    ) : (
+                                                                                        <select
+                                                                                            value={sensitivity}
+                                                                                            onChange={(e) => setSensitivityOverrides(prev => ({
+                                                                                                ...prev,
+                                                                                                [field.name]: e.target.value as 'L1' | 'L2' | 'L3' | 'L4'
+                                                                                            }))}
+                                                                                            className={`px-2 py-1 rounded text-xs font-medium cursor-pointer outline-none border transition-all w-full appearance-none ${isOverridden ? 'border-2 border-emerald-400' : 'border-transparent'} ${sensitivityConfig[sensitivity].bg} ${sensitivityConfig[sensitivity].text}`}
+                                                                                        >
+                                                                                            <option value="L1" className="bg-white text-slate-600">L1 公开</option>
+                                                                                            <option value="L2" className="bg-white text-blue-600">L2 内部</option>
+                                                                                            <option value="L3" className="bg-white text-orange-600">L3 敏感</option>
+                                                                                            <option value="L4" className="bg-white text-red-600">L4 高敏</option>
+                                                                                        </select>
+                                                                                    )}
+                                                                                </td>
+                                                                                {/* Enhanced Merge Result Column */}
+                                                                                <td className="px-4 py-2.5 text-center">
+                                                                                    {semanticProfile.analysisStep === 'idle' ? (
+                                                                                        <span className="text-slate-200">-</span>
+                                                                                    ) : (
+                                                                                        <div className="space-y-1">
+                                                                                            {/* Conflict indicator */}
+                                                                                            {hasConflict && (
+                                                                                                <div className="flex items-center justify-center gap-1 text-amber-600 text-[10px] animate-pulse">
+                                                                                                    <AlertTriangle size={10} /> 待确认
+                                                                                                </div>
+                                                                                            )}
+                                                                                            <div className="flex flex-wrap items-center justify-center gap-1">
+                                                                                                {/* Rule role */}
+                                                                                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-600 border border-purple-100">
+                                                                                                    {ruleRole}
+                                                                                                </span>
+                                                                                                {/* Sensitivity tag for L3/L4 */}
+                                                                                                {(sensitivity === 'L3' || sensitivity === 'L4') && (
+                                                                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${sensitivity === 'L4' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-orange-50 text-orange-600 border border-orange-100'}`}>
+                                                                                                        {sensitivity === 'L4' ? '高敏' : '敏感'}
+                                                                                                    </span>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </td>
+                                                                            </tr>
+                                                                        );
+                                                                    })}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             );

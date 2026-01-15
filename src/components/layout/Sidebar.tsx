@@ -28,7 +28,7 @@ const Sidebar = ({ activeModule, setActiveModule }: SidebarProps) => {
             title: '语义建模',
             color: 'text-blue-400',
             items: [
-                { id: 'dashboard', label: '控制台', icon: Activity },
+                { id: 'dashboard', label: '语义协同中心', icon: Activity },
                 { id: 'td_goals', label: '业务梳理', icon: FileText },
                 { id: 'td_modeling', label: '业务对象建模', icon: Layout },
                 { id: 'bu_semantic', label: '逻辑视图', icon: FileText },

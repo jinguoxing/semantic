@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
     Table, Share2, Activity, ChevronRight, ChevronDown,
-    Clock, Layers, Edit3, Plus, X, Database
+    Clock, Layers, Edit3, Plus, X, Database, CheckCircle2
 } from 'lucide-react';
 import { TableSemanticProfile, FieldSemanticProfile } from '../../types/semantic';
 
@@ -131,122 +131,122 @@ export const DeepAnalysisTabs: React.FC<DeepAnalysisTabsProps> = ({
             {/* Tab Content */}
             <div className="bg-slate-50/50 rounded-lg border border-slate-100 overflow-hidden">
                 {activeTab === 'fields' && (
-                    <div className="max-h-[400px] overflow-y-auto p-4">
-                        <div className="grid gap-3">
-                            {fields.map((field: any, idx: number) => {
-                                const role = getSemanticRole(field.name, field.primaryKey);
-                                const sensitivity = getSensitivity(field.name);
-                                const grade = getQualityGrade(field.name);
-                                const isExpanded = expandedFields.includes(field.name);
+                    <div className="space-y-4">
+                        {/* Statistics Dashboard */}
+                        <div className="grid grid-cols-4 gap-4 mb-2">
+                            <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-3 text-center">
+                                <div className="text-2xl font-bold text-blue-600 mb-1">{fields.length}</div>
+                                <div className="text-xs text-blue-400 font-medium">总字段数</div>
+                            </div>
+                            <div className="bg-amber-50/50 border border-amber-100 rounded-lg p-3 text-center">
+                                <div className="text-2xl font-bold text-amber-600 mb-1">
+                                    {fields.filter(f => getSemanticRole(f.name, f.primaryKey) === '标识符').length}
+                                </div>
+                                <div className="text-xs text-amber-400 font-medium">主键字段</div>
+                            </div>
+                            <div className="bg-red-50/50 border border-red-100 rounded-lg p-3 text-center">
+                                <div className="text-2xl font-bold text-red-600 mb-1">
+                                    {fields.filter(f => getSensitivity(f.name) !== 'L1').length}
+                                </div>
+                                <div className="text-xs text-red-400 font-medium">敏感字段</div>
+                            </div>
+                            <div className="bg-emerald-50/50 border border-emerald-100 rounded-lg p-3 text-center">
+                                <div className="text-2xl font-bold text-emerald-600 mb-1">
+                                    {fields.length}
+                                </div>
+                                <div className="text-xs text-emerald-400 font-medium">必填字段</div>
+                            </div>
+                        </div>
 
-                                // Role icon mapping
-                                const roleIcon = role === '标识符' ? '🔑' :
-                                    role === '状态' ? '📋' :
-                                        role === '时间标记' ? '⏱️' : '📝';
+                        {/* Search & Filter Bar */}
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="relative w-64">
+                                <input
+                                    type="text"
+                                    placeholder="搜索字段..."
+                                    className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100/50"
+                                />
+                                <Database size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                            </div>
+                            <div className="text-xs text-slate-400">
+                                共 {fields.length} 个字段
+                            </div>
+                        </div>
 
-                                // V2.2: Filter logic for anomaly mode
-                                const isAnomaly = sensitivity !== 'L1' || grade !== 'A' || role === '未知';
-                                if (showAnomalyOnly && !isAnomaly) {
-                                    return null; // Hide "good" fields when filter is on
-                                }
+                        {/* Data Table */}
+                        <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+                            <table className="w-full text-xs">
+                                <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 font-medium">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left w-12">#</th>
+                                        <th className="px-4 py-3 text-left">物理字段</th>
+                                        <th className="px-4 py-3 text-left">业务描述</th>
+                                        <th className="px-4 py-3 text-left">数据类型</th>
+                                        <th className="px-4 py-3 text-left w-24">⚙️ 规则判定</th>
+                                        <th className="px-4 py-3 text-left w-24">✨ AI 语义</th>
+                                        <th className="px-4 py-3 text-left w-32">💾 采样值</th>
+                                        <th className="px-4 py-3 text-left w-24">🛡️ 敏感等级</th>
+                                        <th className="px-4 py-3 text-center w-20">⚛️ 融合结果</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-50">
+                                    {fields.map((field: any, idx: number) => {
+                                        const role = getSemanticRole(field.name, field.primaryKey);
+                                        const sensitivity = getSensitivity(field.name);
+                                        const isIdentifier = role === '标识符';
 
-                                return (
-                                    <div key={idx} className="bg-white rounded-lg border border-slate-200 hover:border-purple-200 transition-all">
-                                        <div
-                                            className="flex items-center justify-between p-3 cursor-pointer"
-                                            onClick={() => toggleFieldExpand(field.name)}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-lg">{roleIcon}</span>
-                                                <div>
-                                                    <div className="font-mono text-sm text-slate-700 font-medium">{field.name}</div>
-                                                    <div className="text-xs text-slate-400">{field.type}</div>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                {/* V2.2: Clickable semantic role for identifiers */}
-                                                {role === '标识符' ? (
-                                                    <button
-                                                        onClick={() => {
-                                                            // TODO: Navigate to related logical entity
-                                                            console.log(`Navigate to entity referenced by ${field.name}`);
-                                                        }}
-                                                        className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-600 hover:bg-purple-100 hover:text-purple-700 transition-colors cursor-pointer flex items-center gap-1 group"
-                                                    >
-                                                        🔗 {role}
-                                                        <span className="text-[10px] text-purple-400 group-hover:text-purple-600">(指向: {field.name.replace(/_id$/, '').replace(/_/g, ' ')})</span>
-                                                    </button>
-                                                ) : (
-                                                    <span className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-600">{role}</span>
-                                                )}
-                                                {/* V2.2: Security Level with Lock Icons */}
-                                                <span className={`px-2 py-0.5 rounded text-xs flex items-center gap-1 ${sensitivity === 'L4' ? 'bg-red-50 text-red-600 border border-red-200 animate-pulse' :
-                                                    sensitivity === 'L3' ? 'bg-red-50 text-red-600 border border-red-200' :
-                                                        sensitivity === 'L2' ? 'bg-orange-50 text-orange-600 border border-orange-200' :
-                                                            'bg-slate-100 text-slate-500'
-                                                    }`}>
-                                                    {(sensitivity === 'L2' || sensitivity === 'L3' || sensitivity === 'L4') && (
-                                                        <span className="text-xs">🔒</span>
-                                                    )}
-                                                    {sensitivity}
-                                                    {sensitivity === 'L2' && ' 内部'}
-                                                    {sensitivity === 'L3' && ' 敏感'}
-                                                    {sensitivity === 'L4' && ' 机密'}
-                                                </span>
-                                                {/* V2.2: Quality Grade with Tooltip */}
-                                                <div className="relative group">
-                                                    <span className={`w-6 h-6 flex items-center justify-center rounded text-xs font-bold cursor-help ${grade === 'A' ? 'bg-emerald-100 text-emerald-600' :
-                                                        grade === 'B' ? 'bg-blue-100 text-blue-600' :
-                                                            'bg-amber-100 text-amber-600'
-                                                        }`}>{grade}</span>
-                                                    {/* Tooltip */}
-                                                    <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block w-48 bg-slate-800 text-white text-xs rounded-lg p-2 shadow-lg z-10">
-                                                        <div className="space-y-1">
-                                                            <div className="flex justify-between">
-                                                                <span className="text-slate-300">空值率:</span>
-                                                                <span className={grade === 'C' ? 'text-amber-400 font-medium' : ''}>
-                                                                    {grade === 'A' ? '0%' : grade === 'B' ? '8%' : '39%'}
-                                                                    {grade === 'A' && ' (完美)'}
-                                                                    {grade === 'B' && ' (正常)'}
-                                                                    {grade === 'C' && ' ⚠️ 偏高'}
-                                                                </span>
-                                                            </div>
-                                                            <div className="flex justify-between">
-                                                                <span className="text-slate-300">唯一性:</span>
-                                                                <span>{grade === 'A' ? '100%' : grade === 'B' ? '95%' : '78%'}</span>
-                                                            </div>
-                                                            <div className="flex justify-between">
-                                                                <span className="text-slate-300">正则匹配:</span>
-                                                                <span>{grade === 'A' ? '99.9%' : grade === 'B' ? '95%' : '85%'}</span>
-                                                            </div>
-                                                        </div>
-                                                        <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800"></div>
+                                        // Mock sample values
+                                        const samples = isIdentifier ? ['1001', '1002', '1003'] :
+                                            field.name.includes('status') ? ['1', '2', '3'] :
+                                                field.type === 'datetime' ? ['-'] :
+                                                    ['1001', '1002', '1003'];
+
+                                        return (
+                                            <tr key={idx} className="hover:bg-slate-50/50 group transition-colors">
+                                                <td className="px-4 py-3 text-slate-400">{idx + 1}</td>
+                                                <td className="px-4 py-3 font-mono font-medium text-slate-700">
+                                                    {field.name}
+                                                </td>
+                                                <td className="px-4 py-3 text-slate-600">
+                                                    {field.comment || '-'}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono flex items-center gap-1 w-fit ${isIdentifier ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'
+                                                        }`}>
+                                                        {field.type}
+                                                        <CheckCircle2 size={10} className="opacity-50" />
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="bg-slate-50 text-slate-400 px-2 py-1 rounded text-[10px] border border-slate-100/50">
+                                                        待分析
                                                     </div>
-                                                </div>
-                                                {isExpanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
-                                            </div>
-                                        </div>
-                                        {isExpanded && (
-                                            <div className="px-3 pb-3 pt-0">
-                                                <div className="grid grid-cols-3 gap-2 text-xs bg-slate-50 rounded-lg p-3">
-                                                    <div>
-                                                        <div className="text-slate-400 mb-1">语义角色</div>
-                                                        <div className="font-medium text-slate-700">{role}</div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="bg-slate-50 text-slate-400 px-2 py-1 rounded text-[10px] border border-slate-100/50">
+                                                        待分析
                                                     </div>
-                                                    <div>
-                                                        <div className="text-slate-400 mb-1">敏感等级</div>
-                                                        <div className="font-medium text-slate-700">{sensitivity}</div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {samples.map((s, i) => (
+                                                            <span key={i} className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px] border border-slate-200/50">
+                                                                {s}
+                                                            </span>
+                                                        ))}
                                                     </div>
-                                                    <div>
-                                                        <div className="text-slate-400 mb-1">空值率</div>
-                                                        <div className="font-medium text-slate-700">{Math.floor(Math.random() * 10)}%</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className="text-slate-400 italic text-[10px]">待分析</span>
+                                                </td>
+                                                <td className="px-4 py-3 text-center text-slate-300">
+                                                    -
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 )}

@@ -5,7 +5,7 @@ interface HeaderProps {
 }
 
 const moduleLabels: Record<string, string> = {
-    dashboard: '控制台',
+    dashboard: '语义协同中心',
     ask_data: '问数',
     data_supermarket: '找数',
     td_goals: '业务梳理',
