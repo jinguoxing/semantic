@@ -15,11 +15,17 @@ export const checkGatekeeper = (tableName: string, fields: any[]): SemanticGateR
         reasons: []
     };
 
-    // T-04: Table Type Exclusion
-    const excludePatterns = [/log/i, /trace/i, /history/i, /tmp/i, /temp/i, /bak/i, /_rel$/i, /detail$/i];
-    if (excludePatterns.some(p => p.test(tableName))) {
+    // T-04: Table Type Exclusion (graylist + hard reject)
+    const hardRejectPatterns = [/tmp/i, /temp/i, /bak/i, /_rel$/i];
+    const graylistPatterns = [/log/i, /trace/i, /history/i, /detail$/i];
+    const isHardReject = hardRejectPatterns.some(p => p.test(tableName));
+    const isGraylist = graylistPatterns.some(p => p.test(tableName));
+
+    if (isHardReject) {
         result.details.tableType = false;
-        result.reasons.push('当前表属于排除类型 (如: 日志表、临时表、关联表)。');
+        result.reasons.push('当前表命中强排规则 (临时表/备份表/关联表)，建议直接排除。');
+    } else if (isGraylist) {
+        result.reasons.push('当前表疑似日志/明细表，建议进入人工复核。');
     }
 
     // T-02: Primary Key Check
@@ -43,7 +49,7 @@ export const checkGatekeeper = (tableName: string, fields: any[]): SemanticGateR
     // Determine final Gate Result
     if (!result.details.tableType) {
         result.result = 'REJECT';
-    } else if (!result.details.primaryKey || !result.details.lifecycle) {
+    } else if (isGraylist || !result.details.primaryKey || !result.details.lifecycle) {
         result.result = 'REVIEW';
     }
 

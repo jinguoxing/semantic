@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     Table, Share2, Activity, ChevronRight, ChevronDown,
     Clock, Layers, Edit3, Plus, X, Database, CheckCircle2
@@ -9,15 +9,21 @@ interface DeepAnalysisTabsProps {
     profile: TableSemanticProfile;
     fields: any[];
     onProfileChange?: (updates: Partial<TableSemanticProfile>) => void;
+    activeTabOverride?: 'fields' | 'graph' | 'quality';
+    focusField?: string | null;
 }
 
 export const DeepAnalysisTabs: React.FC<DeepAnalysisTabsProps> = ({
     profile,
     fields,
-    onProfileChange
+    onProfileChange,
+    activeTabOverride,
+    focusField
 }) => {
     const [activeTab, setActiveTab] = useState<'fields' | 'graph' | 'quality'>('fields');
     const [expandedFields, setExpandedFields] = useState<string[]>([]);
+    const [fieldSearchTerm, setFieldSearchTerm] = useState('');
+    const [highlightedField, setHighlightedField] = useState<string | null>(null);
     const [showAnomalyOnly, setShowAnomalyOnly] = useState(false); // V2.2: Anomaly filter
     const [showRelModal, setShowRelModal] = useState(false);
     const [editingRel, setEditingRel] = useState<{ index: number | null; targetTable: string; type: string; key: string }>({
@@ -31,6 +37,31 @@ export const DeepAnalysisTabs: React.FC<DeepAnalysisTabsProps> = ({
                 : [...prev, fieldName]
         );
     };
+
+    useEffect(() => {
+        if (activeTabOverride) {
+            setActiveTab(activeTabOverride);
+        }
+    }, [activeTabOverride]);
+
+    useEffect(() => {
+        if (!focusField) return;
+        setActiveTab('fields');
+        setFieldSearchTerm(focusField);
+        setHighlightedField(focusField);
+        setExpandedFields(prev => (prev.includes(focusField) ? prev : [...prev, focusField]));
+        const timer = window.setTimeout(() => setHighlightedField(null), 3500);
+        const scrollTimer = window.setTimeout(() => {
+            const el = document.querySelector(`[data-field-row="${focusField}"]`);
+            if (el) {
+                el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }
+        }, 50);
+        return () => {
+            window.clearTimeout(timer);
+            window.clearTimeout(scrollTimer);
+        };
+    }, [focusField]);
 
     // Helper functions for field analysis
     const getSemanticRole = (name: string, primaryKey?: boolean): string => {
@@ -164,6 +195,8 @@ export const DeepAnalysisTabs: React.FC<DeepAnalysisTabsProps> = ({
                                 <input
                                     type="text"
                                     placeholder="搜索字段..."
+                                    value={fieldSearchTerm}
+                                    onChange={(e) => setFieldSearchTerm(e.target.value)}
                                     className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100/50"
                                 />
                                 <Database size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -190,10 +223,18 @@ export const DeepAnalysisTabs: React.FC<DeepAnalysisTabsProps> = ({
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
-                                    {fields.map((field: any, idx: number) => {
+                                    {fields
+                                        .filter((field: any) => {
+                                            if (!fieldSearchTerm.trim()) return true;
+                                            return field.name.toLowerCase().includes(fieldSearchTerm.toLowerCase()) ||
+                                                field.type?.toLowerCase().includes(fieldSearchTerm.toLowerCase()) ||
+                                                field.comment?.toLowerCase().includes(fieldSearchTerm.toLowerCase());
+                                        })
+                                        .map((field: any, idx: number) => {
                                         const role = getSemanticRole(field.name, field.primaryKey);
                                         const sensitivity = getSensitivity(field.name);
                                         const isIdentifier = role === '标识符';
+                                        const isHighlighted = highlightedField === field.name;
 
                                         // Mock sample values
                                         const samples = isIdentifier ? ['1001', '1002', '1003'] :
@@ -202,7 +243,11 @@ export const DeepAnalysisTabs: React.FC<DeepAnalysisTabsProps> = ({
                                                     ['1001', '1002', '1003'];
 
                                         return (
-                                            <tr key={idx} className="hover:bg-slate-50/50 group transition-colors">
+                                            <tr
+                                                key={idx}
+                                                data-field-row={field.name}
+                                                className={`hover:bg-slate-50/50 group transition-colors ${isHighlighted ? 'bg-purple-50 ring-1 ring-purple-200' : ''}`}
+                                            >
                                                 <td className="px-4 py-3 text-slate-400">{idx + 1}</td>
                                                 <td className="px-4 py-3 font-mono font-medium text-slate-700">
                                                     {field.name}

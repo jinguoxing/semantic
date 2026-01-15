@@ -64,6 +64,35 @@ export const SemanticAnalysisCard: React.FC<SemanticAnalysisCardProps> = ({
                 {/* V2.1: Compressed Dimension Summary */}
                 <DimensionSummary profile={profile} />
 
+                {profile.scoreBreakdown && (
+                    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                        <div className="text-sm font-semibold text-slate-700">评分拆解</div>
+                        <div className="mt-3 space-y-2 text-xs text-slate-600">
+                            <div className="flex items-center justify-between">
+                                <span>规则贡献</span>
+                                <span>{Math.round(profile.scoreBreakdown.rule * 100)}%</span>
+                            </div>
+                            <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                <div className="h-full bg-indigo-500" style={{ width: `${profile.scoreBreakdown.rule * 100}%` }} />
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span>字段贡献</span>
+                                <span>{Math.round(profile.scoreBreakdown.field * 100)}%</span>
+                            </div>
+                            <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                <div className="h-full bg-blue-500" style={{ width: `${profile.scoreBreakdown.field * 100}%` }} />
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span>AI 贡献</span>
+                                <span>{Math.round(profile.scoreBreakdown.ai * 100)}%</span>
+                            </div>
+                            <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                <div className="h-full bg-emerald-500" style={{ width: `${profile.scoreBreakdown.ai * 100}%` }} />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* V2.3F P6: Scoring Breakdown Panel */}
                 <ScoringBreakdownPanel profile={profile} fields={fields} />
 

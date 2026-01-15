@@ -483,53 +483,54 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
                 <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-6">
                         {filteredBOs.map(bo => (
-                            <div key={bo.id} className={`bg-white rounded-xl border p-6 hover:shadow-lg transition-all group cursor-pointer relative ${selectedBoIds.includes(bo.id) ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-50/10' : 'border-slate-200'}`} onClick={() => onNavigateToMapping(bo)}>
+                            <div key={bo.id} className={`bg-white rounded-xl border p-5 hover:shadow-lg transition-all group cursor-pointer relative ${selectedBoIds.includes(bo.id) ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-50/10' : 'border-slate-200'}`} onClick={() => onNavigateToMapping(bo)}>
                                 <div onClick={(e) => { e.stopPropagation(); toggleSelection(bo.id); }} className="absolute top-4 left-4 z-10 p-2 -ml-2 -mt-2 hover:bg-slate-100 rounded-full">
                                     <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedBoIds.includes(bo.id) ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`}>
                                         {selectedBoIds.includes(bo.id) && <CheckCircle size={14} className="text-white" />}
                                     </div>
                                 </div>
-                                <div className="flex justify-between items-start mb-4 pl-8">
-                                    <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
-                                        <Layout size={20} />
+                                <div className="flex justify-between items-start mb-3 pl-8">
+                                    <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
+                                        <Layout size={18} />
                                     </div>
-                                    <div className={`px-2 py-1 rounded text-xs font-semibold uppercase ${bo.status === 'published' ? 'bg-emerald-100 text-emerald-700' : bo.status === 'archived' ? 'bg-slate-200 text-slate-600' : 'bg-slate-100 text-slate-600'}`}>
+                                    <div className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${bo.status === 'published' ? 'bg-emerald-100 text-emerald-700' : bo.status === 'archived' ? 'bg-slate-200 text-slate-600' : 'bg-slate-100 text-slate-600'}`}>
                                         {bo.status === 'published' ? '已发布' : (bo.status === 'draft' ? '草稿' : bo.status === 'archived' ? '归档' : bo.status)}
                                     </div>
                                 </div>
-                                <h3 className="font-bold text-lg text-slate-800 mb-1">{bo.name}</h3>
-                                <p className="text-xs font-mono text-slate-500 mb-4 bg-slate-50 inline-block px-2 py-0.5 rounded">{bo.code}</p>
-                                <p className="text-sm text-slate-600 line-clamp-2 mb-4 h-10">{bo.description || '暂无描述'}</p>
+                                <h3 className="font-bold text-base text-slate-800 mb-1">{bo.name}</h3>
+                                <p className="text-xs font-mono text-slate-500 mb-3 bg-slate-50 inline-block px-1.5 py-0.5 rounded border border-slate-100">{bo.code}</p>
+                                <p className="text-xs text-slate-500 line-clamp-2 mb-3 h-8 leading-relaxed">{bo.description || '暂无描述'}</p>
 
                                 <div className="flex items-center justify-between text-xs text-slate-500 mb-3">
-                                    <span className="flex items-center gap-1"><Layers size={14} /> {bo.domain}</span>
-                                    <span className="flex items-center gap-1"><CheckCircle size={14} /> {bo.fields?.length || 0} 字段</span>
+                                    <span className="flex items-center gap-1"><Layers size={12} /> {bo.domain}</span>
+                                    <span className="flex items-center gap-1"><CheckCircle size={12} /> {bo.fields?.length || 0} 字段</span>
                                 </div>
 
-                                <div className="flex items-center justify-between text-xs">
-                                    <span className={`px-2 py-0.5 rounded-full ${getMappingStatus(bo).tone}`}>
+                                <div className="flex items-center justify-between text-xs mb-1.5">
+                                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${getMappingStatus(bo).tone}`}>
                                         {getMappingStatus(bo).label}
                                     </span>
-                                    <span className="text-slate-400">映射完整度 {getMappingProgress(bo)}%</span>
+                                    <span className="text-slate-400 text-[10px]">{getMappingProgress(bo)}%</span>
                                 </div>
-                                <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                    <div className="h-full bg-blue-500" style={{ width: `${getMappingProgress(bo)}%` }} />
+                                <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${getMappingProgress(bo)}%` }} />
                                 </div>
 
-                                <div className="flex items-center justify-between pt-4 border-t border-slate-50 mt-4">
+                                <div className="flex items-center justify-between pt-3 border-t border-slate-50 mt-3">
                                     <button
                                         onClick={(e) => { e.stopPropagation(); onNavigateToMapping(bo); }}
-                                        className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                                        className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium px-2 py-1 -ml-2 rounded hover:bg-blue-50 transition-colors"
                                     >
                                         去映射
+                                        <ChevronRight size={12} />
                                     </button>
                                     <div className="hidden group-hover:flex items-center gap-1 transition-opacity">
                                         <button onClick={(e) => { e.stopPropagation(); handleEditBO(bo); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="编辑">
-                                            <Settings size={16} />
+                                            <Settings size={14} />
                                         </button>
                                         {bo.status !== 'published' && (
                                             <button onClick={(e) => { e.stopPropagation(); handleDeleteBO(bo.id); }} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="删除">
-                                                <Trash2 size={16} />
+                                                <Trash2 size={14} />
                                             </button>
                                         )}
                                     </div>

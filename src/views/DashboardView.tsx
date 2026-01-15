@@ -28,7 +28,7 @@ const DashboardView = ({ setActiveModule }: DashboardViewProps) => {
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800">{semanticCollaborationMock.title}</h2>
-                    <p className="text-slate-500 mt-1">业务视角与技术治理视角协同推进语义建模</p>
+                    <p className="text-slate-500 mt-1">业务视角与技术视角协同治理推进语义建模</p>
                 </div>
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-1 rounded-full bg-white border border-slate-200 p-1 text-xs text-slate-500">
@@ -238,7 +238,7 @@ const DashboardView = ({ setActiveModule }: DashboardViewProps) => {
                             <p className="text-xs text-slate-500">关键对象热度</p>
                             <p className="text-xs text-slate-400 mt-1">TOP 5 业务对象</p>
                             <div className="mt-3 space-y-2">
-                        {data.businessView.hotObjects.map(item => (
+                                {data.businessView.hotObjects.map(item => (
                                     <div key={item} className="text-xs text-slate-600 bg-slate-100 rounded px-2 py-1">
                                         {item}
                                     </div>
@@ -252,7 +252,7 @@ const DashboardView = ({ setActiveModule }: DashboardViewProps) => {
                     <div className="flex items-center justify-between">
                         <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
                             <ShieldAlert size={16} className="text-emerald-600" />
-                            技术治理视角
+                            技术视角
                         </h3>
                         <button
                             onClick={() => setActiveModule('bu_connect')}

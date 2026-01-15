@@ -61,6 +61,7 @@ export interface TableSemanticProfile {
     aiScore: number;
     fieldScore: number; // New: aggregate score from fields
     finalScore: number; // 0.55*AI + 0.45*Rule
+    scoreBreakdown?: { rule: number; ai: number; field: number };
 
     businessName: string;
     description: string;
@@ -71,6 +72,7 @@ export interface TableSemanticProfile {
     // Dual-dimension specific
     aiEvidence: string[];
     ruleEvidence: string[];
+    aiEvidenceItems?: { field: string; reason: string; weight: number }[];
 
     // V2 Beta: Business Identity Dimension
     objectType?: ObjectType;

@@ -76,6 +76,12 @@ interface FieldSuggestion {
     sensitivity: 'L1' | 'L2' | 'L3' | 'L4';
 }
 
+interface EvidenceItem {
+    field: string;
+    reason: string;
+    weight: number;
+}
+
 const generateFieldSuggestions = (fields: any[]): FieldSuggestion[] => {
     return fields.map(field => {
         const name = field.name.toLowerCase();
@@ -139,6 +145,7 @@ export const analyzeTableWithMockAI = async (
     description: string;
     scenarios: string[];
     evidence: string[];
+    evidenceItems: EvidenceItem[];
     tags: string[];
     objectType: ObjectType;
     objectTypeReason: string;
@@ -158,6 +165,7 @@ export const analyzeTableWithMockAI = async (
             description: '可能是日志或历史记录表，建议人工确认业务含义',
             scenarios: [],
             evidence: ['表名包含日志关键词', '可能需要补充业务定义'],
+            evidenceItems: [{ field: 'table', reason: '表名命中日志关键词', weight: 0.4 }],
             tags: ['待确认'],
             objectType: 'event',
             objectTypeReason: '表名包含日志/流水关键词',
@@ -175,6 +183,10 @@ export const analyzeTableWithMockAI = async (
             description: '企业核心人力资源主数据，记录员工基础信息、职位及入职状态。',
             scenarios: ['人力资源管理', '薪资核算', '组织架构分析'],
             evidence: ['表名包含 employee', '字段包含 employee_id, department_id', '高置信度匹配 HR 领域模型'],
+            evidenceItems: [
+                { field: 'employee_id', reason: '关键标识字段', weight: 0.3 },
+                { field: 'department_id', reason: '部门维度字段', weight: 0.2 }
+            ],
             tags: ['HR', '核心实体', 'L3'],
             objectType: 'entity',
             objectTypeReason: '核心业务实体',
@@ -195,6 +207,7 @@ export const analyzeTableWithMockAI = async (
             description: '企业组织架构层级信息，定义职能部门及其关系。',
             scenarios: ['组织管理', '审批流配置'],
             evidence: ['表名包含 department', '树形结构数据特征'],
+            evidenceItems: [{ field: 'department_id', reason: '组织结构字段', weight: 0.25 }],
             tags: ['HR', '组织架构', 'L1'],
             objectType: 'entity',
             objectTypeReason: '组织实体',
@@ -210,6 +223,10 @@ export const analyzeTableWithMockAI = async (
             description: '员工月度薪资计算及发放流水。',
             scenarios: ['薪资发放', '人力成本核算'],
             evidence: ['表名包含 payroll', '字段包含 amount, tax'],
+            evidenceItems: [
+                { field: 'amount', reason: '核心度量字段', weight: 0.2 },
+                { field: 'tax', reason: '薪资税额字段', weight: 0.1 }
+            ],
             tags: ['HR', '财务', 'L4'],
             objectType: 'event',
             objectTypeReason: '交易/行为记录',
@@ -226,6 +243,7 @@ export const analyzeTableWithMockAI = async (
             description: '员工每日上下班打卡记录流水。',
             scenarios: ['考勤统计', '工时计算'],
             evidence: ['表名包含 attendance', '字段包含 check_in, device_id'],
+            evidenceItems: [{ field: 'check_in', reason: '行为时间字段', weight: 0.2 }],
             tags: ['HR', '行为', 'L2'],
             objectType: 'event',
             objectTypeReason: '行为流水',
@@ -241,6 +259,10 @@ export const analyzeTableWithMockAI = async (
             description: '纪录员工定期绩效评价结果。',
             scenarios: ['人才盘点', '晋升评估'],
             evidence: ['表名包含 performance', '字段包含 score, grade'],
+            evidenceItems: [
+                { field: 'score', reason: '绩效评分字段', weight: 0.2 },
+                { field: 'grade', reason: '等级字段', weight: 0.1 }
+            ],
             tags: ['HR', '评价', 'L3'],
             objectType: 'entity',
             objectTypeReason: '评价记录',
@@ -256,6 +278,7 @@ export const analyzeTableWithMockAI = async (
             description: '企业标准岗位及职级体系定义表。',
             scenarios: ['组织管理', '招聘标准'],
             evidence: ['表名包含 position', '字段包含 level_range'],
+            evidenceItems: [{ field: 'level_range', reason: '规则字段', weight: 0.2 }],
             tags: ['HR', '规则', 'L1'],
             objectType: 'rule',
             objectTypeReason: '配置/规则数据',
@@ -266,17 +289,39 @@ export const analyzeTableWithMockAI = async (
     }
 
     const { type, reason } = inferObjectType(tableName, fields);
-
-    // Mock a high score for demonstration
-    const aiScore = 0.75 + Math.random() * 0.2;
     const domain = inferBusinessDomain(tableName);
     const grain = inferDataGrain(tableName, fields);
+
+    const fieldNames = fields.map(f => f.name.toLowerCase());
+    const keyFields = ['id', 'order_id', 'user_id', 'sku', 'supplier_id'];
+    const matchedFields = keyFields.filter(k => fieldNames.includes(k));
+    const commentCoverage = fields.length > 0 ? fields.filter(f => f.comment && f.comment.trim()).length / fields.length : 0;
+    const nameMatched = /order|user|product|supplier|inventory|logistics/.test(tableName.toLowerCase());
+
+    const nameScore = nameMatched ? 0.9 : 0.6;
+    const fieldScore = Math.min(0.9, 0.4 + matchedFields.length * 0.15);
+    const commentScore = Math.min(0.9, 0.4 + commentCoverage * 0.5);
+    const domainScore = domain === '其他' ? 0.6 : 0.8;
+
+    const aiScore = Math.min(0.95, Math.max(0.3, (
+        (nameScore * 0.35) +
+        (fieldScore * 0.35) +
+        (commentScore * 0.2) +
+        (domainScore * 0.1)
+    )));
 
     const businessName = tableName
         .replace(/^t_/, '')
         .split('_')
         .map(w => w.charAt(0).toUpperCase() + w.slice(1))
         .join(' ');
+
+    const evidenceItems: EvidenceItem[] = [
+        { field: 'table', reason: nameMatched ? '表名命中业务关键词' : '表名符合基础规范', weight: 0.35 },
+        { field: matchedFields[0] || '字段结构', reason: matchedFields.length > 0 ? '识别到关键标识字段' : '字段结构较完整', weight: 0.25 },
+        { field: 'comment', reason: commentCoverage > 0.5 ? '注释覆盖率较高' : '注释覆盖率一般', weight: 0.2 },
+        { field: 'domain', reason: `识别业务域: ${domain}`, weight: 0.2 }
+    ];
 
     return {
         aiScore,
@@ -289,6 +334,7 @@ export const analyzeTableWithMockAI = async (
             `业务域: ${domain}`,
             `数据粒度: ${grain}`
         ],
+        evidenceItems,
         tags: [domain, grain, type === 'entity' ? '核心实体' : '业务对象'],
         objectType: type,
         objectTypeReason: reason,

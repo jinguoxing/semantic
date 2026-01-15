@@ -87,6 +87,7 @@ const DataSemanticUnderstandingView = ({
     const [detailTab, setDetailTab] = useState<'fields' | 'graph' | 'dimensions' | 'quality'>('fields');
     const [fieldSearchTerm, setFieldSearchTerm] = useState('');
     const [expandedFields, setExpandedFields] = useState<string[]>([]);
+    const [focusField, setFocusField] = useState<string | null>(null);
     // Track user's conflict resolution choices: fieldName -> { role: string, source: 'rule' | 'ai' }
     const [fieldRoleOverrides, setFieldRoleOverrides] = useState<Record<string, { role: string; source: 'rule' | 'ai' }>>({});
     // Track which field's conflict popover is currently open (click-based)
@@ -213,6 +214,19 @@ const DataSemanticUnderstandingView = ({
         setSelectedTableId(null);
     };
 
+    const handleFocusField = (fieldName: string) => {
+        const fields = selectedTable?.fields || [];
+        if (fields.length === 0) return;
+        const lowerTarget = fieldName.toLowerCase();
+        const exactMatch = fields.find((f: any) => f.name === fieldName);
+        const lowerMatch = fields.find((f: any) => f.name.toLowerCase() === lowerTarget);
+        const containsMatch = fields.find((f: any) => f.name.toLowerCase().includes(lowerTarget));
+        const matched = exactMatch || lowerMatch || containsMatch;
+        if (!matched) return;
+        setFocusField(null);
+        setTimeout(() => setFocusField(matched.name), 0);
+    };
+
     const handleAnalyze = async () => {
         if (!selectedTable) return;
         setIsAnalyzing(true);
@@ -243,6 +257,15 @@ const DataSemanticUnderstandingView = ({
 
             // 3. Fusion Logic
             const finalScore = calculateFusionScore(ruleScore.total, fieldScore, aiResult.aiScore);
+            const ruleContribution = 0.225 * ruleScore.total;
+            const fieldContribution = 0.225 * fieldScore;
+            const aiContribution = 0.55 * aiResult.aiScore;
+            const totalContribution = ruleContribution + fieldContribution + aiContribution || 1;
+            const scoreBreakdown = {
+                rule: ruleContribution / totalContribution,
+                field: fieldContribution / totalContribution,
+                ai: aiContribution / totalContribution
+            };
 
             const result: TableSemanticProfile = {
                 tableName: selectedTable.table,
@@ -251,12 +274,14 @@ const DataSemanticUnderstandingView = ({
                 fieldScore, // @ts-ignore
                 aiScore: aiResult.aiScore,
                 finalScore,
+                scoreBreakdown,
                 businessName: aiResult.businessName,
                 description: aiResult.description,
                 tags: aiResult.tags,
                 fields: analyzedFields,
                 aiEvidence: aiResult.evidence,
                 ruleEvidence,
+                aiEvidenceItems: aiResult.evidenceItems,
                 // V2 Beta: Business Identity
                 objectType: aiResult.objectType,
                 objectTypeReason: aiResult.objectTypeReason,
@@ -308,6 +333,30 @@ const DataSemanticUnderstandingView = ({
         );
     };
 
+    const analyzeTableForBatch = async (table: any) => {
+        const mockFields = table.fields || [
+            { name: 'id', type: 'bigint', primaryKey: true },
+            { name: 'create_time', type: 'datetime' },
+            { name: 'name', type: 'varchar' }
+        ];
+        const gateResult = checkGatekeeper(table.table, mockFields);
+        const analyzedFields = mockFields.map((f: any) => analyzeField(f));
+        const fieldScore = analyzedFields.reduce((acc: number, f: any) => acc + (f.roleConfidence || 0.5), 0) / analyzedFields.length;
+        const { score: ruleScore, evidence: ruleEvidence } = calculateTableRuleScore(table.table, mockFields, table.comment);
+        const aiResult = await analyzeTableWithMockAI(table.table, mockFields, table.comment);
+        const finalScore = calculateFusionScore(ruleScore.total, fieldScore, aiResult.aiScore);
+
+        return {
+            gateResult,
+            analyzedFields,
+            ruleScore,
+            ruleEvidence,
+            aiResult,
+            fieldScore,
+            finalScore
+        };
+    };
+
     // Handle batch analysis for selected tables
     const handleBatchAnalyze = async () => {
         if (selectedTables.length === 0) return;
@@ -326,17 +375,31 @@ const DataSemanticUnderstandingView = ({
             setCurrentAnalyzing(table.table);
             setBatchProgress({ current: i, total: selectedTables.length });
 
-            // Simulate AI analysis with random delay
-            await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
+            await new Promise(resolve => setTimeout(resolve, 300));
 
-            // Mock analysis result with random scores
-            const scorePercent = Math.floor(50 + Math.random() * 50);
-            const businessName = table.table
-                .replace(/^t_/, '')
-                .split('_')
-                .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
-                .join('');
+            const {
+                analyzedFields,
+                ruleScore,
+                aiResult,
+                finalScore
+            } = await analyzeTableForBatch(table);
+
+            const scorePercent = Math.round(finalScore * 100);
+            const businessName = aiResult.businessName;
             const needsReview = scorePercent < CONFIDENCE_THRESHOLD;
+            const identifiers = analyzedFields.filter((f: any) => f.role === 'Identifier').length;
+            const statusFields = analyzedFields.filter((f: any) => f.role === 'Status').length;
+            const timeFields = analyzedFields.filter((f: any) => f.role === 'EventHint').length;
+            const busAttr = analyzedFields.filter((f: any) => f.role === 'BusAttr').length;
+            const sensitiveFields = analyzedFields.filter((f: any) => ['L3', 'L4'].includes(f.sensitivity));
+            const lowConfidenceReasons: string[] = [];
+
+            if (aiResult.aiScore < 0.7) {
+                lowConfidenceReasons.push('AI 置信度偏低，建议人工复核');
+            }
+            if (ruleScore.total < 0.6) {
+                lowConfidenceReasons.push('规则评分偏低，命名或注释可能不规范');
+            }
 
             results.push({
                 tableId: table.table,
@@ -346,56 +409,31 @@ const DataSemanticUnderstandingView = ({
                 scorePercent,
                 needsReview,
                 userAction: 'pending',
-                // Enhanced analysis details (mock data)
                 fieldStats: {
-                    total: table.fields?.length || Math.floor(5 + Math.random() * 15),
-                    identifiers: Math.floor(1 + Math.random() * 3),
-                    status: Math.floor(Math.random() * 3),
-                    busAttr: Math.floor(3 + Math.random() * 8),
-                    time: Math.floor(1 + Math.random() * 4)
+                    total: analyzedFields.length,
+                    identifiers,
+                    status: statusFields,
+                    busAttr,
+                    time: timeFields
                 },
                 sensitiveFields: {
-                    count: Math.floor(Math.random() * 4),
-                    examples: ['user_name', 'mobile', 'id_card'].slice(0, Math.floor(Math.random() * 3) + 1)
+                    count: sensitiveFields.length,
+                    examples: sensitiveFields.map((f: any) => f.fieldName).slice(0, 3)
                 },
                 relationships: {
-                    count: Math.floor(1 + Math.random() * 4),
-                    targets: ['t_user', 't_product', 't_payment', 't_order_item'].slice(0, Math.floor(1 + Math.random() * 3))
+                    count: 0,
+                    targets: []
                 },
                 upgradeSuggestions: {
-                    statusObjects: Math.floor(Math.random() * 2),
-                    behaviorObjects: Math.floor(Math.random() * 3)
+                    statusObjects: statusFields > 0 ? 1 : 0,
+                    behaviorObjects: timeFields > 0 ? 1 : 0
                 },
-                lowConfidenceReasons: needsReview
-                    ? [
-                        '部分字段缺少注释，AI无法准确推断业务含义',
-                        scorePercent < 60 ? '字段命名不规范，语义识别困难' : null,
-                        Math.random() > 0.5 ? '发现未知类型字段 (如 ext_data)' : null
-                    ].filter(Boolean) as string[]
-                    : []
+                lowConfidenceReasons
             });
-
-            // Update scanResults with mock semantic analysis data for detail view
-            const mockSemanticAnalysis = {
-                businessName: businessName,
-                description: `${businessName}的业务数据表`,
-                scenarios: ['数据查询', '报表分析'],
-                tags: ['核心业务', '交易数据'],
-                coreFields: table.fields?.slice(0, 5).map((f: any) => f.name) || ['id', 'name', 'status', 'created_at', 'updated_at'],
-                relationships: [
-                    { targetTable: 't_user', type: 'Many-to-One', key: 'user_id', description: '用户关联' },
-                    { targetTable: 't_product', type: 'Many-to-Many', key: 'product_id', description: '产品关联' }
-                ].slice(0, Math.floor(1 + Math.random() * 2)),
-                // V2 Beta: Add default dimension values
-                objectType: 'entity',
-                businessDomain: '交易域',
-                securityLevel: 'L2',
-                dataGrain: '明细粒度'
-            };
 
             setScanResults((prev: any[]) => prev.map((item: any) =>
                 item.table === tableId
-                    ? { ...item, status: 'pending_review', scorePercent, semanticAnalysis: mockSemanticAnalysis }
+                    ? { ...item, status: 'pending_review', scorePercent, semanticAnalysis: aiResult }
                     : item
             ));
         }
@@ -1037,6 +1075,7 @@ const DataSemanticUnderstandingView = ({
                                                     handleJustSave();
                                                     setEditMode(false);
                                                 }}
+                                                onFocusField={handleFocusField}
                                                 existingBO={(() => {
                                                     const mappedEntry = Object.entries(mockBOTableMappings).find(([_, config]) => config.tableName === selectedTable.table);
                                                     return mappedEntry ? (businessObjects || []).find(b => b.id === mappedEntry[0]) : undefined;
@@ -1067,6 +1106,8 @@ const DataSemanticUnderstandingView = ({
                                                     profile={semanticProfile}
                                                     fields={selectedTable.fields || []}
                                                     onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
+                                                    activeTabOverride={focusField ? 'fields' : undefined}
+                                                    focusField={focusField}
                                                 />
                                             </div>
 

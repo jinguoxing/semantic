@@ -18,6 +18,7 @@ interface SemanticConclusionCardProps {
     onAccept: () => void;
     onReject: () => void;
     existingBO?: any;
+    onFocusField?: (fieldName: string) => void;
 }
 
 // Object type labels in Chinese
@@ -38,9 +39,23 @@ export const SemanticConclusionCard: React.FC<SemanticConclusionCardProps> = ({
     onProfileChange,
     onAccept,
     onReject,
-    existingBO
+    existingBO,
+    onFocusField
 }) => {
     const [showSecurityDetail, setShowSecurityDetail] = useState(false);
+    const [showAllEvidence, setShowAllEvidence] = useState(false);
+    const [collapsedRuleGroups, setCollapsedRuleGroups] = useState<Record<string, boolean>>({});
+    const groupedRuleEvidence = (profile.ruleEvidence || []).reduce((acc: Record<string, string[]>, item) => {
+        let group = '其他';
+        const lower = item.toLowerCase();
+        if (lower.includes('命名')) group = '命名规范';
+        else if (lower.includes('行为')) group = '行为密度';
+        else if (lower.includes('注释')) group = '注释覆盖';
+        else if (lower.includes('主键')) group = '主键校验';
+        else if (lower.includes('生命周期') || lower.includes('时间')) group = '生命周期';
+        acc[group] = acc[group] ? [...acc[group], item] : [item];
+        return acc;
+    }, {});
 
     // V2.3: Modal states for action buttons
     const [showCommentModal, setShowCommentModal] = useState(false);
@@ -501,9 +516,83 @@ export const SemanticConclusionCard: React.FC<SemanticConclusionCardProps> = ({
                     {/* Evidence */}
                     <div className="mb-4">
                         <label className="block text-xs font-medium text-slate-500 mb-1">理解依据</label>
-                        <div className="flex flex-wrap gap-1">
-                            {profile.aiEvidence.concat(profile.ruleEvidence || []).slice(0, 3).map((e, i) => (
-                                <span key={i} className="bg-white px-2 py-0.5 rounded border border-slate-200 text-xs shadow-sm">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs text-slate-400">证据链（点击字段可定位）</span>
+                            <button
+                                onClick={() => setShowAllEvidence(prev => !prev)}
+                                className="text-[10px] text-slate-500 hover:text-purple-600"
+                            >
+                                {showAllEvidence ? '收起' : '展开全部'}
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="bg-white rounded-lg border border-slate-200 p-3">
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="text-xs font-semibold text-slate-700">AI 证据</div>
+                                    <div className="text-[10px] text-slate-400">权重可视化</div>
+                                </div>
+                                <div className="space-y-2">
+                                    {(profile.aiEvidenceItems || []).slice(0, showAllEvidence ? undefined : 3).map((item, index) => {
+                                        const canFocus = fields.some(f => f.name.toLowerCase() === item.field.toLowerCase());
+                                        return (
+                                            <button
+                                                key={`${item.field}-${index}`}
+                                                onClick={() => canFocus && onFocusField?.(item.field)}
+                                                className={`w-full text-xs flex flex-col gap-1 text-left ${canFocus ? 'text-slate-600 hover:text-purple-600' : 'text-slate-400 cursor-default'}`}
+                                            >
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="truncate">{item.reason} ({item.field})</span>
+                                                    <span className="text-[10px] text-slate-400">{Math.round(item.weight * 100)}%</span>
+                                                </div>
+                                                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                    <div className={`h-full ${canFocus ? 'bg-purple-500' : 'bg-slate-300'}`} style={{ width: `${Math.round(item.weight * 100)}%` }} />
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                    {(!profile.aiEvidenceItems || profile.aiEvidenceItems.length === 0) && (
+                                        <div className="text-xs text-slate-400">暂无 AI 证据</div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg border border-slate-200 p-3">
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="text-xs font-semibold text-slate-700">规则证据</div>
+                                    <div className="text-[10px] text-slate-400">按规则分组</div>
+                                </div>
+                                {Object.keys(groupedRuleEvidence).length === 0 && (
+                                    <span className="text-xs text-slate-400">暂无规则证据</span>
+                                )}
+                                <div className="space-y-2">
+                                    {Object.entries(groupedRuleEvidence).slice(0, showAllEvidence ? undefined : 2).map(([group, items]) => {
+                                        const isCollapsed = collapsedRuleGroups[group];
+                                        return (
+                                            <div key={group} className="border border-slate-100 rounded-md p-2">
+                                                <button
+                                                    onClick={() => setCollapsedRuleGroups(prev => ({ ...prev, [group]: !prev[group] }))}
+                                                    className="w-full flex items-center justify-between text-[10px] font-semibold text-slate-500"
+                                                >
+                                                    <span>{group} ({items.length})</span>
+                                                    <span>{isCollapsed ? '展开' : '收起'}</span>
+                                                </button>
+                                                {!isCollapsed && (
+                                                    <div className="flex flex-wrap gap-1 mt-2">
+                                                        {items.map((e, i) => (
+                                                            <span key={`${group}-${i}`} className="bg-slate-50 px-2 py-0.5 rounded border border-slate-200 text-xs">
+                                                                {e}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                            {profile.aiEvidence.slice(0, 2).map((e, i) => (
+                                <span key={`ai-${i}`} className="bg-white px-2 py-0.5 rounded border border-slate-200 text-xs shadow-sm">
                                     {e}
                                 </span>
                             ))}
