@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
     Layout, Database, GitMerge, CheckCircle, AlertCircle,
-    Cpu, Plus, Link, Settings, Sparkles, X, ArrowLeft, ArrowRight, Wand2
+    Cpu, Plus, Link, Settings, Sparkles, X, ArrowLeft, ArrowRight, Wand2, Search, Filter
 } from 'lucide-react';
 
 import { mockDataSources, mockBOTableMappings } from '../data/mockData';
@@ -69,6 +69,10 @@ const BOMappingStudioView = ({ selectedBO, showRuleEditor, setShowRuleEditor, bu
     const [sampleValue, setSampleValue] = useState<string>('sample_data');
     const [previewValue, setPreviewValue] = useState<string>('sample_data');
 
+    // Efficiency State
+    const [boSearchTerm, setBoSearchTerm] = useState('');
+    const [tableSearchTerm, setTableSearchTerm] = useState('');
+    const [showUnmappedOnly, setShowUnmappedOnly] = useState(false);
     // Mock Sample Data Generator
     const getSampleData = (type: string) => {
         if (type.includes('int')) return '10086';
@@ -577,6 +581,27 @@ const BOMappingStudioView = ({ selectedBO, showRuleEditor, setShowRuleEditor, bu
                                 <span className="font-bold text-sm">{activeBO?.name}</span>
                             </div>
                             <div className="text-xs text-blue-100 font-mono mt-1">{activeBO?.code}</div>
+                            <div className="text-xs text-blue-100 font-mono mt-1">{activeBO?.code}</div>
+                        </div>
+                        {/* Search & Filter Toolbar */}
+                        <div className="p-2 border-b border-slate-100 flex gap-2">
+                            <div className="relative flex-1">
+                                <Search className="absolute left-2 top-1.5 text-slate-400" size={12} />
+                                <input
+                                    type="text"
+                                    placeholder="搜索字段..."
+                                    value={boSearchTerm}
+                                    onChange={(e) => setBoSearchTerm(e.target.value)}
+                                    className="w-full pl-6 pr-2 py-1 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-blue-400"
+                                />
+                            </div>
+                            <button
+                                onClick={() => setShowUnmappedOnly(!showUnmappedOnly)}
+                                title={showUnmappedOnly ? "显示所有字段" : "仅显示未映射字段"}
+                                className={`p-1 rounded-md border transition-colors ${showUnmappedOnly ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600'}`}
+                            >
+                                <Filter size={12} />
+                            </button>
                         </div>
                         <div className="flex-1 overflow-y-auto p-2" ref={boListRef}>
                             {activeBO?.fields?.length === 0 && (
@@ -585,7 +610,12 @@ const BOMappingStudioView = ({ selectedBO, showRuleEditor, setShowRuleEditor, bu
                                     暂无业务字段
                                 </div>
                             )}
-                            {activeBO?.fields?.map((field: any, idx: number) => {
+                            {activeBO?.fields?.filter((field: any) => {
+                                const matchesSearch = field.name.toLowerCase().includes(boSearchTerm.toLowerCase());
+                                const mapping = currentMapping?.mappings?.find((m: any) => m.boField === field.name);
+                                const matchesFilter = !showUnmappedOnly || !mapping;
+                                return matchesSearch && matchesFilter;
+                            }).map((field: any, idx: number) => {
                                 const mapping = currentMapping?.mappings?.find((m: any) => m.boField === field.name);
                                 return (
                                     <div
@@ -693,8 +723,21 @@ const BOMappingStudioView = ({ selectedBO, showRuleEditor, setShowRuleEditor, bu
                                 <div className="text-xs text-emerald-100 mt-1">{selectedTable.comment} · {selectedTable.rows} 行</div>
                             )}
                         </div>
+                        {/* Search Toolbar */}
+                        <div className="p-2 border-b border-slate-100">
+                            <div className="relative">
+                                <Search className="absolute left-2 top-1.5 text-slate-400" size={12} />
+                                <input
+                                    type="text"
+                                    placeholder="搜索物理字段..."
+                                    value={tableSearchTerm}
+                                    onChange={(e) => setTableSearchTerm(e.target.value)}
+                                    className="w-full pl-6 pr-2 py-1 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-emerald-400"
+                                />
+                            </div>
+                        </div>
                         <div className="flex-1 overflow-y-auto p-2" ref={tableListRef}>
-                            {selectedTable?.columns?.map((col: any, idx: number) => {
+                            {selectedTable?.columns?.filter((col: any) => col.name.toLowerCase().includes(tableSearchTerm.toLowerCase())).map((col: any, idx: number) => {
                                 const mapping = currentMapping?.mappings?.find((m: any) => m.tblField === col.name);
                                 return (
                                     <div

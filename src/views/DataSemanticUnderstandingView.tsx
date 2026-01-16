@@ -88,6 +88,8 @@ const DataSemanticUnderstandingView = ({
     const [fieldSearchTerm, setFieldSearchTerm] = useState('');
     const [expandedFields, setExpandedFields] = useState<string[]>([]);
     const [focusField, setFocusField] = useState<string | null>(null);
+    const [resultTab, setResultTab] = useState<'overview' | 'evidence' | 'fields' | 'logs'>('overview');
+    const [showAllKeyEvidence, setShowAllKeyEvidence] = useState(false);
     // Track user's conflict resolution choices: fieldName -> { role: string, source: 'rule' | 'ai' }
     const [fieldRoleOverrides, setFieldRoleOverrides] = useState<Record<string, { role: string; source: 'rule' | 'ai' }>>({});
     // Track which field's conflict popover is currently open (click-based)
@@ -223,8 +225,16 @@ const DataSemanticUnderstandingView = ({
         const containsMatch = fields.find((f: any) => f.name.toLowerCase().includes(lowerTarget));
         const matched = exactMatch || lowerMatch || containsMatch;
         if (!matched) return;
+        setResultTab('fields');
         setFocusField(null);
         setTimeout(() => setFocusField(matched.name), 0);
+    };
+
+    const scrollToSection = (sectionId: string) => {
+        const node = document.getElementById(sectionId);
+        if (node) {
+            node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
     };
 
     const handleAnalyze = async () => {
@@ -1062,87 +1072,341 @@ const DataSemanticUnderstandingView = ({
                                         null
                                     ) : (
                                         <>
-                                            {/* 1. Conclusion Card (Top Priority) */}
-                                            <SemanticConclusionCard
-                                                profile={semanticProfile}
-                                                fields={selectedTable.fields || []}
-                                                onAccept={handleSaveToMetadata}
-                                                onReject={handleIgnore}
-                                                onEdit={() => setEditMode(true)}
-                                                isEditing={editMode}
-                                                onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
-                                                onSaveEdit={() => {
-                                                    handleJustSave();
-                                                    setEditMode(false);
-                                                }}
-                                                onFocusField={handleFocusField}
-                                                existingBO={(() => {
-                                                    const mappedEntry = Object.entries(mockBOTableMappings).find(([_, config]) => config.tableName === selectedTable.table);
-                                                    return mappedEntry ? (businessObjects || []).find(b => b.id === mappedEntry[0]) : undefined;
-                                                })()}
-                                            />
+                                            {(() => {
+                                                const scorePercent = Math.round((semanticProfile.finalScore || 0) * 100);
+                                                const ruleEvidence = semanticProfile.ruleEvidence || [];
+                                                const aiEvidenceItems = semanticProfile.aiEvidenceItems || [];
+                                                const conflictCount = ruleEvidence.filter((item) => /冲突|待确认|复核/.test(item)).length;
+                                                const commentCoverage = Math.round((semanticProfile.ruleScore?.comment || 0) * 100);
+                                                const pendingCount = conflictCount + (semanticProfile.gateResult?.result === 'REVIEW' ? 1 : 0);
+                                                const gateResult = semanticProfile.gateResult?.result;
+                                                let riskLabel = '中风险';
+                                                let riskTone: 'red' | 'amber' | 'emerald' = 'amber';
+                                                if (gateResult === 'REJECT') {
+                                                    riskLabel = '高风险';
+                                                    riskTone = 'red';
+                                                } else if (gateResult === 'REVIEW') {
+                                                    riskLabel = '中风险';
+                                                    riskTone = 'amber';
+                                                } else if (scorePercent >= 85) {
+                                                    riskLabel = '低风险';
+                                                    riskTone = 'emerald';
+                                                } else if (scorePercent >= 65) {
+                                                    riskLabel = '中风险';
+                                                    riskTone = 'amber';
+                                                } else {
+                                                    riskLabel = '高风险';
+                                                    riskTone = 'red';
+                                                }
+                                                const actionHints = [
+                                                    gateResult === 'REVIEW' ? '补充主键或生命周期字段' : null,
+                                                    commentCoverage < 60 ? '补充字段口径注释' : null,
+                                                    (semanticProfile.ruleScore?.behavior || 0) < 0.6 ? '复核行为字段密度' : null,
+                                                    conflictCount > 0 ? '处理冲突字段' : null
+                                                ].filter(Boolean) as string[];
+                                                const summaryText = gateResult === 'REJECT'
+                                                    ? '规则门槛未通过，需补齐关键字段后再评估。'
+                                                    : gateResult === 'REVIEW'
+                                                        ? '需复核关键规则，建议先处理冲突字段。'
+                                                        : scorePercent >= 85
+                                                            ? '规则与AI一致性较高，可推进发布。'
+                                                            : '结论基本可用，建议补充口径后再发布。';
+                                                const gateLabelMap: Record<string, string> = {
+                                                    PASS: '通过',
+                                                    REVIEW: '需复核',
+                                                    REJECT: '未通过'
+                                                };
+                                                const gateLabel = gateResult ? (gateLabelMap[gateResult] || gateResult) : '-';
+                                                const riskStyles = {
+                                                    red: 'bg-red-50 text-red-600 border-red-100',
+                                                    amber: 'bg-amber-50 text-amber-600 border-amber-100',
+                                                    emerald: 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                                };
+                                                const hintTone: 'red' | 'amber' | 'emerald' = gateResult === 'REJECT'
+                                                    ? 'red'
+                                                    : (gateResult === 'REVIEW' || conflictCount > 0 || commentCoverage < 60)
+                                                        ? 'amber'
+                                                        : 'emerald';
+                                                const hintStyles = {
+                                                    red: 'bg-red-50 text-red-600 border-red-100',
+                                                    amber: 'bg-amber-50 text-amber-700 border-amber-100',
+                                                    emerald: 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                                };
+                                                const evidenceList = [
+                                                    ...ruleEvidence.map(text => ({ type: '规则', text })),
+                                                    ...aiEvidenceItems.map(item => ({ type: 'AI', text: `${item.field}：${item.reason}` }))
+                                                ];
+                                                const evidenceTop = evidenceList.slice(0, 5);
+                                                const evidenceCount = ruleEvidence.length + aiEvidenceItems.length;
+                                                const fieldsCount = (selectedTable.fields || []).length;
+                                                const logsCount = upgradeHistory.filter(entry => entry.tableId === selectedTable.table).length;
+                                                const anchors = {
+                                                    overview: [
+                                                        { id: 'result-summary', label: '结论摘要' },
+                                                        { id: 'result-key-evidence', label: '关键证据' },
+                                                        { id: 'result-score-breakdown', label: '评分拆解' }
+                                                    ],
+                                                    evidence: [
+                                                        { id: 'result-summary', label: '结论摘要' },
+                                                        { id: 'result-conclusion', label: '综合结论' },
+                                                        { id: 'result-analysis', label: '分析详情' }
+                                                    ],
+                                                    fields: [
+                                                        { id: 'result-summary', label: '结论摘要' },
+                                                        { id: 'result-fields', label: '字段分析' }
+                                                    ],
+                                                    logs: [
+                                                        { id: 'result-summary', label: '结论摘要' },
+                                                        { id: 'result-logs', label: '操作记录' }
+                                                    ]
+                                                };
 
-                                            {/* 2. Analysis Details (Secondary) */}
-                                            <div className="mt-6">
-                                                <SemanticAnalysisCard
-                                                    profile={semanticProfile}
-                                                    fields={selectedTable.fields || []}
-                                                    onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
-                                                    onUpgradeAccepted={(beforeState, afterState) => {
-                                                        if (!selectedTable) return;
-                                                        recordUpgradeHistory(
-                                                            selectedTable.table,
-                                                            selectedTable.table,
-                                                            beforeState,
-                                                            afterState
-                                                        );
-                                                    }}
-                                                />
-                                            </div>
-
-                                            {/* 3. Deep Analysis Tabs (Details) */}
-                                            <div className="mt-6">
-                                                <DeepAnalysisTabs
-                                                    profile={semanticProfile}
-                                                    fields={selectedTable.fields || []}
-                                                    onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
-                                                    activeTabOverride={focusField ? 'fields' : undefined}
-                                                    focusField={focusField}
-                                                />
-                                            </div>
-
-                                            {upgradeHistory.some(entry => entry.tableId === selectedTable.table) && (
-                                                <div className="mt-4 bg-white rounded-lg border border-slate-200 p-4">
-                                                    <div className="text-sm font-medium text-slate-700 flex items-center gap-2 mb-3">
-                                                        <Clock size={14} className="text-slate-500" /> 升级操作记录
-                                                    </div>
-                                                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                                                        {upgradeHistory
-                                                            .filter(entry => entry.tableId === selectedTable.table)
-                                                            .map(entry => (
-                                                                <div key={entry.id} className="flex items-center justify-between text-xs bg-slate-50 rounded-md px-2 py-1.5">
-                                                                    <div className="text-slate-600">
-                                                                        <span className="font-mono text-slate-700">{entry.tableName}</span>
-                                                                        <span className="text-slate-400"> · {entry.timestamp}</span>
-                                                                        {entry.rolledBack && (
-                                                                            <span className="ml-2 text-orange-600">已撤销</span>
-                                                                        )}
+                                                return (
+                                                    <>
+                                                        <div id="result-summary" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                                                            <div className="flex items-start justify-between gap-4">
+                                                                <div>
+                                                                    <div className="text-xs text-slate-500">语义理解结果摘要</div>
+                                                                    <div className="mt-2 text-lg font-semibold text-slate-800 flex items-center gap-2">
+                                                                        {summaryText}
                                                                     </div>
-                                                                    <button
-                                                                        onClick={() => rollbackUpgrade(entry.id)}
-                                                                        disabled={entry.rolledBack}
-                                                                        className={`px-2 py-1 rounded ${entry.rolledBack
-                                                                            ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
-                                                                            : 'text-orange-600 bg-orange-50 hover:bg-orange-100'
-                                                                            }`}
-                                                                    >
-                                                                        撤销
-                                                                    </button>
+                                                                    <div className="mt-1 text-xs text-slate-400">基于规则门槛、字段评分与 AI 语义识别综合生成</div>
                                                                 </div>
-                                                            ))}
-                                                    </div>
-                                                </div>
-                                            )}
+                                                                <div className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${riskStyles[riskTone]}`}>
+                                                                    {riskLabel}
+                                                                </div>
+                                                            </div>
+                                                            <div className="mt-4 grid grid-cols-2 lg:grid-cols-5 gap-3">
+                                                                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                                                                    <div className="text-xs text-slate-500">通过率</div>
+                                                                    <div className="text-lg font-semibold text-slate-800">{scorePercent}%</div>
+                                                                </div>
+                                                                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                                                                    <div className="text-xs text-slate-500">冲突数</div>
+                                                                    <div className="text-lg font-semibold text-slate-800">{conflictCount}</div>
+                                                                </div>
+                                                                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                                                                    <div className="text-xs text-slate-500">覆盖度</div>
+                                                                    <div className="text-lg font-semibold text-slate-800">{commentCoverage}%</div>
+                                                                </div>
+                                                                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                                                                    <div className="text-xs text-slate-500">待处理</div>
+                                                                    <div className="text-lg font-semibold text-slate-800">{pendingCount}</div>
+                                                                </div>
+                                                                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                                                                    <div className="text-xs text-slate-500">门槛状态</div>
+                                                                    <div className="text-lg font-semibold text-slate-800">{gateLabel}</div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="mt-4">
+                                                                <div className="text-xs font-medium text-slate-500 mb-2">行动建议</div>
+                                                                <div className="flex flex-wrap gap-2 text-xs text-slate-600">
+                                                                    {(actionHints.length > 0 ? actionHints : ['结论稳定，可推进发布。']).map((item, idx) => (
+                                                                        <span key={idx} className={`px-2 py-1 rounded-full border ${hintStyles[hintTone]}`}>
+                                                                            {item}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="mt-6 grid grid-cols-1 xl:grid-cols-[1fr_220px] gap-6">
+                                                            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                                                                <div className="flex items-center gap-1 border-b border-slate-100 bg-slate-50 px-2">
+                                                                    {([
+                                                                        { key: 'overview', label: '概览' },
+                                                                        { key: 'evidence', label: '证据', count: evidenceCount },
+                                                                        { key: 'fields', label: '字段', count: fieldsCount },
+                                                                        { key: 'logs', label: '日志', count: logsCount }
+                                                                    ] as const).map(tab => (
+                                                                        <button
+                                                                            key={tab.key}
+                                                                            onClick={() => setResultTab(tab.key)}
+                                                                            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${resultTab === tab.key ? 'border-blue-500 text-blue-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-white/60'}`}
+                                                                        >
+                                                                            <span className="flex items-center gap-2">
+                                                                                <span>{tab.label}</span>
+                                                                                {typeof tab.count === 'number' && (
+                                                                                    <span className="px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-500">
+                                                                                        {tab.count}
+                                                                                    </span>
+                                                                                )}
+                                                                            </span>
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                                <div className="p-4">
+                                                                    {resultTab === 'overview' && (
+                                                                        <div className="space-y-4">
+                                                                            <div id="result-key-evidence" className="rounded-lg border border-slate-100 bg-slate-50 p-4">
+                                                                                <div className="flex items-center justify-between gap-3">
+                                                                                    <div className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                                                                                        <CheckCircle size={14} className="text-emerald-500" /> 关键证据
+                                                                                    </div>
+                                                                                    {evidenceList.length > 5 && (
+                                                                                        <button
+                                                                                            onClick={() => setShowAllKeyEvidence(prev => !prev)}
+                                                                                            className="text-xs text-slate-500 hover:text-slate-700"
+                                                                                        >
+                                                                                            {showAllKeyEvidence ? '收起' : `展开更多（${evidenceList.length}）`}
+                                                                                        </button>
+                                                                                    )}
+                                                                                </div>
+                                                                                <div className="mt-2 space-y-2 text-sm">
+                                                                                    {(showAllKeyEvidence ? evidenceList : evidenceTop).length > 0 ? (showAllKeyEvidence ? evidenceList : evidenceTop).map((item, idx) => (
+                                                                                        <div key={idx} className="flex items-start gap-2">
+                                                                                            <span className={`text-xs px-2 py-0.5 rounded-full border ${item.type === '规则' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
+                                                                                                {item.type}
+                                                                                            </span>
+                                                                                            <span className="text-slate-600">{item.text}</span>
+                                                                                        </div>
+                                                                                    )) : (
+                                                                                        <div className="text-xs text-slate-400">暂无关键证据</div>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                            <div id="result-score-breakdown" className="rounded-lg border border-slate-100 bg-white p-4">
+                                                                                <div className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                                                                                    <Activity size={14} className="text-blue-600" /> 评分拆解
+                                                                                </div>
+                                                                                {semanticProfile.scoreBreakdown ? (
+                                                                                    <div className="mt-3 space-y-3">
+                                                                                        {([
+                                                                                            { label: '规则贡献', value: semanticProfile.scoreBreakdown.rule, color: 'bg-purple-500' },
+                                                                                            { label: '字段贡献', value: semanticProfile.scoreBreakdown.field, color: 'bg-emerald-500' },
+                                                                                            { label: 'AI 贡献', value: semanticProfile.scoreBreakdown.ai, color: 'bg-blue-500' }
+                                                                                        ]).map(item => (
+                                                                                            <div key={item.label}>
+                                                                                                <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                                                                                                    <span>{item.label}</span>
+                                                                                                    <span>{Math.round(item.value * 100)}%</span>
+                                                                                                </div>
+                                                                                                <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                                                                                                    <div className={`h-full ${item.color}`} style={{ width: `${Math.round(item.value * 100)}%` }}></div>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <div className="text-xs text-slate-400 mt-2">暂无评分拆解</div>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {resultTab === 'evidence' && (
+                                                                        <div className="space-y-6">
+                                                                            <div id="result-conclusion">
+                                                                                <SemanticConclusionCard
+                                                                                    profile={semanticProfile}
+                                                                                    fields={selectedTable.fields || []}
+                                                                                    onAccept={handleSaveToMetadata}
+                                                                                    onReject={handleIgnore}
+                                                                                    onEdit={() => setEditMode(true)}
+                                                                                    isEditing={editMode}
+                                                                                    onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
+                                                                                    onSaveEdit={() => {
+                                                                                        handleJustSave();
+                                                                                        setEditMode(false);
+                                                                                    }}
+                                                                                    onFocusField={handleFocusField}
+                                                                                    existingBO={(() => {
+                                                                                        const mappedEntry = Object.entries(mockBOTableMappings).find(([_, config]) => config.tableName === selectedTable.table);
+                                                                                        return mappedEntry ? (businessObjects || []).find(b => b.id === mappedEntry[0]) : undefined;
+                                                                                    })()}
+                                                                                />
+                                                                            </div>
+                                                                            <div id="result-analysis">
+                                                                                <SemanticAnalysisCard
+                                                                                    profile={semanticProfile}
+                                                                                    fields={selectedTable.fields || []}
+                                                                                    onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
+                                                                                    onUpgradeAccepted={(beforeState, afterState) => {
+                                                                                        if (!selectedTable) return;
+                                                                                        recordUpgradeHistory(
+                                                                                            selectedTable.table,
+                                                                                            selectedTable.table,
+                                                                                            beforeState,
+                                                                                            afterState
+                                                                                        );
+                                                                                    }}
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {resultTab === 'fields' && (
+                                                                        <div id="result-fields">
+                                                                            <DeepAnalysisTabs
+                                                                                profile={semanticProfile}
+                                                                                fields={selectedTable.fields || []}
+                                                                                onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
+                                                                                activeTabOverride={focusField ? 'fields' : undefined}
+                                                                                focusField={focusField}
+                                                                            />
+                                                                        </div>
+                                                                    )}
+
+                                                                    {resultTab === 'logs' && (
+                                                                        <div id="result-logs">
+                                                                            {upgradeHistory.some(entry => entry.tableId === selectedTable.table) ? (
+                                                                                <div className="bg-white rounded-lg border border-slate-200 p-4">
+                                                                                    <div className="text-sm font-medium text-slate-700 flex items-center gap-2 mb-3">
+                                                                                        <Clock size={14} className="text-slate-500" /> 升级操作记录
+                                                                                    </div>
+                                                                                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                                                                                        {upgradeHistory
+                                                                                            .filter(entry => entry.tableId === selectedTable.table)
+                                                                                            .map(entry => (
+                                                                                                <div key={entry.id} className="flex items-center justify-between text-xs bg-slate-50 rounded-md px-2 py-1.5">
+                                                                                                    <div className="text-slate-600">
+                                                                                                        <span className="font-mono text-slate-700">{entry.tableName}</span>
+                                                                                                        <span className="text-slate-400"> · {entry.timestamp}</span>
+                                                                                                        {entry.rolledBack && (
+                                                                                                            <span className="ml-2 text-orange-600">已撤销</span>
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                    <button
+                                                                                                        onClick={() => rollbackUpgrade(entry.id)}
+                                                                                                        disabled={entry.rolledBack}
+                                                                                                        className={`px-2 py-1 rounded ${entry.rolledBack
+                                                                                                            ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
+                                                                                                            : 'text-orange-600 bg-orange-50 hover:bg-orange-100'
+                                                                                                            }`}
+                                                                                                    >
+                                                                                                        撤销
+                                                                                                    </button>
+                                                                                                </div>
+                                                                                            ))}
+                                                                                    </div>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div className="text-sm text-slate-400">暂无操作记录</div>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <div className="hidden xl:block">
+                                                                <div className="sticky top-6 bg-white rounded-xl border border-slate-200 p-3">
+                                                                    <div className="text-xs font-medium text-slate-500 mb-2">结果目录</div>
+                                                                    <div className="space-y-1">
+                                                                        {anchors[resultTab].map(item => (
+                                                                            <button
+                                                                                key={item.id}
+                                                                                onClick={() => scrollToSection(item.id)}
+                                                                                className="w-full text-left text-xs text-slate-500 px-2 py-1.5 rounded hover:bg-slate-50 hover:text-slate-700"
+                                                                            >
+                                                                                {item.label}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </>
+                                                );
+                                            })()}
                                         </>
                                     )}
                                 </div>

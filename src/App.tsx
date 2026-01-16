@@ -45,6 +45,7 @@ import CacheStrategyView from './views/CacheStrategyView';
 import DataSourceManagementView from './views/DataSourceManagementView';
 import AssetScanningView from './views/AssetScanningView';
 import AskDataView from './views/AskDataView';
+import { DataCatalogView } from './views/DataCatalogView';
 import SemanticAssetManagerView from './views/SemanticAssetManagerView';
 
 // ==========================================
@@ -109,7 +110,7 @@ export default function SemanticLayerApp() {
             case 'bu_candidates': return <CandidateGenerationView scanResults={scanResults} setScanResults={setScanResults} onAddBusinessObject={handleAddBusinessObject} />;
             case 'governance': return <ConflictDetectionView />;
             case 'smart_data': return <SmartDataHubView businessObjects={businessObjects} />;
-            case 'data_supermarket': return <SmartDataHubView businessObjects={businessObjects} />;
+            case 'data_supermarket': return <DataCatalogView />;
             case 'term_mgmt': return <SemanticAssetManagerView initialTab="terms" />;
             case 'tag_mgmt': return <SemanticAssetManagerView initialTab="tags" />;
             case 'ask_data': return <AskDataView />;
