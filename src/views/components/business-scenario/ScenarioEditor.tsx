@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
     ArrowLeft, Save, Brain, Sparkles, Check,
     AlertCircle, Activity, Box, ToggleLeft, Type,
-    Upload, Loader2, Trash2
+    Upload, Loader2, Trash2, Database
 } from 'lucide-react';
 import { llmService } from '../../../services/llm';
 import { useToast } from '../../../components/ui/Toast';
@@ -263,11 +263,12 @@ const ScenarioEditor: React.FC<ScenarioEditorProps> = ({
 
             {/* Main Content */}
             <div className="flex-1 flex overflow-hidden">
-                {/* Left: Editor */}
-                <div className="flex-1 overflow-y-auto p-8 bg-slate-50/30">
-                    <div className="max-w-3xl mx-auto">
+                {/* Left: Editor - shrinks when analysis panel is open */}
+                <div className={`overflow-y-auto p-4 bg-slate-50/30 transition-all duration-300 ${analysisResult || recognitionRun ? 'w-2/5 min-w-[400px]' : 'flex-1'
+                    }`}>
+                    <div>
                         <div className="mb-2 flex justify-between items-center">
-                            <label className="text-sm font-semibold text-slate-700 block uppercase tracking-wide">
+                            <label className="text-xs font-semibold text-slate-700 block uppercase tracking-wide">
                                 业务场景描述
                             </label>
                             {/* Quick start removed as it is replaced by template selection */}
@@ -281,7 +282,7 @@ const ScenarioEditor: React.FC<ScenarioEditorProps> = ({
                             workingCopy={workingCopy || undefined}
                         />
 
-                        <div className="min-h-[400px]">
+                        <div className={`${analysisResult || recognitionRun ? 'min-h-[200px]' : 'min-h-[350px]'}`}>
                             <SmartEditor
                                 content={description}
                                 onChange={setDescription}
@@ -292,43 +293,44 @@ const ScenarioEditor: React.FC<ScenarioEditorProps> = ({
                         </div>
 
                         {analysisError && (
-                            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-                                <AlertCircle size={16} className="text-red-600 mt-0.5 flex-shrink-0" />
+                            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                                <AlertCircle size={12} className="text-red-600 mt-0.5 flex-shrink-0" />
                                 <div>
-                                    <p className="text-sm text-red-800 font-medium">分析失败</p>
-                                    <p className="text-xs text-red-600 mt-0.5">{analysisError}</p>
+                                    <p className="text-[10px] text-red-800 font-medium">分析失败</p>
+                                    <p className="text-[9px] text-red-600 mt-0.5">{analysisError}</p>
                                 </div>
                             </div>
                         )}
 
-                        <p className="text-xs text-slate-400 mt-3 flex items-center gap-2">
-                            <Brain size={12} />
+                        <p className="text-[9px] text-slate-400 mt-2 flex items-center gap-1">
+                            <Brain size={9} />
                             提示：描述得越详细，识别越准确。包含主体、行为、涉及的材料和状态变化。
                         </p>
                     </div>
                 </div>
 
-                {/* Right: Analysis Panel */}
-                <div className={`w-96 border-l border-slate-200 bg-white flex flex-col transition-all duration-300 transform ${analysisResult || recognitionRun ? 'translate-x-0' : 'translate-x-full hidden'
+
+                {/* Right: Analysis Panel - takes 60% when visible */}
+                <div className={`w-3/5 border-l border-slate-200 bg-white flex flex-col transition-all duration-300 ${analysisResult || recognitionRun ? 'block' : 'hidden'
                     }`}>
                     {/* Tabs */}
                     <div className="flex border-b border-slate-200">
                         <button
                             onClick={() => setActiveTab('analysis')}
-                            className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 border-b-2 transition-colors ${activeTab === 'analysis' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+                            className={`flex-1 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5 border-b-2 transition-colors ${activeTab === 'analysis' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'
                                 }`}
                         >
-                            <Activity size={16} />
+                            <Activity size={14} />
                             识别结果
                         </button>
                         <button
                             onClick={() => setActiveTab('modeling')}
                             disabled={!analysisResult && !workingCopy}
-                            className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 border-b-2 transition-colors ${activeTab === 'modeling' ? 'border-blue-600 text-blue-600' :
+                            className={`flex-1 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5 border-b-2 transition-colors ${activeTab === 'modeling' ? 'border-blue-600 text-blue-600' :
                                 (!analysisResult && !workingCopy) ? 'border-transparent text-slate-300 cursor-not-allowed' : 'border-transparent text-slate-500 hover:text-slate-700'
                                 }`}
                         >
-                            <Box size={16} />
+                            <Database size={14} />
                             业务建模 (Modeling)
                         </button>
                     </div>

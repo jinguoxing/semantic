@@ -280,20 +280,20 @@ const BusinessModelPanel: React.FC<BusinessModelPanelProps> = ({ data, onSave, o
 
                             {/* Relations Table (if selected is Primary) */}
                             {selectedObject?.id === primaryObject.id && (
-                                <div className="mt-8">
-                                    <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
-                                        <GitMerge size={14} /> 对象关系 (Relations)
+                                <div className="mt-4">
+                                    <h3 className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+                                        <GitMerge size={12} /> 对象关系 (Relations)
                                     </h3>
                                     <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
-                                        <table className="w-full text-sm">
+                                        <table className="w-full text-xs">
                                             <tbody className="divide-y divide-slate-100">
                                                 {relations.map((rel, i) => (
                                                     <tr key={i} className="hover:bg-slate-50">
-                                                        <td className="px-4 py-2 text-right w-1/3 font-mono text-indigo-600">{rel.from_object}</td>
-                                                        <td className="px-4 py-2 text-center w-24">
-                                                            <span className="bg-slate-100 px-2 py-0.5 rounded-full text-xs text-slate-600 font-mono">{rel.relation}</span>
+                                                        <td className="px-3 py-1.5 text-right w-1/3 font-mono text-indigo-600">{rel.from_object}</td>
+                                                        <td className="px-3 py-1.5 text-center w-20">
+                                                            <span className="bg-slate-100 px-1.5 py-0.5 rounded-full text-[10px] text-slate-600 font-mono">{rel.relation}</span>
                                                         </td>
-                                                        <td className="px-4 py-2 text-left w-1/3 font-mono text-slate-700">{rel.to_object}</td>
+                                                        <td className="px-3 py-1.5 text-left w-1/3 font-mono text-slate-700">{rel.to_object}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -306,46 +306,46 @@ const BusinessModelPanel: React.FC<BusinessModelPanelProps> = ({ data, onSave, o
                 )}
 
                 {activeView === 'states' && (
-                    <div className="p-8 flex-1 overflow-y-auto">
-                        <div className="max-w-4xl mx-auto">
-                            <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                <Activity className="text-purple-600" size={20} />
+                    <div className="p-4 flex-1 overflow-y-auto">
+                        <div className="max-w-3xl mx-auto">
+                            <h2 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-1.5">
+                                <Activity className="text-purple-600" size={14} />
                                 状态机定义: {stateMachine.primary_object || selectedObject?.normalized_name}
                             </h2>
 
-                            <div className="grid grid-cols-4 gap-4 mb-8">
+                            <div className="grid grid-cols-4 gap-2 mb-4">
                                 {stateMachine.states.map((state: any) => (
-                                    <div key={state.state_code} className={`p-4 rounded-lg border ${state.is_terminal ? 'bg-slate-50 border-slate-200' : 'bg-white border-purple-200 shadow-sm'}`}>
-                                        <div className="flex justify-between items-start mb-2">
-                                            <span className="font-bold text-slate-800">{state.state_name}</span>
-                                            {state.is_terminal && <span className="text-[10px] bg-slate-200 text-slate-600 px-1 rounded">终态</span>}
+                                    <div key={state.state_code} className={`p-2.5 rounded-lg border ${state.is_terminal ? 'bg-slate-50 border-slate-200' : 'bg-white border-purple-200 shadow-sm'}`}>
+                                        <div className="flex justify-between items-start mb-1">
+                                            <span className="text-xs font-bold text-slate-800">{state.state_name}</span>
+                                            {state.is_terminal && <span className="text-[9px] bg-slate-200 text-slate-600 px-1 rounded">终态</span>}
                                         </div>
-                                        <div className="text-xs font-mono text-slate-400">{state.state_code}</div>
+                                        <div className="text-[10px] font-mono text-slate-400">{state.state_code}</div>
                                     </div>
                                 ))}
                             </div>
 
-                            <h3 className="text-sm font-semibold text-slate-600 mb-3 uppercase tracking-wider">流转规则 (Transitions)</h3>
-                            <div className="space-y-3">
+                            <h3 className="text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wider">流转规则 (Transitions)</h3>
+                            <div className="space-y-2">
                                 {stateMachine.transitions.map((trans: any, i: number) => (
-                                    <div key={i} className="flex items-center gap-4 p-3 bg-white border border-slate-200 rounded-lg shadow-sm">
-                                        <div className="w-32 font-medium text-slate-700 text-right">{trans.from_state}</div>
+                                    <div key={i} className="flex items-center gap-3 p-2 bg-white border border-slate-200 rounded-lg shadow-sm">
+                                        <div className="w-24 text-xs font-medium text-slate-700 text-right">{trans.from_state}</div>
                                         <div className="flex-1 flex flex-col items-center">
-                                            <div className="text-xs text-purple-600 font-medium mb-1">{trans.trigger_action}</div>
+                                            <div className="text-[10px] text-purple-600 font-medium mb-0.5">{trans.trigger_action}</div>
                                             <div className="w-full h-px bg-slate-300 relative">
-                                                <ChevronRight size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                <ChevronRight size={12} className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-400" />
                                             </div>
                                             {trans.guard_conditions.length > 0 && (
-                                                <div className="mt-1 flex gap-1">
+                                                <div className="mt-0.5 flex gap-1">
                                                     {trans.guard_conditions.map((g: string, gi: number) => (
-                                                        <span key={gi} className="text-[10px] bg-amber-50 text-amber-700 px-1 py-0.5 rounded border border-amber-100 max-w-[150px] truncate" title={g}>
+                                                        <span key={gi} className="text-[9px] bg-amber-50 text-amber-700 px-1 py-0.5 rounded border border-amber-100 max-w-[120px] truncate" title={g}>
                                                             {g}
                                                         </span>
                                                     ))}
                                                 </div>
                                             )}
                                         </div>
-                                        <div className="w-32 font-medium text-slate-700">{trans.to_state}</div>
+                                        <div className="w-24 text-xs font-medium text-slate-700">{trans.to_state}</div>
                                     </div>
                                 ))}
                             </div>
@@ -354,28 +354,28 @@ const BusinessModelPanel: React.FC<BusinessModelPanelProps> = ({ data, onSave, o
                 )}
 
                 {activeView === 'rules' && (
-                    <div className="p-8 flex-1 overflow-y-auto">
-                        <div className="max-w-4xl mx-auto space-y-8">
+                    <div className="p-4 flex-1 overflow-y-auto">
+                        <div className="max-w-3xl mx-auto space-y-4">
 
                             {/* Constraints */}
                             {constraints.time_limits.length > 0 && (
                                 <div>
-                                    <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                        <AlertCircle className="text-rose-600" size={20} />
+                                    <h3 className="text-sm font-bold text-slate-800 mb-2 flex items-center gap-1.5">
+                                        <AlertCircle className="text-rose-600" size={14} />
                                         业务约束 (Time Limits)
                                     </h3>
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-2 gap-2">
                                         {constraints.time_limits.map((tl: any, i: number) => (
-                                            <div key={i} className="p-4 bg-white border border-rose-100 rounded-lg shadow-sm flex justify-between items-center">
+                                            <div key={i} className="p-2.5 bg-white border border-rose-100 rounded-lg shadow-sm flex justify-between items-center">
                                                 <div>
-                                                    <div className="font-medium text-slate-800">{tl.label}</div>
-                                                    <div className="text-xs text-slate-500 mt-1">开始于: {tl.mapping.start_event}</div>
+                                                    <div className="text-xs font-medium text-slate-800">{tl.label}</div>
+                                                    <div className="text-[10px] text-slate-500 mt-0.5">开始于: {tl.mapping.start_event}</div>
                                                 </div>
                                                 <div className="text-right">
-                                                    <div className="text-xl font-bold text-rose-600 font-mono">
-                                                        {tl.mapping.duration} <span className="text-sm font-normal text-rose-400">{tl.mapping.unit}</span>
+                                                    <div className="text-base font-bold text-rose-600 font-mono">
+                                                        {tl.mapping.duration} <span className="text-xs font-normal text-rose-400">{tl.mapping.unit}</span>
                                                     </div>
-                                                    <div className="text-[10px] text-rose-400">超时: {tl.mapping.breach_action}</div>
+                                                    <div className="text-[9px] text-rose-400">超时: {tl.mapping.breach_action}</div>
                                                 </div>
                                             </div>
                                         ))}
@@ -385,22 +385,22 @@ const BusinessModelPanel: React.FC<BusinessModelPanelProps> = ({ data, onSave, o
 
                             {/* Eligibility Rules */}
                             <div>
-                                <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                    <Shield className="text-indigo-600" size={20} />
+                                <h3 className="text-sm font-bold text-slate-800 mb-2 flex items-center gap-1.5">
+                                    <Shield className="text-indigo-600" size={14} />
                                     准入规则 (Eligibility)
                                 </h3>
-                                <div className="space-y-3">
+                                <div className="space-y-2">
                                     {constraints.eligibility_rules.map((rule: any, i: number) => (
-                                        <div key={i} className="p-4 bg-white border border-slate-200 rounded-lg shadow-sm">
-                                            <div className="flex justify-between mb-2">
-                                                <div className="font-medium text-slate-800">{rule.label}</div>
-                                                <div className="text-xs bg-slate-100 px-2 py-0.5 rounded text-slate-500 font-mono">{rule.normalized_name}</div>
+                                        <div key={i} className="p-2.5 bg-white border border-slate-200 rounded-lg shadow-sm">
+                                            <div className="flex justify-between mb-1.5">
+                                                <div className="text-xs font-medium text-slate-800">{rule.label}</div>
+                                                <div className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 font-mono">{rule.normalized_name}</div>
                                             </div>
-                                            <div className="p-2 bg-slate-50 rounded border border-slate-100 font-mono text-xs text-slate-600">
+                                            <div className="p-1.5 bg-slate-50 rounded border border-slate-100 font-mono text-[10px] text-slate-600">
                                                 {rule.mapping?.rule_expression || JSON.stringify(rule.mapping)}
                                             </div>
                                             {rule.mapping?.inputs && (
-                                                <div className="mt-2 flex gap-4 text-xs text-slate-500">
+                                                <div className="mt-1.5 flex gap-3 text-[10px] text-slate-500">
                                                     <div>Inputs: {rule.mapping.inputs.join(', ')}</div>
                                                     <div>Code: {rule.mapping.reason_code}</div>
                                                 </div>
