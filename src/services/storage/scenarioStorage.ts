@@ -262,6 +262,29 @@ class ScenarioStorageService {
     }
 
     /**
+     * 批量删除场景
+     */
+    async deleteScenarios(ids: string[]): Promise<void> {
+        try {
+            // 删除详细数据
+            for (const id of ids) {
+                const key = this.getStorageKey(id);
+                localStorage.removeItem(key);
+            }
+
+            // 更新索引
+            const allScenarios = await this.getAllScenarios();
+            const filtered = allScenarios.filter(s => !ids.includes(s.id));
+            await this.saveScenarioIndex(filtered);
+
+            console.log(`${ids.length} scenarios deleted successfully`);
+        } catch (error) {
+            console.error('Failed to batch delete scenarios:', error);
+            throw new Error('批量删除场景失败');
+        }
+    }
+
+    /**
      * 批量导入场景（用于政策文件导入）
      */
     async importScenarios(scenarios: Partial<ScenarioData>[]): Promise<ScenarioData[]> {
