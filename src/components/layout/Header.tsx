@@ -5,14 +5,19 @@ interface HeaderProps {
 }
 
 const moduleLabels: Record<string, string> = {
-    dashboard: '语义协同中心',
+    dashboard: '语义治理总览',
     ask_data: '问数',
     data_supermarket: '找数',
     td_goals: '业务梳理',
     td_modeling: '业务对象建模',
+    modeling_overview: '语义建模概览',
     resource_knowledge_network: '资源知识网络',
     bu_semantic: '逻辑视图',
+    field_semantic: '字段语义理解',
     candidate_confirmation: '候选业务对象',
+    data_quality: '数据质量',
+    data_security: '数据安全',
+    semantic_version: '语义版本',
     scenario_orchestration: '场景编排',
     bu_connect: '数据源管理',
     bu_scan: '资产扫描',
@@ -21,9 +26,14 @@ const moduleLabels: Record<string, string> = {
     mapping: '映射工作台',
     bo_mapping: '业务对象映射',
     governance: '冲突检测',
+    data_standard: '数据标准',
     smart_data: '智能数据中心',
     ee_api: 'API 网关',
-    ee_cache: '缓存策略'
+    ee_cache: '缓存策略',
+    user_permission: '用户与权限',
+    workflow_mgmt: '工作流管理',
+    approval_policy: '审批策略',
+    audit_log: '审计日志'
 };
 
 const Header = ({ activeModule }: HeaderProps) => (

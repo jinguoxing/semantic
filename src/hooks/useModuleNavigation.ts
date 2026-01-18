@@ -2,10 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 
 // 定义合法的模块 ID 类型（根据 App.tsx 中的 case）
 export type ModuleId =
-    | 'dashboard'
+    | 'dashboard' | 'modeling_overview'
     | 'td_goals' | 'mapping' | 'bo_mapping' | 'candidate_confirmation' | 'td_modeling' | 'resource_knowledge_network' | 'scenario_orchestration'
     | 'bu_connect' | 'bu_scan' | 'bu_discovery' | 'bu_semantic' | 'bu_candidates'
-    | 'governance' | 'smart_data' | 'data_supermarket' | 'term_mgmt' | 'tag_mgmt' | 'ask_data'
+    | 'governance' | 'smart_data' | 'data_supermarket' | 'term_mgmt' | 'tag_mgmt' | 'ask_data' | 'data_standard'
+    | 'field_semantic' | 'data_quality' | 'data_security' | 'semantic_version'
+    | 'user_permission' | 'workflow_mgmt' | 'approval_policy' | 'audit_log'
     | 'ee_api' | 'ee_cache';
 
 const DEFAULT_MODULE: ModuleId = 'dashboard';

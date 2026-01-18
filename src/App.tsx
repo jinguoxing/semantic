@@ -29,6 +29,7 @@ import StatCard from './components/common/StatCard';
 import StepItem from './components/common/StepItem';
 import BookIcon from './components/common/BookIcon';
 import DashboardView from './views/DashboardView';
+import SemanticModelingOverview from './views/SemanticModelingOverview';
 import MappingStudioView from './views/MappingStudioView';
 import BOMappingStudioView from './views/BOMappingStudioView';
 import CandidateConfirmationView from './views/CandidateConfirmationView';
@@ -85,6 +86,7 @@ export default function SemanticLayerApp() {
     const renderContent = () => {
         switch (activeModule) {
             case 'dashboard': return <DashboardView setActiveModule={setActiveModule} />;
+            case 'modeling_overview': return <SemanticModelingOverview setActiveModule={setActiveModule} />;
             case 'td_goals': return <BusinessScenarioView />;
             case 'mapping': return <MappingStudioView selectedBO={selectedBO} showRuleEditor={showRuleEditor} setShowRuleEditor={setShowRuleEditor} businessObjects={businessObjects} />;
             case 'bo_mapping': return <BOMappingStudioView selectedBO={selectedBO} showRuleEditor={showRuleEditor} setShowRuleEditor={setShowRuleEditor} businessObjects={businessObjects} setBusinessObjects={setBusinessObjects} onBack={() => setActiveModule('td_modeling')} />;

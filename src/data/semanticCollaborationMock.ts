@@ -1,5 +1,5 @@
 const semanticCollaborationMock = {
-    title: '语义协同中心',
+    title: '语义治理总览',
     ranges: {
         '7d': {
             summary: {
