@@ -166,7 +166,7 @@ const TechDiscoveryView = ({ onAddBusinessObject, scanResults, setScanResults }:
         <div className="space-y-6 max-w-7xl mx-auto animate-fade-in">
             <div className="flex justify-between items-center">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-800 tracking-tight">数据发现中心</h2>
+                    <h2 className="text-2xl font-bold text-slate-800 tracking-tight">数据连接中心</h2>
                     <p className="text-slate-500 mt-1">管理数据源连接，自动化扫描元数据与资产发现</p>
                 </div>
                 <div className="flex gap-2">

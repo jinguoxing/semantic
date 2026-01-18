@@ -38,7 +38,7 @@ const Sidebar = ({ activeModule, setActiveModule }: SidebarProps) => {
                 { id: 'dashboard', label: '语义协同中心', icon: Activity },
                 { id: 'td_goals', label: '业务梳理', icon: FileText },
                 { id: 'td_modeling', label: '业务对象建模', icon: Layout },
-                { id: 'resource_knowledge_network', label: '资源知识网络', icon: Network },
+
                 { id: 'bu_semantic', label: '逻辑视图', icon: FileText },
                 { id: 'candidate_confirmation', label: '候选业务对象', icon: CheckSquare }
             ]
@@ -48,11 +48,12 @@ const Sidebar = ({ activeModule, setActiveModule }: SidebarProps) => {
             color: 'text-purple-400',
             items: [
                 { id: 'term_mgmt', label: '术语管理', icon: Book },
-                { id: 'tag_mgmt', label: '标签管理', icon: Tag }
+                { id: 'tag_mgmt', label: '标签管理', icon: Tag },
+                { id: 'resource_knowledge_network', label: '资源知识网络', icon: Network }
             ]
         },
         {
-            title: '数据发现',
+            title: '数据连接',
             color: 'text-emerald-400',
             items: [
                 { id: 'bu_connect', label: '数据源管理', icon: Database },

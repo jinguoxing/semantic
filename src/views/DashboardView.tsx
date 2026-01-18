@@ -258,7 +258,7 @@ const DashboardView = ({ setActiveModule }: DashboardViewProps) => {
                             onClick={() => setActiveModule('bu_connect')}
                             className="text-xs text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
                         >
-                            去数据发现 <ArrowRight size={12} />
+                            去数据连接 <ArrowRight size={12} />
                         </button>
                     </div>
                     <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -5,8 +5,8 @@
  */
 
 import React, { useState } from 'react';
-import { GateFailureAlertCard } from './semantic/GateFailureAlertCard';
-import { FieldFilterBar, FieldFilterType, filterFields } from './semantic/FieldFilterBar';
+import { GateFailureAlertCard } from './components/GateFailureAlertCard';
+import { FieldFilterBar, FieldFilterType, filterFields } from './components/FieldFilterBar';
 
 // ============================================
 // 示例 1: 在 Overview Tab 中集成 GateFailureAlertCard

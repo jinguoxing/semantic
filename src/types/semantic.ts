@@ -26,7 +26,7 @@ export interface TableRuleScore {
     total: number;
 }
 
-export type GovernanceStatus = 'S0' | 'S1' | 'S3';
+export type GovernanceStatus = 'S0' | 'S1' | 'S2' | 'S3';
 
 export interface ReviewStats {
     pendingReviewFields: number;
@@ -166,4 +166,24 @@ export interface BusinessObject {
     description?: string;
     sourceTables?: string[];
     fields?: any[]; // Simplified for now
+}
+// Logs and History
+export interface AuditLogEntry {
+    id: string;
+    tableId: string;
+    field?: string;
+    action: 'accept' | 'override' | 'pending' | 'confirm';
+    source?: string;
+    reason?: string;
+    timestamp: string;
+}
+
+export interface UpgradeHistoryEntry {
+    id: string;
+    tableId: string;
+    tableName: string;
+    beforeState: any;
+    afterState: any;
+    timestamp: string;
+    rolledBack: boolean;
 }

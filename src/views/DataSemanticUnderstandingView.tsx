@@ -1,17 +1,23 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { Sparkles, Activity, CheckCircle, ChevronDown, ChevronRight, Bot, AlertTriangle, ArrowLeft, RefreshCw, Table, Share2, Layers, Shield, Database, Search, Settings, Filter, Plus, FileText, Key, Hash, CheckCircle2, XCircle, Info, PanelLeftOpen, PanelLeftClose, Server, Clock, Edit3, X, Box, ListPlus, Cpu, Star, Tag, ShieldCheck, AlertCircle } from 'lucide-react';
-import { checkGatekeeper, analyzeField } from '../logic/semantic/rules';
-import { calculateTableRuleScore, calculateFusionScore } from '../logic/semantic/scoring';
-import { analyzeTableWithMockAI } from '../services/mockAiService';
 import { TableSemanticProfile, GovernanceStatus, ReviewStats, RunSummary } from '../types/semantic';
+import { analyzeSingleTable, resolveGovernanceStatus, normalizeFields, buildReviewStats, checkGatekeeper, analyzeField, calculateTableRuleScore, calculateFusionScore } from './semantic/logic';
 import { SemanticAnalysisCard } from './semantic/SemanticAnalysisCard';
 import { SemanticConclusionCard } from './semantic/SemanticConclusionCard';
 import { DeepAnalysisTabs } from './semantic/DeepAnalysisTabs';
-import { GateFailureAlertCard } from './semantic/GateFailureAlertCard';
+import { GateFailureAlertCard } from './semantic/components/GateFailureAlertCard';
+import { SemanticHeader } from './semantic/components/SemanticHeader';
+import { typeConfig, getGovernanceDisplay, GovernanceDisplay, runStatusLabelMap, runStatusToneMap } from './semantic/utils';
 import { UpgradeSuggestionCard, generateUpgradeSuggestion } from './semantic/UpgradeSuggestionCard';
+import { OverviewTab } from './semantic/tabs/OverviewTab';
+import { EvidenceTab } from './semantic/tabs/EvidenceTab';
+import { LogsTab } from './semantic/tabs/LogsTab';
+import { BatchOperationBar } from './semantic/components/BatchOperationBar';
 import { AnalysisProgressPanel } from './semantic/AnalysisProgressPanel';
 import { StreamingProgressPanel } from './semantic/StreamingProgressPanel';
 import { mockBOTableMappings } from '../data/mockData';
+import { useSemanticProfile, emptyProfile } from './semantic/hooks/useSemanticProfile';
+import { useBatchOperations } from './semantic/hooks/useBatchOperations';
 
 interface DataSemanticUnderstandingViewProps {
     scanResults: any[];
@@ -38,6 +44,7 @@ const DataSemanticUnderstandingView = ({
     const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
     const [expandedTypes, setExpandedTypes] = useState<string[]>(['MySQL', 'Oracle', 'PostgreSQL']);
     const [searchTerm, setSearchTerm] = useState('');
+    const [isListHeaderCollapsed, setIsListHeaderCollapsed] = useState(false);
     const [listFilters, setListFilters] = useState({
         review: false,
         gate: false,
@@ -52,12 +59,8 @@ const DataSemanticUnderstandingView = ({
     // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
-    // Batch Analysis State
-    const [selectedTables, setSelectedTables] = useState<string[]>([]);
-    const [batchAnalyzing, setBatchAnalyzing] = useState(false);
-    const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
-    const [currentAnalyzing, setCurrentAnalyzing] = useState<string | null>(null); // P0: Streaming progress
-    const [completedResults, setCompletedResults] = useState<typeof batchResults>([]); // P0: Real-time results
+
+    // Batch Analysis State (refactored to hook)
     const [showRunModal, setShowRunModal] = useState(false);
     const [runConfig, setRunConfig] = useState({
         sampleRows: 10000,
@@ -66,195 +69,165 @@ const DataSemanticUnderstandingView = ({
         concurrency: 3,
         queue: 'default'
     });
-    const [batchResults, setBatchResults] = useState<{
-        tableId: string;
-        tableName: string;
-        businessName: string;
-        status: 'success' | 'error' | 'pending';
-        scorePercent: number;
-        needsReview?: boolean;
-        userAction?: 'accepted' | 'rejected' | 'pending';
-        upgradeDecision?: 'accepted' | 'rejected' | 'later' | 'rolled_back';
-        upgradeRejectReason?: string;
-        // Enhanced analysis details
-        fieldStats?: { total: number; identifiers: number; status: number; busAttr: number; time: number };
-        sensitiveFields?: { count: number; examples: string[] };
-        relationships?: { count: number; targets: string[] };
-        upgradeSuggestions?: { statusObjects: number; behaviorObjects: number };
-        lowConfidenceReasons?: string[];
-    }[]>([]);
-    const [showBatchReview, setShowBatchReview] = useState(false);
+
     const [expandedReviewItems, setExpandedReviewItems] = useState<string[]>([]);
-    const [upgradeHistory, setUpgradeHistory] = useState<{
-        id: string;
-        tableId: string;
-        tableName: string;
-        beforeState: any;
-        afterState: any;
-        timestamp: string;
-        rolledBack: boolean;
-    }[]>([]);
-    const [auditLogs, setAuditLogs] = useState<{
-        id: string;
-        tableId: string;
-        field?: string;
-        action: 'accept' | 'override' | 'pending' | 'confirm';
-        source?: string;
-        reason?: string;
-        timestamp: string;
-    }[]>([]);
+
+    // Table Selection (Moved Up)
 
 
-    // Detail View State
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    // View State
     const [editMode, setEditMode] = useState(false);
-    const [pendingAnalysisResult, setPendingAnalysisResult] = useState<TableSemanticProfile | null>(null);
     const [detailTab, setDetailTab] = useState<'fields' | 'graph' | 'dimensions' | 'quality'>('fields');
     const [fieldViewMode, setFieldViewMode] = useState<'structure' | 'semantic'>('structure');
     const [fieldSearchTerm, setFieldSearchTerm] = useState('');
     const [fieldProblemFilter, setFieldProblemFilter] = useState<'all' | 'review'>('all');
     const [fieldGroupFilter, setFieldGroupFilter] = useState<'all' | 'A' | 'B' | 'C'>('all');
     const [selectedFieldNames, setSelectedFieldNames] = useState<string[]>([]);
-    const [fieldReviewStatus, setFieldReviewStatus] = useState<Record<string, 'suggested' | 'confirmed' | 'pending'>>({});
     const [expandedFields, setExpandedFields] = useState<string[]>([]);
     const [focusField, setFocusField] = useState<string | null>(null);
     const [resultTab, setResultTab] = useState<'overview' | 'evidence' | 'fields' | 'logs'>('overview');
     const [showAllKeyEvidence, setShowAllKeyEvidence] = useState(false);
-    // Track user's conflict resolution choices: fieldName -> { role: string, source: 'rule' | 'ai' }
     const [fieldRoleOverrides, setFieldRoleOverrides] = useState<Record<string, { role: string; source: 'rule' | 'ai' }>>({});
-    // Track which field's conflict popover is currently open (click-based)
     const [openConflictPopover, setOpenConflictPopover] = useState<string | null>(null);
-    // Track user's sensitivity level overrides: fieldName -> sensitivityLevel
     const [sensitivityOverrides, setSensitivityOverrides] = useState<Record<string, 'L1' | 'L2' | 'L3' | 'L4'>>({});
-    // Left Tree Collapse State
     const [isTreeCollapsed, setIsTreeCollapsed] = useState(false);
 
+    // Mapping Details Modal State
+    const [viewMappingBO, setViewMappingBO] = useState<string | null>(null);
 
-    // Default Empty Profile
-    const emptyProfile: TableSemanticProfile = {
-        tableName: '',
-        gateResult: { result: 'PASS', details: { primaryKey: false, lifecycle: false, tableType: false }, reasons: [] },
-        ruleScore: { naming: 0, behavior: 0, comment: 0, total: 0 },
-        aiScore: 0,
-        fieldScore: 0,
-        finalScore: 0,
-        businessName: '',
-        description: '',
-        tags: [],
-        fields: [],
-        aiEvidence: [],
-        ruleEvidence: [],
-        governanceStatus: 'S0',
-        reviewStats: { pendingReviewFields: 0, gateFailedItems: 0, riskItems: 0 }
-    };
-
-    const [semanticProfile, setSemanticProfile] = useState<TableSemanticProfile & { analysisStep: 'idle' | 'analyzing' | 'done', relationships?: any[] }>({
-        ...emptyProfile,
-        analysisStep: 'idle',
-        relationships: []
-    });
     // Relationship editing state
     const [showRelModal, setShowRelModal] = useState(false);
     const [editingRel, setEditingRel] = useState<{ index: number | null; targetTable: string; type: string; key: string }>({
         index: null, targetTable: '', type: 'Many-to-One', key: ''
     });
 
-    // Mapping Details Modal State
-    const [viewMappingBO, setViewMappingBO] = useState<string | null>(null);
 
-    const isIdle = semanticProfile.analysisStep === 'idle';
-    const governanceLabelMap: Record<GovernanceStatus, string> = {
-        S0: '未理解',
-        S1: '建议已生成',
-        S3: '已确认生效'
-    };
-    const governanceToneMap: Record<GovernanceStatus, string> = {
-        S0: 'bg-slate-100 text-slate-500',
-        S1: 'bg-amber-50 text-amber-700 border border-amber-100',
-        S3: 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-    };
-    const governanceHintMap: Record<GovernanceStatus, string> = {
-        S0: '未理解，暂无建议',
-        S1: '建议已生成，待确认',
-        S3: '已确认生效，可追溯版本'
-    };
-    const rolledBackTone = 'bg-orange-50 text-orange-700 border border-orange-100';
-    const runStatusLabelMap: Record<RunSummary['status'], string> = {
-        queued: '排队中',
-        running: '运行中',
-        success: '完成',
-        failed: '失败'
-    };
-    const runStatusToneMap: Record<RunSummary['status'], string> = {
-        queued: 'text-amber-600',
-        running: 'text-blue-600',
-        success: 'text-emerald-600',
-        failed: 'text-red-600'
-    };
 
-    const resolveGovernanceStatus = (asset: any): GovernanceStatus => {
-        if (asset?.governanceStatus) return asset.governanceStatus as GovernanceStatus;
-        if (asset?.semanticAnalysis?.governanceStatus) return asset.semanticAnalysis.governanceStatus as GovernanceStatus;
-        if (asset?.status === 'confirmed' || asset?.status === 'effective') return 'S3';
-        if (asset?.status === 'pending_review' || asset?.status === 'analyzed') return 'S1';
-        if (asset?.semanticAnalysis?.analysisStep === 'done') return 'S1';
-        return 'S0';
-    };
+    // Derived Data
+    // Get unique data sources from scan results (assuming scanResults contains source info)
+    // Or we use a mock list of sources if scanResults doesn't have full source metadata, 
+    // but usually scanResults items should have 'sourceId', 'sourceName', 'sourceType'.
+    // We will extract unique sources from the assets list.
+    const assets = scanResults.filter(r => ['scanned', 'analyzed', 'pending_review', 'pending'].includes(r.status));
 
-    const isSuggestionsReady = (status?: GovernanceStatus) => (status || 'S0') !== 'S0';
-    const getGovernanceDisplay = (status: GovernanceStatus, rolledBack?: boolean) => {
-        if (rolledBack) {
-            return {
-                label: '已回滚',
-                tone: rolledBackTone,
-                hint: '已回滚，可恢复版本'
+    const dataSourcesMap = assets.reduce((acc: any, asset: any) => {
+        if (!asset.sourceId) return acc;
+        if (!acc[asset.sourceId]) {
+            acc[asset.sourceId] = {
+                id: asset.sourceId,
+                name: asset.sourceName || 'Unknown Source',
+                type: asset.sourceType || 'MySQL'
             };
         }
-        return {
-            label: governanceLabelMap[status],
-            tone: governanceToneMap[status],
-            hint: governanceHintMap[status]
-        };
-    };
-    const normalizeFields = (fields: any[]) => {
-        return fields
-            .map((field: any) => {
-                const name = field.name || field.fieldName || field.col || field.field || '';
-                const type = field.type || field.dataType || field.dtype || field.datatype || '';
-                const comment = field.comment || field.businessDefinition || field.description || '';
-                const primaryKey = typeof field.primaryKey === 'boolean'
-                    ? field.primaryKey
-                    : typeof field.isPrimary === 'boolean'
-                        ? field.isPrimary
-                        : field.key === 'PK';
-                return { ...field, name, type, comment, primaryKey };
-            })
-            .filter((field: any) => field.name);
-    };
+        return acc;
+    }, {});
+    const dataSources = Object.values(dataSourcesMap);
 
-    const buildReviewStats = (tableName: string, fields: any[], comment?: string): ReviewStats => {
-        const safeFields = normalizeFields(Array.isArray(fields) ? fields : []);
-        if (safeFields.length === 0) {
-            return { pendingReviewFields: 0, gateFailedItems: 0, riskItems: 0 };
-        }
-        const gateResult = checkGatekeeper(tableName, safeFields);
-        const analyzedFields = safeFields.map((f: any) => analyzeField(f));
-        const pendingReviewFields = analyzedFields.filter((f: any) =>
-            ['L3', 'L4'].includes(f.sensitivity) || (f.roleConfidence || 0) < 0.7
-        ).length;
-        const gateFailedItems = gateResult.result === 'PASS'
-            ? 0
-            : Math.max(gateResult.reasons?.length || 0, 1);
-        const { score } = calculateTableRuleScore(tableName, safeFields, comment);
-        const sensitiveRatio = analyzedFields.length === 0
-            ? 0
-            : analyzedFields.filter((f: any) => ['L3', 'L4'].includes(f.sensitivity)).length / analyzedFields.length;
-        let riskItems = 0;
-        if (score.total < 0.6) riskItems += 1;
-        if (sensitiveRatio >= 0.3) riskItems += 1;
-        if (gateResult.result === 'REJECT') riskItems += 1;
-        return { pendingReviewFields, gateFailedItems, riskItems };
-    };
+    // Group Sources by Type for the Left Tree
+    const typeGroups = dataSources.reduce((acc: Record<string, any[]>, ds: any) => {
+        if (!acc[ds.type]) acc[ds.type] = [];
+        acc[ds.type].push(ds);
+        return acc;
+    }, {} as Record<string, any[]>);
+
+    const listAssets = useMemo(() => {
+        return assets.map(asset => {
+            const governanceStatus = resolveGovernanceStatus(asset);
+            const reviewStats = governanceStatus === 'S0'
+                ? null
+                : (asset.reviewStats || buildReviewStats(asset.table, asset.fields || [], asset.comment));
+            const lastRun = asset.lastRun || asset.semanticAnalysis?.lastRun || null;
+            return { ...asset, governanceStatus, reviewStats, lastRun };
+        });
+    }, [assets]);
+
+
+
+    // Filtered Assets list for Right Panel
+    const filteredAssets = useMemo(() => {
+        const keyword = searchTerm.trim().toLowerCase();
+        const filtered = listAssets.filter(asset => {
+            const matchesSource = selectedDataSourceId ? asset.sourceId === selectedDataSourceId : true;
+            const matchesSearch = keyword === '' ||
+                asset.table.toLowerCase().includes(keyword) ||
+                (asset.comment || '').toLowerCase().includes(keyword) ||
+                (asset.semanticAnalysis?.businessName || '').toLowerCase().includes(keyword);
+            const stats = asset.reviewStats as ReviewStats | null;
+            const matchesReview = !listFilters.review || (stats?.pendingReviewFields || 0) > 0;
+            const matchesGate = !listFilters.gate || (stats?.gateFailedItems || 0) > 0;
+            const matchesRisk = !listFilters.risk || (stats?.riskItems || 0) > 0;
+            return matchesSource && matchesSearch && matchesReview && matchesGate && matchesRisk;
+        });
+
+        if (!sortField) return filtered;
+        const direction = sortOrder === 'asc' ? 1 : -1;
+        return [...filtered].sort((a, b) => {
+            const aStats = a.reviewStats as ReviewStats | null;
+            const bStats = b.reviewStats as ReviewStats | null;
+            if (sortField === 'updateTime') {
+                const aTime = a.updateTime ? new Date(a.updateTime).getTime() : 0;
+                const bTime = b.updateTime ? new Date(b.updateTime).getTime() : 0;
+                return (aTime - bTime) * direction;
+            }
+            const aVal = aStats ? (aStats as any)[sortField] || 0 : 0;
+            const bVal = bStats ? (bStats as any)[sortField] || 0 : 0;
+            return (aVal - bVal) * direction;
+        });
+    }, [listAssets, selectedDataSourceId, searchTerm, listFilters, sortField, sortOrder]);
+
+    const selectedTable = scanResults.find((item: any) => item.table === selectedTableId)
+        || assets.find(a => a.table === selectedTableId);
+    const selectedTableFields = useMemo(
+        () => normalizeFields(Array.isArray(selectedTable?.fields) ? selectedTable.fields : []),
+        [selectedTable]
+    );
+
+    // Batch Operations Hook
+    const {
+        selectedTables,
+        setSelectedTables,
+        batchAnalyzing,
+        batchProgress,
+        currentAnalyzing,
+        completedResults,
+        batchResults,
+        showBatchReview,
+        setShowBatchReview,
+        toggleTableSelection,
+        handleSelectAll,
+        clearSelection,
+        handleBatchAnalyze,
+        setBatchResults
+    } = useBatchOperations(scanResults, setScanResults);
+
+    // Core Semantic Profile Hook
+    const {
+        semanticProfile, setSemanticProfile,
+        isAnalyzing, setIsAnalyzing,
+        pendingAnalysisResult, setPendingAnalysisResult,
+        auditLogs, setAuditLogs,
+        upgradeHistory, setUpgradeHistory,
+        fieldReviewStatus, setFieldReviewStatus,
+        recordAuditLog,
+        recordUpgradeHistory,
+        rollbackUpgrade,
+        handleAnalyze,
+        handleConfirmEffective,
+        handleIgnore,
+        handleSave
+    } = useSemanticProfile(selectedTable, selectedTableFields, setScanResults);
+    const hasFieldAnalysis = Array.isArray(semanticProfile.fields) && semanticProfile.fields.length > 0;
+
+    const rolledBackTableIds = useMemo(() => {
+        return new Set(
+            upgradeHistory.filter(entry => entry.rolledBack).map(entry => entry.tableId)
+        );
+    }, [upgradeHistory]);
+
+    // Derived helpers dependent on semanticProfile
+    const isIdle = semanticProfile.analysisStep === 'idle';
+
+    const isSuggestionsReady = (status?: GovernanceStatus) => (status || 'S0') !== 'S0';
 
     const getDirectGenEligibility = (table: any, profile: TableSemanticProfile | any) => {
         const safeProfile = profile || {};
@@ -312,90 +285,6 @@ const DataSemanticUnderstandingView = ({
         const canGenerate = checklist.every(item => item.passed);
         return { checklist, canGenerate };
     };
-
-    // Derived Data
-    // Get unique data sources from scan results (assuming scanResults contains source info)
-    // Or we use a mock list of sources if scanResults doesn't have full source metadata, 
-    // but usually scanResults items should have 'sourceId', 'sourceName', 'sourceType'.
-    // We will extract unique sources from the assets list.
-    const assets = scanResults.filter(r => ['scanned', 'analyzed', 'pending_review', 'pending'].includes(r.status));
-
-    const dataSourcesMap = assets.reduce((acc: any, asset: any) => {
-        if (!asset.sourceId) return acc;
-        if (!acc[asset.sourceId]) {
-            acc[asset.sourceId] = {
-                id: asset.sourceId,
-                name: asset.sourceName || 'Unknown Source',
-                type: asset.sourceType || 'MySQL'
-            };
-        }
-        return acc;
-    }, {});
-    const dataSources = Object.values(dataSourcesMap);
-
-    // Group Sources by Type for the Left Tree
-    const typeGroups = dataSources.reduce((acc: Record<string, any[]>, ds: any) => {
-        if (!acc[ds.type]) acc[ds.type] = [];
-        acc[ds.type].push(ds);
-        return acc;
-    }, {} as Record<string, any[]>);
-
-    const listAssets = useMemo(() => {
-        return assets.map(asset => {
-            const governanceStatus = resolveGovernanceStatus(asset);
-            const reviewStats = governanceStatus === 'S0'
-                ? null
-                : (asset.reviewStats || buildReviewStats(asset.table, asset.fields || [], asset.comment));
-            const lastRun = asset.lastRun || asset.semanticAnalysis?.lastRun || null;
-            return { ...asset, governanceStatus, reviewStats, lastRun };
-        });
-    }, [assets]);
-
-    const rolledBackTableIds = useMemo(() => {
-        return new Set(
-            upgradeHistory.filter(entry => entry.rolledBack).map(entry => entry.tableId)
-        );
-    }, [upgradeHistory]);
-
-    // Filtered Assets list for Right Panel
-    const filteredAssets = useMemo(() => {
-        const keyword = searchTerm.trim().toLowerCase();
-        const filtered = listAssets.filter(asset => {
-            const matchesSource = selectedDataSourceId ? asset.sourceId === selectedDataSourceId : true;
-            const matchesSearch = keyword === '' ||
-                asset.table.toLowerCase().includes(keyword) ||
-                (asset.comment || '').toLowerCase().includes(keyword) ||
-                (asset.semanticAnalysis?.businessName || '').toLowerCase().includes(keyword);
-            const stats = asset.reviewStats as ReviewStats | null;
-            const matchesReview = !listFilters.review || (stats?.pendingReviewFields || 0) > 0;
-            const matchesGate = !listFilters.gate || (stats?.gateFailedItems || 0) > 0;
-            const matchesRisk = !listFilters.risk || (stats?.riskItems || 0) > 0;
-            return matchesSource && matchesSearch && matchesReview && matchesGate && matchesRisk;
-        });
-
-        if (!sortField) return filtered;
-        const direction = sortOrder === 'asc' ? 1 : -1;
-        return [...filtered].sort((a, b) => {
-            const aStats = a.reviewStats as ReviewStats | null;
-            const bStats = b.reviewStats as ReviewStats | null;
-            if (sortField === 'updateTime') {
-                const aTime = a.updateTime ? new Date(a.updateTime).getTime() : 0;
-                const bTime = b.updateTime ? new Date(b.updateTime).getTime() : 0;
-                return (aTime - bTime) * direction;
-            }
-            const aVal = aStats ? (aStats as any)[sortField] || 0 : 0;
-            const bVal = bStats ? (bStats as any)[sortField] || 0 : 0;
-            return (aVal - bVal) * direction;
-        });
-    }, [listAssets, selectedDataSourceId, searchTerm, listFilters, sortField, sortOrder]);
-
-    const selectedTable = scanResults.find((item: any) => item.table === selectedTableId)
-        || assets.find(a => a.table === selectedTableId);
-    const selectedTableFields = useMemo(
-        () => normalizeFields(Array.isArray(selectedTable?.fields) ? selectedTable.fields : []),
-        [selectedTable]
-    );
-    const hasFieldAnalysis = Array.isArray(semanticProfile.fields) && semanticProfile.fields.length > 0;
 
     useEffect(() => {
         if (!selectedTableId || viewMode !== 'detail') return;
@@ -504,21 +393,7 @@ const DataSemanticUnderstandingView = ({
         scrollToSection('result-logs');
     };
 
-    const recordAuditLog = (payload: {
-        field?: string;
-        action: 'accept' | 'override' | 'pending' | 'confirm';
-        source?: string;
-        reason?: string;
-        timestamp: string;
-    }) => {
-        if (!selectedTable) return;
-        const entry = {
-            id: `AUD-${Date.now()}`,
-            tableId: selectedTable.table,
-            ...payload
-        };
-        setAuditLogs(prev => [entry, ...prev]);
-    };
+
 
     const handleEvidenceAction = (payload: {
         action: 'accept' | 'override' | 'pending';
@@ -537,43 +412,7 @@ const DataSemanticUnderstandingView = ({
         }
     };
 
-    const handleConfirmEffective = () => {
-        if (!selectedTable) return;
-        const confirmedAt = new Date().toISOString();
-        const confirmedBy = '当前用户';
-        const confirmScope = selectedTable.sourceName
-            ? `${selectedTable.sourceName} / ${selectedTable.table}`
-            : selectedTable.table;
-        const confirmFieldNames = selectedTableFields.map(field => field.name);
-        const updatedProfile = {
-            ...semanticProfile,
-            governanceStatus: 'S3' as GovernanceStatus,
-            confirmedBy,
-            confirmedAt,
-            confirmScope
-        };
-        setSemanticProfile(prev => ({ ...prev, ...updatedProfile }));
-        if (confirmFieldNames.length > 0) {
-            setFieldReviewStatus(prev => {
-                const next = { ...prev };
-                confirmFieldNames.forEach(name => {
-                    next[name] = 'confirmed';
-                });
-                return next;
-            });
-        }
-        setScanResults((prev: any[]) => prev.map((item: any) =>
-            item.table === selectedTable.table
-                ? { ...item, status: 'analyzed', governanceStatus: 'S3', semanticAnalysis: { ...item.semanticAnalysis, ...updatedProfile } }
-                : item
-        ));
-        recordAuditLog({
-            action: 'confirm',
-            source: '融合',
-            reason: '确认生效',
-            timestamp: confirmedAt
-        });
-    };
+
 
     const handleJumpToProblemFields = () => {
         setDetailTab('fields');
@@ -590,95 +429,9 @@ const DataSemanticUnderstandingView = ({
         scrollToSection('result-gate-detail');
     };
 
-    const handleAnalyze = async () => {
-        if (!selectedTable) return;
-        setIsAnalyzing(true);
-        setSemanticProfile(prev => ({ ...prev, analysisStep: 'analyzing' }));
 
-        // 1. Logic Layer: Rules Checking
-        // Mock fields since selectedTable might not have full field details in assets list
-        // In real app, we would fetch fields for selectedTable.table
-        const mockFields = selectedTableFields.length > 0 ? selectedTableFields : [
-            { name: 'id', type: 'bigint', primaryKey: true },
-            { name: 'create_time', type: 'datetime' },
-            { name: 'name', type: 'varchar' }
-        ];
 
-        // Gate Check
-        const gateResult = checkGatekeeper(selectedTable.table, mockFields);
 
-        // Field Analysis
-        const analyzedFields = mockFields.map((f: any) => analyzeField(f));
-        const fieldScore = analyzedFields.reduce((acc: number, f: any) => acc + (f.roleConfidence || 0.5), 0) / analyzedFields.length; // Simple average
-
-        // Table Rule Score
-        const { score: ruleScore, evidence: ruleEvidence } = calculateTableRuleScore(selectedTable.table, mockFields, selectedTable.comment);
-
-        try {
-            // 2. Mock AI Service call
-            const aiResult = await analyzeTableWithMockAI(selectedTable.table, mockFields, selectedTable.comment);
-
-            // 3. Fusion Logic
-            const finalScore = calculateFusionScore(ruleScore.total, fieldScore, aiResult.aiScore);
-            const ruleContribution = 0.225 * ruleScore.total;
-            const fieldContribution = 0.225 * fieldScore;
-            const aiContribution = 0.55 * aiResult.aiScore;
-            const totalContribution = ruleContribution + fieldContribution + aiContribution || 1;
-            const scoreBreakdown = {
-                rule: ruleContribution / totalContribution,
-                field: fieldContribution / totalContribution,
-                ai: aiContribution / totalContribution
-            };
-
-            const result: TableSemanticProfile = {
-                tableName: selectedTable.table,
-                gateResult,
-                ruleScore,
-                fieldScore, // @ts-ignore
-                aiScore: aiResult.aiScore,
-                finalScore,
-                scoreBreakdown,
-                businessName: aiResult.businessName,
-                description: aiResult.description,
-                tags: aiResult.tags,
-                fields: analyzedFields,
-                aiEvidence: aiResult.evidence,
-                ruleEvidence,
-                aiEvidenceItems: aiResult.evidenceItems,
-                // V2 Beta: Business Identity
-                objectType: aiResult.objectType,
-                objectTypeReason: aiResult.objectTypeReason,
-                businessDomain: aiResult.businessDomain,
-                dataGrain: aiResult.dataGrain,
-                // V2 Beta: Defaults for other dimensions
-                dataLayer: 'DWD',
-                updateStrategy: '增量追加',
-                retentionPeriod: '永久',
-                securityLevel: 'L2',
-                governanceStatus: 'S1',
-                reviewStats: buildReviewStats(selectedTable.table, mockFields, selectedTable.comment)
-            };
-
-            // Store result in state for AnalysisProgressPanel to use
-            setPendingAnalysisResult(result);
-            // Note: setIsAnalyzing(false) and state update will be handled by AnalysisProgressPanel.onComplete
-
-        } catch (error) {
-            console.error(error);
-            setIsAnalyzing(false);
-        }
-    };
-
-    const handleIgnore = () => {
-        if (!selectedTable) return;
-        setScanResults((prev: any[]) => prev.map((item: any) =>
-            item.table === selectedTable.table
-                ? { ...item, status: 'ignored' }
-                : item
-        ));
-        setViewMode('list');
-        setSelectedTableId(null);
-    };
 
     // Conflict resolution: user chooses to adopt rule or AI suggestion
     const resolveConflict = (fieldName: string, choice: 'rule' | 'ai', ruleRole: string, aiRole: string) => {
@@ -690,13 +443,7 @@ const DataSemanticUnderstandingView = ({
     };
 
     // Toggle table selection for batch analysis
-    const toggleTableSelection = (tableId: string) => {
-        setSelectedTables(prev =>
-            prev.includes(tableId)
-                ? prev.filter(id => id !== tableId)
-                : [...prev, tableId]
-        );
-    };
+
 
     const handleRunStart = () => {
         if (selectedTables.length === 0) return;
@@ -719,215 +466,14 @@ const DataSemanticUnderstandingView = ({
                 ? { ...item, lastRun: { ...runSummary } }
                 : item
         ));
-        handleBatchAnalyze(runId, runSummary);
+        handleBatchAnalyze(runId, runSummary, runConfig);
     };
 
-    const analyzeTableForBatch = async (table: any) => {
-        const rawFields = Array.isArray(table.fields) ? table.fields : [];
-        const mockFields = rawFields.length > 0
-            ? normalizeFields(rawFields)
-            : [
-                { name: 'id', type: 'bigint', primaryKey: true },
-                { name: 'create_time', type: 'datetime' },
-                { name: 'name', type: 'varchar' }
-            ];
-        const gateResult = checkGatekeeper(table.table, mockFields);
-        const analyzedFields = mockFields.map((f: any) => analyzeField(f));
-        const fieldScore = analyzedFields.reduce((acc: number, f: any) => acc + (f.roleConfidence || 0.5), 0) / analyzedFields.length;
-        const { score: ruleScore, evidence: ruleEvidence } = calculateTableRuleScore(table.table, mockFields, table.comment);
-        const aiResult = await analyzeTableWithMockAI(table.table, mockFields, table.comment);
-        const finalScore = calculateFusionScore(ruleScore.total, fieldScore, aiResult.aiScore);
 
-        return {
-            gateResult,
-            analyzedFields,
-            ruleScore,
-            ruleEvidence,
-            aiResult,
-            fieldScore,
-            finalScore
-        };
-    };
 
-    // Handle batch analysis for selected tables
-    const handleBatchAnalyze = async (runId: string, runSummary: RunSummary) => {
-        if (selectedTables.length === 0) return;
-        setBatchAnalyzing(true);
-        setBatchProgress({ current: 0, total: selectedTables.length });
-        setCompletedResults([]); // P0: Clear previous results
-        const results: typeof batchResults = [];
-        const CONFIDENCE_THRESHOLD = 70;
 
-        for (let i = 0; i < selectedTables.length; i++) {
-            const tableId = selectedTables[i];
-            const table = scanResults.find((t: any) => t.table === tableId);
-            if (!table) continue;
 
-            // P0: Show current analyzing table
-            setCurrentAnalyzing(table.table);
-            setBatchProgress({ current: i, total: selectedTables.length });
 
-            await new Promise(resolve => setTimeout(resolve, 300));
-
-            const {
-                analyzedFields,
-                ruleScore,
-                ruleEvidence,
-                gateResult,
-                aiResult,
-                finalScore
-            } = await analyzeTableForBatch(table);
-
-            const scorePercent = Math.round(finalScore * 100);
-            const businessName = aiResult.businessName;
-            const needsReview = scorePercent < CONFIDENCE_THRESHOLD;
-            const identifiers = analyzedFields.filter((f: any) => f.role === 'Identifier').length;
-            const statusFields = analyzedFields.filter((f: any) => f.role === 'Status').length;
-            const timeFields = analyzedFields.filter((f: any) => f.role === 'EventHint').length;
-            const busAttr = analyzedFields.filter((f: any) => f.role === 'BusAttr').length;
-            const sensitiveFields = analyzedFields.filter((f: any) => ['L3', 'L4'].includes(f.sensitivity));
-            const lowConfidenceReasons: string[] = [];
-
-            if (aiResult.aiScore < 0.7) {
-                lowConfidenceReasons.push('AI 置信度偏低，建议人工复核');
-            }
-            if (ruleScore.total < 0.6) {
-                lowConfidenceReasons.push('规则评分偏低，命名或注释可能不规范');
-            }
-
-            const reviewStats: ReviewStats = {
-                pendingReviewFields: analyzedFields.filter((f: any) =>
-                    ['L3', 'L4'].includes(f.sensitivity) || (f.roleConfidence || 0) < 0.7
-                ).length,
-                gateFailedItems: gateResult.result === 'PASS' ? 0 : Math.max(gateResult.reasons?.length || 0, 1),
-                riskItems: (() => {
-                    const sensitiveRatio = analyzedFields.length === 0 ? 0 : analyzedFields.filter((f: any) => ['L3', 'L4'].includes(f.sensitivity)).length / analyzedFields.length;
-                    let count = 0;
-                    if (ruleScore.total < 0.6) count += 1;
-                    if (sensitiveRatio >= 0.3) count += 1;
-                    if (gateResult.result === 'REJECT') count += 1;
-                    return count;
-                })()
-            };
-
-            results.push({
-                tableId: table.table,
-                tableName: table.table,
-                businessName,
-                status: 'success',
-                scorePercent,
-                needsReview,
-                userAction: 'pending',
-                fieldStats: {
-                    total: analyzedFields.length,
-                    identifiers,
-                    status: statusFields,
-                    busAttr,
-                    time: timeFields
-                },
-                sensitiveFields: {
-                    count: sensitiveFields.length,
-                    examples: sensitiveFields.map((f: any) => f.fieldName).slice(0, 3)
-                },
-                relationships: {
-                    count: 0,
-                    targets: []
-                },
-                upgradeSuggestions: {
-                    statusObjects: statusFields > 0 ? 1 : 0,
-                    behaviorObjects: timeFields > 0 ? 1 : 0
-                },
-                lowConfidenceReasons
-            });
-
-            setScanResults((prev: any[]) => prev.map((item: any) =>
-                item.table === tableId
-                    ? {
-                        ...item,
-                        status: 'pending_review',
-                        governanceStatus: 'S1',
-                        scorePercent,
-                        reviewStats,
-                        lastRun: {
-                            ...runSummary,
-                            runId,
-                            status: 'success',
-                            finishedAt: new Date().toISOString()
-                        },
-                        semanticAnalysis: {
-                            ...aiResult,
-                            governanceStatus: 'S1',
-                            analysisStep: 'done',
-                            reviewStats,
-                            fields: analyzedFields,
-                            gateResult,
-                            ruleScore,
-                            ruleEvidence
-                        }
-                    }
-                    : item
-            ));
-        }
-
-        setCurrentAnalyzing(null); // P0: Clear current analyzing
-        setBatchProgress({ current: selectedTables.length, total: selectedTables.length });
-        setBatchResults(results);
-        setBatchAnalyzing(false);
-        setSelectedTables([]);
-
-        // Show review modal if there are results needing review
-        if (results.some(r => r.needsReview)) {
-            setShowBatchReview(true);
-        }
-    };
-
-    const recordUpgradeHistory = (tableId: string, tableName: string, beforeState: any, afterState: any) => {
-        const id = `${tableId}-${Date.now()}`;
-        const timestamp = new Date().toISOString();
-        setUpgradeHistory(prev => ([
-            { id, tableId, tableName, beforeState, afterState, timestamp, rolledBack: false },
-            ...prev
-        ]));
-    };
-
-    const rollbackUpgrade = (entryId: string) => {
-        let target: {
-            id: string;
-            tableId: string;
-            tableName: string;
-            beforeState: any;
-            afterState: any;
-            timestamp: string;
-            rolledBack: boolean;
-        } | undefined;
-
-        setUpgradeHistory(prev => prev.map(entry => {
-            if (entry.id !== entryId || entry.rolledBack) return entry;
-            target = entry;
-            return { ...entry, rolledBack: true };
-        }));
-
-        if (!target) return;
-
-        setScanResults((prev: any[]) => prev.map((item: any) =>
-            item.table === target?.tableId
-                ? { ...item, semanticAnalysis: target?.beforeState }
-                : item
-        ));
-        if (selectedTable?.table === target?.tableId) {
-            setSemanticProfile(prev => ({
-                ...prev,
-                ...target?.beforeState,
-                analysisStep: 'done',
-                relationships: prev.relationships
-            }));
-        }
-        setBatchResults(prev => prev.map((r) =>
-            r.tableId === target?.tableId
-                ? { ...r, upgradeDecision: 'rolled_back', upgradeRejectReason: undefined }
-                : r
-        ));
-    };
 
     const executeAddToCandidates = (table: any, profile: any) => {
         const newCandidate = {
@@ -1062,24 +608,90 @@ const DataSemanticUnderstandingView = ({
         Hive: '🐝'            // Bee (Hive)
     };
 
-    const typeConfig: Record<string, { color: string; bgColor: string }> = {
-        MySQL: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
-        Oracle: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
-        PostgreSQL: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
-        SQLServer: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
-        MongoDB: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
-        Redis: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
-        Elasticsearch: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
-        ClickHouse: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
-        TiDB: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
-        OceanBase: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
-        达梦: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
-        人大金仓: { color: 'text-slate-700', bgColor: 'bg-slate-100' },
-        GaussDB: { color: 'text-slate-700', bgColor: 'bg-slate-100' }
-    };
+    // typeConfig moved to utils.ts
 
     return (
         <>
+            {viewMode === 'list' && (
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm px-6 py-4 mb-4">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <div className="flex items-center gap-3">
+                                <h2 className="text-xl font-bold text-slate-800">逻辑视图</h2>
+                                <span className="text-xs text-slate-400">
+                                    {filteredAssets.length} 张
+                                </span>
+                            </div>
+                            {!isListHeaderCollapsed && (
+                                <p className="text-xs text-slate-500 mt-1">
+                                    {selectedDataSourceId
+                                        ? `当前筛选: ${(dataSources.find((d: any) => d.id === selectedDataSourceId) as any)?.name}`
+                                        : '显示所有已扫描的逻辑视图'}
+                                </p>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setShowRunModal(true)}
+                                disabled={selectedTables.length === 0}
+                                className={`px-3 py-2 text-sm rounded-lg flex items-center gap-2 transition-all ${selectedTables.length > 0
+                                    ? 'bg-gradient-to-r from-blue-600 to-indigo-500 text-white hover:from-blue-700 hover:to-indigo-600 shadow-sm'
+                                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                    }`}
+                            >
+                                <Sparkles size={14} />
+                                生成建议 Run
+                            </button>
+                            <button
+                                onClick={() => setIsListHeaderCollapsed(prev => !prev)}
+                                className="px-2.5 py-2 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                            >
+                                {isListHeaderCollapsed ? '展开' : '收起'}
+                            </button>
+                        </div>
+                    </div>
+                    {!isListHeaderCollapsed && (
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                                <span className="text-slate-400">快速筛选:</span>
+                                {([
+                                    { key: 'review', label: '待Review' },
+                                    { key: 'gate', label: 'Gate 未通过' },
+                                    { key: 'risk', label: '高风险' }
+                                ] as const).map(item => (
+                                    <button
+                                        key={item.key}
+                                        onClick={() => setListFilters(prev => ({ ...prev, [item.key]: !prev[item.key] }))}
+                                        className={`px-2 py-1 rounded-full border transition-colors ${listFilters[item.key]
+                                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                                    >
+                                        {item.label}
+                                    </button>
+                                ))}
+                                {(listFilters.review || listFilters.gate || listFilters.risk) && (
+                                    <button
+                                        onClick={() => setListFilters({ review: false, gate: false, risk: false })}
+                                        className="px-2 py-1 rounded-full border border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                                    >
+                                        清除筛选
+                                    </button>
+                                )}
+                            </div>
+                            <div className="relative w-64">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                <input
+                                    type="text"
+                                    value={searchTerm}
+                                    onChange={e => setSearchTerm(e.target.value)}
+                                    placeholder="搜索逻辑视图/业务名称..."
+                                    className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
             <div className="h-full flex animate-fade-in gap-4">
                 {/* Left Panel - Source Tree */}
                 <div className={`${isTreeCollapsed ? 'w-12' : 'w-64'} bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden shrink-0 transition-all duration-300`}>
@@ -1170,50 +782,6 @@ const DataSemanticUnderstandingView = ({
                 <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
                     {viewMode === 'list' && (
                         <div className="flex flex-col h-full">
-                            {/* List Header & Filter */}
-                            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-start gap-4">
-                                <div>
-                                    <h3 className="font-bold text-slate-800 text-lg">逻辑视图列表</h3>
-                                    <p className="text-xs text-slate-500 mt-1">
-                                        {selectedDataSourceId
-                                            ? `当前筛选: ${(dataSources.find((d: any) => d.id === selectedDataSourceId) as any)?.name}`
-                                            : '显示所有已扫描的逻辑视图'}
-                                    </p>
-                                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                                        <span className="text-slate-400">快速筛选:</span>
-                                        {([
-                                            { key: 'review', label: '待Review' },
-                                            { key: 'gate', label: 'Gate 未通过' },
-                                            { key: 'risk', label: '高风险' }
-                                        ] as const).map(item => (
-                                            <button
-                                                key={item.key}
-                                                onClick={() => setListFilters(prev => ({ ...prev, [item.key]: !prev[item.key] }))}
-                                                className={`px-2 py-1 rounded-full border transition-colors ${listFilters[item.key]
-                                                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
-                                            >
-                                                {item.label}
-                                            </button>
-                                        ))}
-                                        {(listFilters.review || listFilters.gate || listFilters.risk) && (
-                                            <button
-                                                onClick={() => setListFilters({ review: false, gate: false, risk: false })}
-                                                className="px-2 py-1 rounded-full border border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50"
-                                            >
-                                                清除筛选
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="relative w-64">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                    <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                                        placeholder="搜索逻辑视图/业务名称..."
-                                        className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                    />
-                                </div>
-                            </div>
                             {/* Data Grid */}
                             <div className="flex-1 overflow-auto">
                                 {/* Batch Action Toolbar */}
@@ -1226,9 +794,10 @@ const DataSemanticUnderstandingView = ({
                                                 checked={selectedTables.length > 0 && selectedTables.length === filteredAssets.length}
                                                 onChange={(e) => {
                                                     if (e.target.checked) {
-                                                        setSelectedTables(filteredAssets.map(a => a.table));
+                                                        const visibleIds = filteredAssets.map(a => a.table);
+                                                        handleSelectAll(visibleIds);
                                                     } else {
-                                                        setSelectedTables([]);
+                                                        clearSelection();
                                                     }
                                                 }}
                                                 className="w-4 h-4 text-blue-600 rounded border-slate-300 cursor-pointer"
@@ -1242,38 +811,21 @@ const DataSemanticUnderstandingView = ({
                                         )}
                                     </div>
                                     <div className="flex items-center gap-2 pr-4">
-                                        {batchAnalyzing ? (
-                                            <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
-                                                <StreamingProgressPanel
-                                                    currentAnalyzing={currentAnalyzing}
-                                                    completedResults={completedResults}
-                                                    progress={batchProgress}
-                                                    onResultClick={(tableId) => {
-                                                        setViewMode('detail');
-                                                        setSelectedTableId(tableId);
-                                                    }}
-                                                />
-                                            </div>
-                                        ) : (
-                                            <div className="flex flex-col items-end gap-1">
-                                                <button
-                                                    onClick={() => setShowRunModal(true)}
-                                                    disabled={selectedTables.length === 0}
-                                                    className={`px-4 py-1.5 text-sm rounded-lg flex items-center gap-2 transition-all ${selectedTables.length > 0
-                                                        ? 'bg-gradient-to-r from-blue-600 to-indigo-500 text-white hover:from-blue-700 hover:to-indigo-600 shadow-md hover:shadow-lg'
-                                                        : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                                        }`}
-                                                >
-                                                    <Sparkles size={14} />
-                                                    批量生成建议（{selectedTables.length}）
-                                                </button>
-                                                <div className="text-[10px] text-slate-400">
-                                                    {selectedTables.length > 0
-                                                        ? `预计耗时 ${Math.max(1, Math.ceil(selectedTables.length / Math.max(runConfig.concurrency, 1)) * 2)}~${Math.max(2, Math.ceil(selectedTables.length / Math.max(runConfig.concurrency, 1)) * 2 + 1)} 分钟 · 采样 ${runConfig.sampleRows / 1000}k 行/表 · 队列 ${Math.min(selectedTables.length, runConfig.concurrency)}/${runConfig.concurrency}`
-                                                        : '请选择表以生成建议'}
-                                                </div>
-                                            </div>
-                                        )}
+                                        <BatchOperationBar
+                                            selectedCount={selectedTables.length}
+                                            isAnalyzing={batchAnalyzing}
+                                            runConfig={runConfig}
+                                            onOpenRunModal={() => setShowRunModal(true)}
+                                            progressProps={{
+                                                currentAnalyzing,
+                                                completedResults,
+                                                progress: batchProgress,
+                                                onResultClick: (tableId) => {
+                                                    setViewMode('detail');
+                                                    setSelectedTableId(tableId);
+                                                }
+                                            }}
+                                        />
                                     </div>
                                 </div>
                                 <table className="w-full text-sm">
@@ -1574,60 +1126,20 @@ const DataSemanticUnderstandingView = ({
                         selectedTable ? (
                             <div className="flex flex-col h-full animate-slide-in-right">
                                 {/* Detail Header */}
-                                <div className="p-5 border-b border-slate-100 bg-white flex justify-between items-start">
-                                    <div className="flex gap-4">
-                                        <button onClick={handleBackToList} className="mt-1 p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors h-fit">
-                                            <ArrowLeft size={20} />
-                                        </button>
-                                        <div>
-                                            <div className="flex items-center gap-3">
-                                                <h2 className="text-xl font-bold text-slate-800">{selectedTable.table}</h2>
-                                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${typeConfig[selectedTable.sourceType]?.bgColor || 'bg-slate-100'} ${typeConfig[selectedTable.sourceType]?.color || 'text-slate-600'}`}>
-                                                    {selectedTable.sourceType}
-                                                </span>
-                                                {/* Analysis Status Badge */}
-                                                {(() => {
-                                                    const status = (semanticProfile.governanceStatus || (semanticProfile.analysisStep === 'done' ? 'S1' : 'S0')) as GovernanceStatus;
-                                                    const display = getGovernanceDisplay(status, rolledBackTableIds.has(selectedTable.table));
-                                                    return (
-                                                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold border flex items-center gap-1 ${display.tone}`}>
-                                                            {status === 'S1' && !rolledBackTableIds.has(selectedTable.table) && <Sparkles size={10} />}
-                                                            {display.label}
-                                                        </span>
-                                                    );
-                                                })()}
-                                            </div>
-                                            <p className="text-slate-500 text-sm mt-1">{selectedTable.comment || '暂无物理表注释'}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex flex-col items-end gap-1">
-                                        <div className="flex gap-2">
-                                            <button onClick={handleBackToList} className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50">
-                                                返回列表
-                                            </button>
-                                            <button
-                                                onClick={handleAnalyze}
-                                                disabled={isAnalyzing}
-                                                className={`px-4 py-1.5 rounded-lg text-sm shadow-sm flex items-center gap-2 text-white transition-all ${isAnalyzing ? 'bg-slate-400 cursor-not-allowed' :
-                                                    semanticProfile.analysisStep === 'done' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600'
-                                                    }`}
-                                            >
-                                                {isAnalyzing ? (
-                                                    <><RefreshCw size={14} className="animate-spin" /> 语义理解中...</>
-                                                ) : semanticProfile.analysisStep === 'done' ? (
-                                                    <><RefreshCw size={14} /> 重新理解</>
-                                                ) : (
-                                                    <><Sparkles size={14} /> 开始语义理解</>
-                                                )}
-                                            </button>
-                                        </div>
-                                        {isIdle && (
-                                            <div className="text-xs text-slate-400">
-                                                将基于规则与 AI 生成语义建议，需人工确认后生效。
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
+                                {/* Detail Header */}
+                                <SemanticHeader
+                                    table={{
+                                        table: selectedTable.table,
+                                        sourceType: selectedTable.sourceType,
+                                        comment: selectedTable.comment
+                                    }}
+                                    governanceStatus={semanticProfile.governanceStatus || 'S0'}
+                                    rolledBack={rolledBackTableIds.has(selectedTable.table)}
+                                    isAnalyzing={isAnalyzing}
+                                    analysisStep={semanticProfile.analysisStep}
+                                    onBack={handleBackToList}
+                                    onAnalyze={handleAnalyze}
+                                />
 
                                 <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
                                     {isIdle && (
@@ -1760,54 +1272,11 @@ const DataSemanticUnderstandingView = ({
                                                         amber: 'bg-amber-50 text-amber-600 border-amber-100',
                                                         emerald: 'bg-emerald-50 text-emerald-600 border-emerald-100'
                                                     };
-                                                    const gateDetailItems = uniqueGateReasons.map((reason) => {
-                                                        if (/主键/.test(reason)) {
-                                                            return {
-                                                                title: '主键',
-                                                                reason,
-                                                                impact: '无法建立唯一标识，影响关联与治理。',
-                                                                action: '补充主键字段或指定唯一键。'
-                                                            };
-                                                        }
-                                                        if (/生命周期|create_time|update_time/.test(reason)) {
-                                                            return {
-                                                                title: '生命周期',
-                                                                reason,
-                                                                impact: '无法识别变更路径，影响状态治理。',
-                                                                action: '补充 create_time/update_time 等生命周期字段。'
-                                                            };
-                                                        }
-                                                        if (/临时|备份|关联|强排/.test(reason)) {
-                                                            return {
-                                                                title: '表类型',
-                                                                reason,
-                                                                impact: '不建议纳入治理范围，需明确用途。',
-                                                                action: '确认是否排除并记录责任人与原因。'
-                                                            };
-                                                        }
-                                                        if (/日志|明细|history|trace/.test(reason)) {
-                                                            return {
-                                                                title: '表类型',
-                                                                reason,
-                                                                impact: '对象类型不清晰，易误纳入治理。',
-                                                                action: '补充表类型说明或明确排除。'
-                                                            };
-                                                        }
-                                                        return {
-                                                            title: '规则项',
-                                                            reason,
-                                                            impact: '存在规则异常，需人工复核。',
-                                                            action: '补充说明或调整规则配置。'
-                                                        };
-                                                    });
+
                                                     const status = (semanticProfile.governanceStatus || (semanticProfile.analysisStep === 'done' ? 'S1' : 'S0')) as GovernanceStatus;
                                                     const statusDisplay = getGovernanceDisplay(status, rolledBackTableIds.has(selectedTable.table));
                                                     const statusSummary = statusDisplay.hint || statusDisplay.label;
-                                                    const evidenceList = [
-                                                        ...ruleEvidence.map(text => ({ type: '规则', text })),
-                                                        ...aiEvidenceItems.map(item => ({ type: 'AI', text: `${item.field}：${item.reason}` }))
-                                                    ];
-                                                    const evidenceTop = evidenceList.slice(0, 5);
+
                                                     const evidenceCount = ruleEvidence.length + aiEvidenceItems.length;
                                                     const fieldsCount = selectedTableFields.length;
                                                     const logsCount = upgradeHistory.filter(entry => entry.tableId === selectedTable.table).length;
@@ -1912,7 +1381,7 @@ const DataSemanticUnderstandingView = ({
                                                                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                                                                     <div className="flex items-center gap-1 border-b border-slate-100 bg-slate-50 px-2">
                                                                         {([
-                                                                            { key: 'overview', label: '概览' },
+                                                                            { key: 'overview', label: '概览', count: undefined },
                                                                             { key: 'evidence', label: '证据', count: evidenceCount },
                                                                             { key: 'fields', label: '字段', count: fieldsCount },
                                                                             { key: 'logs', label: '日志', count: logsCount }
@@ -1935,132 +1404,46 @@ const DataSemanticUnderstandingView = ({
                                                                     </div>
                                                                     <div className="p-4">
                                                                         {resultTab === 'overview' && (
-                                                                            <div className="space-y-4">
-                                                                                <div id="result-key-evidence" className="rounded-lg border border-slate-100 bg-slate-50 p-4">
-                                                                                    <div className="flex items-center justify-between gap-3">
-                                                                                        <div className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                                                                                            <CheckCircle size={14} className="text-emerald-500" /> 关键证据
-                                                                                        </div>
-                                                                                        {evidenceList.length > 5 && (
-                                                                                            <button
-                                                                                                onClick={() => setShowAllKeyEvidence(prev => !prev)}
-                                                                                                className="text-xs text-slate-500 hover:text-slate-700"
-                                                                                            >
-                                                                                                {showAllKeyEvidence ? '收起' : `展开更多（${evidenceList.length}）`}
-                                                                                            </button>
-                                                                                        )}
-                                                                                    </div>
-                                                                                    <div className="mt-2 space-y-2 text-sm">
-                                                                                        {(showAllKeyEvidence ? evidenceList : evidenceTop).length > 0 ? (showAllKeyEvidence ? evidenceList : evidenceTop).map((item, idx) => (
-                                                                                            <div key={idx} className="flex items-start gap-2">
-                                                                                                <span className={`text-xs px-2 py-0.5 rounded-full border ${item.type === '规则' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
-                                                                                                    {item.type}
-                                                                                                </span>
-                                                                                                <span className="text-slate-600">{item.text}</span>
-                                                                                            </div>
-                                                                                        )) : (
-                                                                                            <div className="text-xs text-slate-400">暂无关键证据</div>
-                                                                                        )}
-                                                                                    </div>
-                                                                                </div>
-                                                                                {gateReviewable && (
-                                                                                    <div id="result-gate-detail" className="rounded-lg border border-slate-100 bg-white p-4">
-                                                                                        <div className="flex items-center justify-between gap-3">
-                                                                                            <div className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                                                                                                <AlertTriangle size={14} className="text-amber-500" /> Gate 明细
-                                                                                            </div>
-                                                                                            <span className="text-[10px] text-slate-400">未通过项 / 原因 / 影响 / 推荐操作</span>
-                                                                                        </div>
-                                                                                        <div className="mt-3 space-y-3 text-xs">
-                                                                                            {gateDetailItems.length > 0 ? gateDetailItems.map((item, idx) => (
-                                                                                                <div key={`gate-${idx}`} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                                                                                                    <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                                                                                                        <span>{item.title}</span>
-                                                                                                        <span className="text-amber-600">需复核</span>
-                                                                                                    </div>
-                                                                                                    <div className="mt-2 space-y-1 text-slate-600">
-                                                                                                        <div><span className="text-slate-400">原因：</span>{item.reason}</div>
-                                                                                                        <div><span className="text-slate-400">影响：</span>{item.impact}</div>
-                                                                                                        <div><span className="text-slate-400">推荐操作：</span>{item.action}</div>
-                                                                                                    </div>
-                                                                                                </div>
-                                                                                            )) : (
-                                                                                                <div className="text-xs text-slate-400">暂无 Gate 异常项</div>
-                                                                                            )}
-                                                                                        </div>
-                                                                                    </div>
-                                                                                )}
-                                                                                <div id="result-score-breakdown" className="rounded-lg border border-slate-100 bg-white p-4">
-                                                                                    <div className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                                                                                        <Activity size={14} className="text-blue-600" /> 评分拆解
-                                                                                    </div>
-                                                                                    {semanticProfile.scoreBreakdown ? (
-                                                                                        <div className="mt-3 space-y-3">
-                                                                                            {([
-                                                                                                { label: '规则贡献', value: semanticProfile.scoreBreakdown.rule, color: 'bg-purple-500' },
-                                                                                                { label: '字段贡献', value: semanticProfile.scoreBreakdown.field, color: 'bg-emerald-500' },
-                                                                                                { label: 'AI 贡献', value: semanticProfile.scoreBreakdown.ai, color: 'bg-blue-500' }
-                                                                                            ]).map(item => (
-                                                                                                <div key={item.label}>
-                                                                                                    <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                                                                                                        <span>{item.label}</span>
-                                                                                                        <span>{Math.round(item.value * 100)}%</span>
-                                                                                                    </div>
-                                                                                                    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                                                                                                        <div className={`h-full ${item.color}`} style={{ width: `${Math.round(item.value * 100)}%` }}></div>
-                                                                                                    </div>
-                                                                                                </div>
-                                                                                            ))}
-                                                                                        </div>
-                                                                                    ) : (
-                                                                                        <div className="text-xs text-slate-400 mt-2">暂无评分拆解</div>
-                                                                                    )}
-                                                                                </div>
-                                                                            </div>
+                                                                            <OverviewTab
+                                                                                profile={semanticProfile}
+                                                                                onNavigateToEvidence={() => setResultTab('evidence')}
+                                                                            />
                                                                         )}
 
                                                                         {resultTab === 'evidence' && (
-                                                                            <div className="space-y-6">
-                                                                                <div id="result-conclusion">
-                                                                                    <SemanticConclusionCard
-                                                                                        profile={semanticProfile}
-                                                                                        fields={semanticProfile.fields && semanticProfile.fields.length > 0 ? semanticProfile.fields : selectedTableFields}
-                                                                                        onAccept={handleSaveToMetadata}
-                                                                                        onReject={handleIgnore}
-                                                                                        onConfirmEffective={handleConfirmEffective}
-                                                                                        onViewLogs={handleViewLogs}
-                                                                                        onEvidenceAction={handleEvidenceAction}
-                                                                                        onEdit={() => setEditMode(true)}
-                                                                                        isEditing={editMode}
-                                                                                        onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
-                                                                                        onSaveEdit={() => {
-                                                                                            handleJustSave();
-                                                                                            setEditMode(false);
-                                                                                        }}
-                                                                                        onFocusField={handleFocusField}
-                                                                                        existingBO={(() => {
-                                                                                            const mappedEntry = Object.entries(mockBOTableMappings).find(([_, config]) => config.tableName === selectedTable.table);
-                                                                                            return mappedEntry ? (businessObjects || []).find(b => b.id === mappedEntry[0]) : undefined;
-                                                                                        })()}
-                                                                                    />
-                                                                                </div>
-                                                                                <div id="result-analysis">
-                                                                                    <SemanticAnalysisCard
-                                                                                        profile={semanticProfile}
-                                                                                        fields={selectedTableFields}
-                                                                                        onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
-                                                                                        onUpgradeAccepted={(beforeState, afterState) => {
-                                                                                            if (!selectedTable) return;
-                                                                                            recordUpgradeHistory(
-                                                                                                selectedTable.table,
-                                                                                                selectedTable.table,
-                                                                                                beforeState,
-                                                                                                afterState
-                                                                                            );
-                                                                                        }}
-                                                                                    />
-                                                                                </div>
-                                                                            </div>
+                                                                            <EvidenceTab
+                                                                                profile={semanticProfile}
+                                                                                fields={selectedTableFields}
+                                                                                selectedTable={selectedTable}
+                                                                                businessObject={(() => {
+                                                                                    const mappedEntry = Object.entries(mockBOTableMappings).find(([_, config]) => config.tableName === selectedTable.table);
+                                                                                    return mappedEntry ? (businessObjects || []).find(b => b.id === mappedEntry[0]) : undefined;
+                                                                                })()}
+                                                                                editMode={editMode}
+                                                                                setEditMode={setEditMode}
+                                                                                onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
+                                                                                actions={{
+                                                                                    onAccept: handleSaveToMetadata,
+                                                                                    onReject: handleIgnore,
+                                                                                    onConfirmEffective: handleConfirmEffective,
+                                                                                    onViewLogs: handleViewLogs,
+                                                                                    onEvidenceAction: handleEvidenceAction,
+                                                                                    onSaveEdit: () => {
+                                                                                        handleJustSave();
+                                                                                        setEditMode(false);
+                                                                                    },
+                                                                                    onFocusField: handleFocusField,
+                                                                                    onUpgradeAccepted: (before, after) => {
+                                                                                        if (!selectedTable) return;
+                                                                                        recordUpgradeHistory(
+                                                                                            selectedTable.table,
+                                                                                            selectedTable.table,
+                                                                                            before,
+                                                                                            after
+                                                                                        );
+                                                                                    }
+                                                                                }}
+                                                                            />
                                                                         )}
 
                                                                         {resultTab === 'fields' && (
@@ -2076,79 +1459,11 @@ const DataSemanticUnderstandingView = ({
                                                                         )}
 
                                                                         {resultTab === 'logs' && (
-                                                                            <div id="result-logs">
-                                                                                <div className="space-y-4">
-                                                                                    {auditLogs.some(entry => entry.tableId === selectedTable.table) ? (
-                                                                                        <div className="bg-white rounded-lg border border-slate-200 p-4">
-                                                                                            <div className="text-sm font-medium text-slate-700 flex items-center gap-2 mb-3">
-                                                                                                <CheckCircle size={14} className="text-slate-500" /> 证据裁决日志
-                                                                                            </div>
-                                                                                            <div className="space-y-2 max-h-60 overflow-y-auto">
-                                                                                                {(() => {
-                                                                                                    const actionLabelMap: Record<string, string> = {
-                                                                                                        accept: '接受建议',
-                                                                                                        override: '改判',
-                                                                                                        pending: '待定',
-                                                                                                        confirm: '确认生效'
-                                                                                                    };
-                                                                                                    return auditLogs
-                                                                                                        .filter(entry => entry.tableId === selectedTable.table)
-                                                                                                        .map(entry => (
-                                                                                                            <div key={entry.id} className="flex items-center justify-between text-xs bg-slate-50 rounded-md px-2 py-1.5">
-                                                                                                                <div className="text-slate-600">
-                                                                                                                    <span className="font-mono text-slate-700">{entry.field || '-'}</span>
-                                                                                                                    <span className="text-slate-400"> · {actionLabelMap[entry.action] || entry.action}</span>
-                                                                                                                    {entry.source && (
-                                                                                                                        <span className="text-slate-400"> · {entry.source}</span>
-                                                                                                                    )}
-                                                                                                                    <span className="text-slate-400"> · {entry.timestamp}</span>
-                                                                                                                </div>
-                                                                                                                <span className="text-slate-400 truncate max-w-[240px]">{entry.reason || ''}</span>
-                                                                                                            </div>
-                                                                                                        ));
-                                                                                                })()}
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    ) : (
-                                                                                        <div className="text-sm text-slate-400">暂无证据裁决日志</div>
-                                                                                    )}
-
-                                                                                    {upgradeHistory.some(entry => entry.tableId === selectedTable.table) ? (
-                                                                                        <div className="bg-white rounded-lg border border-slate-200 p-4">
-                                                                                            <div className="text-sm font-medium text-slate-700 flex items-center gap-2 mb-3">
-                                                                                                <Clock size={14} className="text-slate-500" /> 升级操作记录
-                                                                                            </div>
-                                                                                            <div className="space-y-2 max-h-60 overflow-y-auto">
-                                                                                                {upgradeHistory
-                                                                                                    .filter(entry => entry.tableId === selectedTable.table)
-                                                                                                    .map(entry => (
-                                                                                                        <div key={entry.id} className="flex items-center justify-between text-xs bg-slate-50 rounded-md px-2 py-1.5">
-                                                                                                            <div className="text-slate-600">
-                                                                                                                <span className="font-mono text-slate-700">{entry.tableName}</span>
-                                                                                                                <span className="text-slate-400"> · {entry.timestamp}</span>
-                                                                                                                {entry.rolledBack && (
-                                                                                                                    <span className="ml-2 text-orange-600">已撤销</span>
-                                                                                                                )}
-                                                                                                            </div>
-                                                                                                            <button
-                                                                                                                onClick={() => rollbackUpgrade(entry.id)}
-                                                                                                                disabled={entry.rolledBack}
-                                                                                                                className={`px-2 py-1 rounded ${entry.rolledBack
-                                                                                                                    ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
-                                                                                                                    : 'text-orange-600 bg-orange-50 hover:bg-orange-100'
-                                                                                                                    }`}
-                                                                                                            >
-                                                                                                                撤销
-                                                                                                            </button>
-                                                                                                        </div>
-                                                                                                    ))}
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    ) : (
-                                                                                        <div className="text-sm text-slate-400">暂无升级操作记录</div>
-                                                                                    )}
-                                                                                </div>
-                                                                            </div>
+                                                                            <LogsTab
+                                                                                auditLogs={auditLogs.filter(entry => entry.tableId === selectedTable.table)}
+                                                                                upgradeHistory={upgradeHistory.filter(entry => entry.tableId === selectedTable.table)}
+                                                                                onRollback={rollbackUpgrade}
+                                                                            />
                                                                         )}
                                                                     </div>
                                                                 </div>
