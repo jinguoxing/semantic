@@ -8,6 +8,7 @@ import {
 import SemanticVersionPanel from './components/semantic-version/SemanticVersionPanel';
 import PublishVersionDialog from './components/semantic-version/PublishVersionDialog';
 import { semanticVersionService } from '../services/semantic/semanticVersionService';
+import { ReadOnlyBadge } from '../components/common/ReadOnlyBadge';
 import { useVersionContext } from '../contexts/VersionContext';
 
 // Object Type Configuration
@@ -456,9 +457,7 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
                     <div className="flex items-center gap-3">
                         <h2 className="text-2xl font-bold text-slate-800 tracking-tight">业务对象建模</h2>
                         {isReadOnly && (
-                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
-                                语义版本快照{effectiveVersionId ? ` ${effectiveVersionId}` : ''}
-                            </span>
+                            <ReadOnlyBadge versionId={effectiveVersionId} />
                         )}
                     </div>
                     <p className="text-slate-500 mt-0.5 text-sm">定义核心业务实体、属性及其数据标准</p>

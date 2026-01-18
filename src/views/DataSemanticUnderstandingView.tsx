@@ -1,6 +1,7 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { Sparkles, Activity, CheckCircle, ChevronDown, ChevronRight, Bot, AlertTriangle, ArrowLeft, RefreshCw, Table, Share2, Layers, Shield, Database, Search, Settings, Filter, Plus, FileText, Key, Hash, CheckCircle2, XCircle, Info, PanelLeftOpen, PanelLeftClose, Server, Clock, Edit3, X, Box, ListPlus, Cpu, Star, Tag, ShieldCheck, AlertCircle, Wand2, ArrowRight } from 'lucide-react';
 import { TableSemanticProfile, GovernanceStatus, ReviewStats, RunSummary, TableSemanticStage, FieldSemanticStatus } from '../types/semantic';
+import { ReadOnlyBadge } from '../components/common/ReadOnlyBadge';
 import { useVersionContext } from '../contexts/VersionContext';
 import { analyzeSingleTable, resolveGovernanceStatus, normalizeFields, buildReviewStats, checkGatekeeper, analyzeField, calculateTableRuleScore, calculateFusionScore } from './semantic/logic';
 import { SemanticAnalysisCard } from './semantic/SemanticAnalysisCard';
@@ -754,9 +755,10 @@ const DataSemanticUnderstandingView = ({
                                     {filteredAssets.length} 张
                                 </span>
                                 {isReadOnly && (
-                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-500">
-                                        语义版本快照{effectiveVersionId ? ` ${effectiveVersionId}` : ''}
-                                    </span>
+                                    <ReadOnlyBadge
+                                        versionId={effectiveVersionId}
+                                        className="text-[11px] text-slate-500"
+                                    />
                                 )}
                             </div>
                             {!isListHeaderCollapsed && (
@@ -831,89 +833,91 @@ const DataSemanticUnderstandingView = ({
             )}
             <div className="h-full flex animate-fade-in gap-4">
                 {/* Left Panel - Source Tree */}
-                <div className={`${isTreeCollapsed ? 'w-12' : 'w-64'} bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden shrink-0 transition-all duration-300`}>
-                    <div className={`p-4 border-b border-slate-100 bg-slate-50 flex items-center ${isTreeCollapsed ? 'justify-center p-2' : 'justify-between'}`}>
-                        {!isTreeCollapsed && (
-                            <h3 className="font-bold text-slate-800 flex items-center gap-2 whitespace-nowrap overflow-hidden">
-                                <Database size={16} className="text-blue-600" /> 数据源视图
-                            </h3>
-                        )}
-                        <button
-                            onClick={() => setIsTreeCollapsed(!isTreeCollapsed)}
-                            className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors"
-                            title={isTreeCollapsed ? "展开视图" : "收起视图"}
-                        >
-                            {isTreeCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-                        </button>
-                    </div>
-
-                    {!isTreeCollapsed ? (
-                        <div className="flex-1 overflow-y-auto p-2 opacity-100 transition-opacity duration-300">
+                {pageMode !== 'SEMANTIC' && (
+                    <div className={`${isTreeCollapsed ? 'w-12' : 'w-64'} bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden shrink-0 transition-all duration-300`}>
+                        <div className={`p-4 border-b border-slate-100 bg-slate-50 flex items-center ${isTreeCollapsed ? 'justify-center p-2' : 'justify-between'}`}>
+                            {!isTreeCollapsed && (
+                                <h3 className="font-bold text-slate-800 flex items-center gap-2 whitespace-nowrap overflow-hidden">
+                                    <Database size={16} className="text-blue-600" /> 数据源视图
+                                </h3>
+                            )}
                             <button
-                                onClick={() => handleDataSourceSelect(null)}
-                                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm mb-2 font-medium transition-colors ${selectedDataSourceId === null ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
-                                    }`}
+                                onClick={() => setIsTreeCollapsed(!isTreeCollapsed)}
+                                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors"
+                                title={isTreeCollapsed ? "展开视图" : "收起视图"}
                             >
-                                <Layers size={14} />
-                                全部数据源
+                                {isTreeCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
                             </button>
+                        </div>
 
-                            {Object.entries(typeGroups).map(([type, items]: [string, any]) => (
-                                <div key={type} className="mb-1">
-                                    <button
-                                        onClick={() => toggleType(type)}
-                                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 transition-colors text-slate-700"
-                                    >
-                                        <ChevronRight
-                                            size={14}
-                                            className={`text-slate-400 transition-transform duration-200 ease-out ${expandedTypes.includes(type) ? 'rotate-90' : ''}`}
-                                        />
-                                        <span className="text-base">{typeLogoConfig[type] || '💾'}</span>
-                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${typeConfig[type]?.bgColor || 'bg-slate-100'} ${typeConfig[type]?.color || ''}`}>{type}</span>
-                                        <span className="ml-auto text-xs text-slate-400">{items.length}</span>
-                                    </button>
-                                    <div
-                                        className={`ml-5 space-y-0.5 mt-1 border-l border-slate-100 pl-1 overflow-hidden origin-top transition-all duration-300 ease-in-out ${expandedTypes.includes(type)
-                                            ? 'max-h-96 opacity-100'
-                                            : 'max-h-0 opacity-0 pointer-events-none'
-                                            }`}
-                                    >
-                                        {items.map((ds: any) => (
-                                            <button
-                                                key={ds.id}
-                                                onClick={() => handleDataSourceSelect(ds.id)}
-                                                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-xs transition-colors ${selectedDataSourceId === ds.id ? 'bg-blue-50 text-blue-700 font-medium' : 'hover:bg-slate-50 text-slate-600'}`}
-                                            >
-                                                <Server size={12} className={selectedDataSourceId === ds.id ? 'text-blue-500' : 'text-slate-400'} />
-                                                <span className="truncate" title={ds.name}>{ds.name}</span>
-                                            </button>
-                                        ))}
+                        {!isTreeCollapsed ? (
+                            <div className="flex-1 overflow-y-auto p-2 opacity-100 transition-opacity duration-300">
+                                <button
+                                    onClick={() => handleDataSourceSelect(null)}
+                                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm mb-2 font-medium transition-colors ${selectedDataSourceId === null ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
+                                        }`}
+                                >
+                                    <Layers size={14} />
+                                    全部数据源
+                                </button>
+
+                                {Object.entries(typeGroups).map(([type, items]: [string, any]) => (
+                                    <div key={type} className="mb-1">
+                                        <button
+                                            onClick={() => toggleType(type)}
+                                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 transition-colors text-slate-700"
+                                        >
+                                            <ChevronRight
+                                                size={14}
+                                                className={`text-slate-400 transition-transform duration-200 ease-out ${expandedTypes.includes(type) ? 'rotate-90' : ''}`}
+                                            />
+                                            <span className="text-base">{typeLogoConfig[type] || '💾'}</span>
+                                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${typeConfig[type]?.bgColor || 'bg-slate-100'} ${typeConfig[type]?.color || ''}`}>{type}</span>
+                                            <span className="ml-auto text-xs text-slate-400">{items.length}</span>
+                                        </button>
+                                        <div
+                                            className={`ml-5 space-y-0.5 mt-1 border-l border-slate-100 pl-1 overflow-hidden origin-top transition-all duration-300 ease-in-out ${expandedTypes.includes(type)
+                                                ? 'max-h-96 opacity-100'
+                                                : 'max-h-0 opacity-0 pointer-events-none'
+                                                }`}
+                                        >
+                                            {items.map((ds: any) => (
+                                                <button
+                                                    key={ds.id}
+                                                    onClick={() => handleDataSourceSelect(ds.id)}
+                                                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-xs transition-colors ${selectedDataSourceId === ds.id ? 'bg-blue-50 text-blue-700 font-medium' : 'hover:bg-slate-50 text-slate-600'}`}
+                                                >
+                                                    <Server size={12} className={selectedDataSourceId === ds.id ? 'text-blue-500' : 'text-slate-400'} />
+                                                    <span className="truncate" title={ds.name}>{ds.name}</span>
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="flex-1 flex flex-col items-center py-4 gap-3 animate-fade-in overflow-y-auto custom-scrollbar">
-                            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 mb-2 cursor-pointer hover:bg-blue-100 transition-colors" title="全部数据源" onClick={() => handleDataSourceSelect(null)}>
-                                <Layers size={16} />
+                                ))}
                             </div>
-                            <div className="w-6 h-px bg-slate-100 mb-1"></div>
-                            {Object.entries(typeGroups).map(([type, items]: [string, any]) => (
-                                <div key={type} className="relative group cursor-pointer" title={`${type} (${items.length})`} onClick={() => {
-                                    setIsTreeCollapsed(false);
-                                    if (!expandedTypes.includes(type)) toggleType(type);
-                                }}>
-                                    <div className="w-8 h-8 flex items-center justify-center text-xl hover:bg-slate-50 rounded-lg transition-colors">
-                                        {typeLogoConfig[type] || '💾'}
-                                    </div>
-                                    <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-slate-100 border border-white text-[9px] font-bold text-slate-600 shadow-sm">
-                                        {items.length}
-                                    </span>
+                        ) : (
+                            <div className="flex-1 flex flex-col items-center py-4 gap-3 animate-fade-in overflow-y-auto custom-scrollbar">
+                                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 mb-2 cursor-pointer hover:bg-blue-100 transition-colors" title="全部数据源" onClick={() => handleDataSourceSelect(null)}>
+                                    <Layers size={16} />
                                 </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
+                                <div className="w-6 h-px bg-slate-100 mb-1"></div>
+                                {Object.entries(typeGroups).map(([type, items]: [string, any]) => (
+                                    <div key={type} className="relative group cursor-pointer" title={`${type} (${items.length})`} onClick={() => {
+                                        setIsTreeCollapsed(false);
+                                        if (!expandedTypes.includes(type)) toggleType(type);
+                                    }}>
+                                        <div className="w-8 h-8 flex items-center justify-center text-xl hover:bg-slate-50 rounded-lg transition-colors">
+                                            {typeLogoConfig[type] || '💾'}
+                                        </div>
+                                        <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-slate-100 border border-white text-[9px] font-bold text-slate-600 shadow-sm">
+                                            {items.length}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Right Panel - List or Detail */}
                 <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden">

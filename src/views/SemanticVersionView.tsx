@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import { mockBusinessObjects, mockScanResults } from '../data/mockData';
 import { semanticVersionMock } from '../data/semanticVersionMock';
+import { ReadOnlyBadge } from '../components/common/ReadOnlyBadge';
+import { ReadOnlyNotice } from '../components/common/ReadOnlyNotice';
 import BusinessModelingView from './BusinessModelingView';
 import DataSemanticUnderstandingView from './DataSemanticUnderstandingView';
 import { VersionProvider } from '../contexts/VersionContext';
@@ -59,6 +61,31 @@ const SemanticVersionView = () => {
         () => mockVersions.find(item => item.id === selectedVersionId) || mockVersions[0],
         [selectedVersionId]
     );
+    const filteredScanResults = useMemo(() => {
+        const keyword = fieldSearch.trim().toLowerCase();
+        if (!keyword) return scanResults;
+        return scanResults.filter(item => {
+            const tableMatch = item.table?.toLowerCase().includes(keyword);
+            const commentMatch = item.comment?.toLowerCase().includes(keyword);
+            const fieldMatch = Array.isArray(item.fields)
+                && item.fields.some((field: any) => {
+                    const nameMatch = field.name?.toLowerCase().includes(keyword);
+                    const fieldCommentMatch = field.comment?.toLowerCase().includes(keyword);
+                    return nameMatch || fieldCommentMatch;
+                });
+            return tableMatch || commentMatch || fieldMatch;
+        });
+    }, [fieldSearch, scanResults]);
+    const filteredDiffItems = useMemo(() => {
+        const keyword = diffSearch.trim();
+        if (!keyword) return mockDiffItems;
+        return mockDiffItems
+            .map(section => ({
+                ...section,
+                items: section.items.filter(item => item.includes(keyword))
+            }))
+            .filter(section => section.items.length > 0);
+    }, [diffSearch, mockDiffItems]);
 
     const openDetail = (versionId: string, tab?: DetailTab) => {
         setSelectedVersionId(versionId);
@@ -179,10 +206,9 @@ const SemanticVersionView = () => {
                             <span className="px-2 py-0.5 rounded-full bg-slate-900 text-white">
                                 查看版本 {selectedVersion.version}
                             </span>
-                            <span className="px-2 py-0.5 rounded-full bg-slate-100" title="当前视图不可编辑">
-                                语义版本快照
-                            </span>
+                            <ReadOnlyBadge className="text-[11px] text-slate-500" />
                         </div>
+                        <ReadOnlyNotice />
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-600">
                             <div className="flex items-center gap-2">
                                 <History size={14} className="text-slate-400" />
@@ -256,10 +282,10 @@ const SemanticVersionView = () => {
                                     placeholder="筛选字段/表名..."
                                     className="w-full md:w-64 px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-600"
                                 />
-                                <span className="text-[10px] text-slate-400">示例筛选（Mock）</span>
+                                <span className="text-[10px] text-slate-400">筛选结果 {filteredScanResults.length} 张</span>
                             </div>
                             <DataSemanticUnderstandingView
-                                scanResults={scanResults}
+                                scanResults={filteredScanResults}
                                 setScanResults={setScanResults}
                                 candidateResults={candidateResults}
                                 setCandidateResults={setCandidateResults}
@@ -375,7 +401,7 @@ const SemanticVersionView = () => {
                                     placeholder="筛选 Diff 关键词..."
                                     className="w-full md:w-64 px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-600"
                                 />
-                                <span className="text-[10px] text-slate-400">示例筛选（Mock）</span>
+                                <span className="text-[10px] text-slate-400">支持标题与条目关键词</span>
                             </div>
                             <div className="flex flex-wrap gap-2 text-[11px]">
                                 <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">新增 {mockDiffSummary.added}</span>
@@ -383,23 +409,22 @@ const SemanticVersionView = () => {
                                 <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700">移除 {mockDiffSummary.removed}</span>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-600">
-                                {mockDiffItems
-                                    .map(section => {
-                                        if (!diffSearch.trim()) return section;
-                                        const filteredItems = section.items.filter(item => item.includes(diffSearch.trim()));
-                                        return { ...section, items: filteredItems };
-                                    })
-                                    .filter(section => section.items.length > 0)
-                                    .map(section => (
-                                    <div key={section.title} className="border border-slate-200 rounded-lg p-3 space-y-2">
-                                        <div className="text-[11px] text-slate-500">{section.title}</div>
-                                        <div className="space-y-1">
-                                            {section.items.map(item => (
-                                                <div key={item} className="text-slate-600">{item}</div>
-                                            ))}
+                                {filteredDiffItems.length ? (
+                                    filteredDiffItems.map(section => (
+                                        <div key={section.title} className="border border-slate-200 rounded-lg p-3 space-y-2">
+                                            <div className="text-[11px] text-slate-500">{section.title}</div>
+                                            <div className="space-y-1">
+                                                {section.items.map(item => (
+                                                    <div key={item} className="text-slate-600">{item}</div>
+                                                ))}
+                                            </div>
                                         </div>
+                                    ))
+                                ) : (
+                                    <div className="col-span-full text-[11px] text-slate-400 border border-dashed border-slate-200 rounded-lg p-4 text-center">
+                                        未找到匹配的 Diff 项
                                     </div>
-                                ))}
+                                )}
                             </div>
                         </div>
                     )}

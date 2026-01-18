@@ -2,6 +2,7 @@ import React from 'react';
 import { ArrowLeft, Sparkles, RefreshCw, Layout, Wand2 } from 'lucide-react';
 import { GovernanceStatus } from '../../../types/semantic';
 import { getGovernanceDisplay, typeConfig } from '../utils';
+import { ReadOnlyBadge } from '../../../components/common/ReadOnlyBadge';
 
 export type PageMode = 'BROWSE' | 'SEMANTIC';
 
@@ -72,9 +73,7 @@ export const SemanticHeader: React.FC<SemanticHeaderProps> = ({
                                 {display.label}
                             </span>
                             {readOnly && (
-                                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">
-                                    语义版本快照{versionLabel ? ` ${versionLabel}` : ''}
-                                </span>
+                                <ReadOnlyBadge versionId={versionLabel} className="text-slate-500" />
                             )}
                         </div>
                         <p className="text-slate-500 text-sm mt-1">{table.comment || '暂无物理表注释'}</p>
