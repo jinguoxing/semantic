@@ -8,6 +8,7 @@ import {
 import SemanticVersionPanel from './components/semantic-version/SemanticVersionPanel';
 import PublishVersionDialog from './components/semantic-version/PublishVersionDialog';
 import { semanticVersionService } from '../services/semantic/semanticVersionService';
+import { useVersionContext } from '../contexts/VersionContext';
 
 // Object Type Configuration
 type ObjectType = 'entity' | 'event' | 'rule' | 'state';
@@ -48,9 +49,14 @@ interface BusinessModelingViewProps {
     businessObjects: any[];
     setBusinessObjects: (fn: (prev: any[]) => any[]) => void;
     onNavigateToMapping: (bo: any) => void;
+    readOnly?: boolean;
+    versionId?: string;
 }
 
-const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateToMapping }: BusinessModelingViewProps) => {
+const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateToMapping, readOnly, versionId }: BusinessModelingViewProps) => {
+    const versionContext = useVersionContext();
+    const isReadOnly = readOnly ?? versionContext.readOnly;
+    const effectiveVersionId = versionId ?? versionContext.versionId;
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingBO, setEditingBO] = useState<any>(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -112,24 +118,28 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
 
     // Handlers
     const handleCreateBO = () => {
+        if (isReadOnly) return;
         setEditingBO(null);
         setBoFormData(initialBoState);
         setIsModalOpen(true);
     };
 
     const handleEditBO = (bo: any) => {
+        if (isReadOnly) return;
         setEditingBO(bo);
         setBoFormData({ ...bo });
         setIsModalOpen(true);
     };
 
     const handleDeleteBO = (id: string) => {
+        if (isReadOnly) return;
         if (confirm('确认删除此业务对象吗？')) {
             setBusinessObjects((prev: any[]) => prev.filter((item: any) => item.id !== id));
         }
     };
 
     const handleSaveBO = () => {
+        if (isReadOnly) return;
         if (!boFormData.name || !boFormData.code) return;
 
         if (editingBO) {
@@ -147,18 +157,21 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
 
     // Field Handlers
     const handleAddField = () => {
+        if (isReadOnly) return;
         setCurrentField(null);
         setFieldFormData(initialFieldState);
         setShowFieldModal(true);
     };
 
     const handleEditField = (field: any, index: number) => {
+        if (isReadOnly) return;
         setCurrentField({ ...field, index });
         setFieldFormData({ ...field });
         setShowFieldModal(true);
     };
 
     const handleSaveField = () => {
+        if (isReadOnly) return;
         const newFields = [...boFormData.fields];
         if (currentField) {
             newFields[currentField.index] = fieldFormData;
@@ -170,6 +183,7 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
     };
 
     const handleDeleteField = (index: number) => {
+        if (isReadOnly) return;
         const newFields = [...boFormData.fields];
         newFields.splice(index, 1);
         setBoFormData({ ...boFormData, fields: newFields });
@@ -198,12 +212,14 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
     };
 
     const handleBatchPublish = () => {
+        if (isReadOnly) return;
         const hasDraft = businessObjects.some(bo => selectedBoIds.includes(bo.id) && bo.status !== 'published');
         if (!hasDraft) return;
         setShowPublishConfirm(true);
     };
 
     const confirmBatchPublish = () => {
+        if (isReadOnly) return;
         setBusinessObjects(prev => prev.map(bo =>
             selectedBoIds.includes(bo.id) ? { ...bo, status: 'published' } : bo
         ));
@@ -213,6 +229,7 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
     };
 
     const handleBatchArchive = () => {
+        if (isReadOnly) return;
         if (selectedBoIds.length === 0) return;
         if (!confirm('确认归档所选业务对象吗？')) return;
         setBusinessObjects(prev => prev.map(bo =>
@@ -222,6 +239,7 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
     };
 
     const handleBatchDelete = () => {
+        if (isReadOnly) return;
         if (selectedBoIds.length === 0) return;
         if (!confirm('确认删除所选业务对象吗？此操作不可撤销。')) return;
         setBusinessObjects(prev => prev.filter(bo => !selectedBoIds.includes(bo.id)));
@@ -274,15 +292,24 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
         const typeConfig = getObjectTypeConfig(bo.objectType || bo.type);
         const TypeIcon = typeConfig.icon;
         return (
-            <div key={bo.id} className={`bg-white rounded-xl border p-5 hover:shadow-lg transition-all group cursor-pointer relative overflow-hidden ${selectedBoIds.includes(bo.id) ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-50/10' : typeConfig.border}`} onClick={() => onNavigateToMapping(bo)}>
+            <div
+                key={bo.id}
+                className={`bg-white rounded-xl border p-5 hover:shadow-lg transition-all group relative overflow-hidden ${selectedBoIds.includes(bo.id) ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-50/10' : typeConfig.border} ${isReadOnly ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                onClick={() => {
+                    if (isReadOnly) return;
+                    onNavigateToMapping(bo);
+                }}
+            >
                 {/* Type Color Bar */}
                 <div className={`absolute top-0 left-0 right-0 h-1 ${typeConfig.bg.replace('50', '400')}`} />
 
-                <div onClick={(e) => { e.stopPropagation(); toggleSelection(bo.id); }} className="absolute top-4 left-4 z-10 p-2 -ml-2 -mt-2 hover:bg-slate-100 rounded-full">
-                    <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedBoIds.includes(bo.id) ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`}>
-                        {selectedBoIds.includes(bo.id) && <CheckCircle size={14} className="text-white" />}
+                {!isReadOnly && (
+                    <div onClick={(e) => { e.stopPropagation(); toggleSelection(bo.id); }} className="absolute top-4 left-4 z-10 p-2 -ml-2 -mt-2 hover:bg-slate-100 rounded-full">
+                        <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedBoIds.includes(bo.id) ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`}>
+                            {selectedBoIds.includes(bo.id) && <CheckCircle size={14} className="text-white" />}
+                        </div>
                     </div>
-                </div>
+                )}
                 <div className="flex justify-between items-start mb-3 pl-8 pt-1">
                     <div className={`w-9 h-9 rounded-lg ${typeConfig.bg} flex items-center justify-center ${typeConfig.text}`}>
                         <TypeIcon size={18} />
@@ -367,8 +394,16 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
                                         未映射
                                     </span>
                                     <button
-                                        onClick={(e) => { e.stopPropagation(); /* TODO: AI auto-find */ }}
-                                        className="flex items-center gap-1 px-2 py-1 text-[10px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-full transition-colors font-medium"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (isReadOnly) return;
+                                            /* TODO: AI auto-find */
+                                        }}
+                                        disabled={isReadOnly}
+                                        className={`flex items-center gap-1 px-2 py-1 text-[10px] rounded-full transition-colors font-medium ${isReadOnly
+                                                ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
+                                                : 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100'
+                                            }`}
                                         title="使用 AI 自动寻找匹配的物理表"
                                     >
                                         <Sparkles size={10} />
@@ -382,105 +417,126 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
 
                 <div className="flex items-center justify-between pt-3 border-t border-slate-50 mt-3">
                     <button
-                        onClick={(e) => { e.stopPropagation(); onNavigateToMapping(bo); }}
-                        className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium px-2 py-1 -ml-2 rounded hover:bg-blue-50 transition-colors"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (isReadOnly) return;
+                            onNavigateToMapping(bo);
+                        }}
+                        disabled={isReadOnly}
+                        className={`text-xs flex items-center gap-1 font-medium px-2 py-1 -ml-2 rounded transition-colors ${isReadOnly
+                                ? 'text-slate-400 cursor-not-allowed'
+                                : 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'
+                            }`}
                     >
                         去映射
                         <ChevronRight size={12} />
                     </button>
-                    <div className="hidden group-hover:flex items-center gap-1 transition-opacity">
-                        <button onClick={(e) => { e.stopPropagation(); handleEditBO(bo); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="编辑">
-                            <Settings size={14} />
-                        </button>
-                        {bo.status !== 'published' && (
-                            <button onClick={(e) => { e.stopPropagation(); handleDeleteBO(bo.id); }} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="删除">
-                                <Trash2 size={14} />
+                    {!isReadOnly && (
+                        <div className="hidden group-hover:flex items-center gap-1 transition-opacity">
+                            <button onClick={(e) => { e.stopPropagation(); handleEditBO(bo); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="编辑">
+                                <Settings size={14} />
                             </button>
-                        )}
-                    </div>
+                            {bo.status !== 'published' && (
+                                <button onClick={(e) => { e.stopPropagation(); handleDeleteBO(bo.id); }} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="删除">
+                                    <Trash2 size={14} />
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
         );
     });
 
     return (
-        <div className="space-y-6 h-[calc(100vh-theme(spacing.24))] flex flex-col animate-fade-in relative">
+        <div className={`animate-fade-in relative flex flex-col ${isReadOnly ? 'space-y-4' : 'space-y-6 h-[calc(100vh-theme(spacing.24))]'}`}>
             {/* Header Row - Title & Action Buttons */}
             <div className="flex items-center justify-between flex-shrink-0">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-800 tracking-tight">业务对象建模</h2>
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-slate-800 tracking-tight">业务对象建模</h2>
+                        {isReadOnly && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                                语义版本快照{effectiveVersionId ? ` ${effectiveVersionId}` : ''}
+                            </span>
+                        )}
+                    </div>
                     <p className="text-slate-500 mt-0.5 text-sm">定义核心业务实体、属性及其数据标准</p>
                 </div>
                 <div className="flex items-center gap-2">
                     {/* Split Button: New Object with AI Options */}
-                    <div className="relative">
-                        <div className="flex items-stretch">
-                            <button
-                                onClick={handleCreateBO}
-                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-l-lg hover:bg-blue-700 transition-all font-medium"
-                            >
-                                <Plus size={18} />
-                                <span>新建对象</span>
-                            </button>
-                            <button
-                                onClick={() => setShowCreateDropdown(!showCreateDropdown)}
-                                className="px-2 py-2 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700 transition-all border-l border-blue-500"
-                            >
-                                <ChevronDown size={16} className={`transition-transform ${showCreateDropdown ? 'rotate-180' : ''}`} />
-                            </button>
-                        </div>
-
-                        {/* Dropdown Menu */}
-                        {showCreateDropdown && (
-                            <>
-                                <div className="fixed inset-0 z-40" onClick={() => setShowCreateDropdown(false)} />
-                                <div className="absolute right-0 top-full mt-1 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-50 animate-fade-in">
+                    {!isReadOnly && (
+                        <>
+                            <div className="relative">
+                                <div className="flex items-stretch">
                                     <button
-                                        onClick={() => { handleCreateBO(); setShowCreateDropdown(false); }}
-                                        className="w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-slate-50 transition-colors"
+                                        onClick={handleCreateBO}
+                                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-l-lg hover:bg-blue-700 transition-all font-medium"
                                     >
-                                        <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
-                                            <Plus size={16} />
-                                        </div>
-                                        <div>
-                                            <div className="text-sm font-medium text-slate-800">手动新建</div>
-                                            <div className="text-[10px] text-slate-500">从空白开始创建业务对象</div>
-                                        </div>
-                                    </button>
-                                    <div className="h-px bg-slate-100 my-1" />
-                                    <button
-                                        onClick={() => { setShowAIModelingModal(true); setShowCreateDropdown(false); }}
-                                        className="w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-indigo-50 transition-colors group"
-                                    >
-                                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white">
-                                            <Sparkles size={16} />
-                                        </div>
-                                        <div>
-                                            <div className="text-sm font-medium text-slate-800 flex items-center gap-1">
-                                                AI 辅助建模
-                                                <span className="text-[9px] px-1.5 py-0.5 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-full">NEW</span>
-                                            </div>
-                                            <div className="text-[10px] text-slate-500">用自然语言描述，AI 自动生成</div>
-                                        </div>
+                                        <Plus size={18} />
+                                        <span>新建对象</span>
                                     </button>
                                     <button
-                                        onClick={() => { setShowTableExtractModal(true); setShowCreateDropdown(false); }}
-                                        className="w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-emerald-50 transition-colors"
+                                        onClick={() => setShowCreateDropdown(!showCreateDropdown)}
+                                        className="px-2 py-2 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700 transition-all border-l border-blue-500"
                                     >
-                                        <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600">
-                                            <Table2 size={16} />
-                                        </div>
-                                        <div>
-                                            <div className="text-sm font-medium text-slate-800">从物理表提取</div>
-                                            <div className="text-[10px] text-slate-500">AI 逆向生成业务对象</div>
-                                        </div>
+                                        <ChevronDown size={16} className={`transition-transform ${showCreateDropdown ? 'rotate-180' : ''}`} />
                                     </button>
                                 </div>
-                            </>
-                        )}
-                    </div>
 
-                    <div className="h-6 w-px bg-slate-200" />
+                                {/* Dropdown Menu */}
+                                {showCreateDropdown && (
+                                    <>
+                                        <div className="fixed inset-0 z-40" onClick={() => setShowCreateDropdown(false)} />
+                                        <div className="absolute right-0 top-full mt-1 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-50 animate-fade-in">
+                                            <button
+                                                onClick={() => { handleCreateBO(); setShowCreateDropdown(false); }}
+                                                className="w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-slate-50 transition-colors"
+                                            >
+                                                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
+                                                    <Plus size={16} />
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-medium text-slate-800">手动新建</div>
+                                                    <div className="text-[10px] text-slate-500">从空白开始创建业务对象</div>
+                                                </div>
+                                            </button>
+                                            <div className="h-px bg-slate-100 my-1" />
+                                            <button
+                                                onClick={() => { setShowAIModelingModal(true); setShowCreateDropdown(false); }}
+                                                className="w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-indigo-50 transition-colors group"
+                                            >
+                                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white">
+                                                    <Sparkles size={16} />
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-medium text-slate-800 flex items-center gap-1">
+                                                        AI 辅助建模
+                                                        <span className="text-[9px] px-1.5 py-0.5 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-full">NEW</span>
+                                                    </div>
+                                                    <div className="text-[10px] text-slate-500">用自然语言描述，AI 自动生成</div>
+                                                </div>
+                                            </button>
+                                            <button
+                                                onClick={() => { setShowTableExtractModal(true); setShowCreateDropdown(false); }}
+                                                className="w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-emerald-50 transition-colors"
+                                            >
+                                                <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600">
+                                                    <Table2 size={16} />
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-medium text-slate-800">从物理表提取</div>
+                                                    <div className="text-[10px] text-slate-500">AI 逆向生成业务对象</div>
+                                                </div>
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            <div className="h-6 w-px bg-slate-200" />
+                        </>
+                    )}
 
                     <button
                         onClick={() => setShowVersionPanel(true)}
@@ -494,17 +550,23 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
                             </span>
                         )}
                     </button>
-                    <button
-                        onClick={() => setShowPublishDialog(true)}
-                        disabled={businessObjects.length === 0}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all font-medium ${businessObjects.length === 0
-                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                            : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-200'
-                            }`}
-                    >
-                        <Upload size={18} />
-                        <span>发布语义版本</span>
-                    </button>
+                    {!isReadOnly ? (
+                        <button
+                            onClick={() => setShowPublishDialog(true)}
+                            disabled={businessObjects.length === 0}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all font-medium ${businessObjects.length === 0
+                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-200'
+                                }`}
+                        >
+                            <Upload size={18} />
+                            <span>发布语义版本</span>
+                        </button>
+                    ) : (
+                        <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">
+                            只读模式
+                        </span>
+                    )}
                 </div>
             </div>
 
@@ -595,7 +657,7 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
                 </div>
             </div>
 
-            {selectedBoIds.length > 0 && (
+            {!isReadOnly && selectedBoIds.length > 0 && (
                 <div className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-4 py-3 shadow-sm">
                     <div className="text-sm text-slate-600">
                         已选 <span className="font-semibold text-slate-800">{selectedBoIds.length}</span> 个对象
@@ -854,9 +916,11 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
                                         <h4 className="font-bold text-slate-800 flex items-center gap-2">
                                             <Database size={18} className="text-emerald-500" /> 数据结构 ({boFormData.fields.length})
                                         </h4>
-                                        <button onClick={handleAddField} className="text-xs flex items-center gap-1 bg-white border border-slate-200 px-3 py-1.5 rounded-md hover:border-blue-300 hover:text-blue-600 transition-all font-medium shadow-sm">
-                                            <Plus size={14} /> 添加字段
-                                        </button>
+                                        {!isReadOnly && (
+                                            <button onClick={handleAddField} className="text-xs flex items-center gap-1 bg-white border border-slate-200 px-3 py-1.5 rounded-md hover:border-blue-300 hover:text-blue-600 transition-all font-medium shadow-sm">
+                                                <Plus size={14} /> 添加字段
+                                            </button>
+                                        )}
                                     </div>
 
                                     <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
@@ -885,10 +949,12 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
                                                             </td>
                                                             <td className="px-4 py-3 text-slate-500 truncate max-w-[150px]">{field.description || '-'}</td>
                                                             <td className="px-4 py-3 text-right">
-                                                                <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                    <button onClick={() => handleEditField(field, idx)} className="text-slate-400 hover:text-blue-600"><Settings size={14} /></button>
-                                                                    <button onClick={() => handleDeleteField(idx)} className="text-slate-400 hover:text-red-500"><X size={14} /></button>
-                                                                </div>
+                                                                {!isReadOnly && (
+                                                                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                        <button onClick={() => handleEditField(field, idx)} className="text-slate-400 hover:text-blue-600"><Settings size={14} /></button>
+                                                                        <button onClick={() => handleDeleteField(idx)} className="text-slate-400 hover:text-red-500"><X size={14} /></button>
+                                                                    </div>
+                                                                )}
                                                             </td>
                                                         </tr>
                                                     ))

@@ -246,14 +246,15 @@ export const mockPhysicalTables = [
         source: 'HOSP_DB_01 (MySQL)',
         scannedAt: '2024-05-20 10:00:00',
         rows: '1,204,500',
+        semanticStage: 'FIELD_PENDING',
         fields: [
-            { name: 'id', type: 'bigint', key: 'PK' },
-            { name: 'p_name', type: 'varchar(50)' },
-            { name: 'id_card_num', type: 'varchar(18)' },
-            { name: 'birth_ts', type: 'datetime' },
-            { name: 'weight_kg', type: 'decimal(4,2)' },
-            { name: 'hospital_id', type: 'int' },
-            { name: 'is_deleted', type: 'tinyint' }
+            { name: 'id', type: 'bigint', key: 'PK', semanticStatus: 'DECIDED', riskLevel: 'LOW' },
+            { name: 'p_name', type: 'varchar(50)', semanticStatus: 'SUGGESTED', riskLevel: 'LOW' },
+            { name: 'id_card_num', type: 'varchar(18)', semanticStatus: 'SUGGESTED', riskLevel: 'HIGH' },
+            { name: 'birth_ts', type: 'datetime', semanticStatus: 'DECIDED', riskLevel: 'LOW' },
+            { name: 'weight_kg', type: 'decimal(4,2)', semanticStatus: 'UNANALYZED', riskLevel: 'MEDIUM' },
+            { name: 'hospital_id', type: 'int', semanticStatus: 'UNANALYZED', riskLevel: 'LOW' },
+            { name: 'is_deleted', type: 'tinyint', semanticStatus: 'DECIDED', riskLevel: 'LOW' }
         ]
     }
 ];
@@ -478,7 +479,7 @@ export const mockDataSources = [
 ];
 
 // SG-01: BO-to-Table Mapping Configuration
-export const mockBOTableMappings: Record<string, { tableId: string; tableName: string; source: string; mappings: { boField: string; tblField: string; rule: string }[]; fields: { name: string; type: string; key?: string }[] }> = {
+export const mockBOTableMappings: Record<string, { tableId: string; tableName: string; source: string; mappings: { boField: string; tblField: string; rule: string }[]; fields: { name: string; type: string; key?: string; semanticStatus?: string; riskLevel?: string; role?: string }[] }> = {
     'BO_NEWBORN': {
         tableId: 'TBL_POP_BASE',
         tableName: 't_pop_base_info_2024',
@@ -490,13 +491,13 @@ export const mockBOTableMappings: Record<string, { tableId: string; tableName: s
             { boField: '出生体重', tblField: 'weight_kg', rule: 'Direct Copy' },
         ],
         fields: [
-            { name: 'id', type: 'bigint', key: 'PK' },
-            { name: 'p_name', type: 'varchar(50)' },
-            { name: 'id_card_num', type: 'varchar(18)' },
-            { name: 'birth_ts', type: 'datetime' },
-            { name: 'weight_kg', type: 'decimal(4,2)' },
-            { name: 'hospital_id', type: 'int' },
-            { name: 'is_deleted', type: 'tinyint' }
+            { name: 'id', type: 'bigint', key: 'PK', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Identifier' },
+            { name: 'p_name', type: 'varchar(50)', semanticStatus: 'SUGGESTED', riskLevel: 'LOW', role: 'Attribute' },
+            { name: 'id_card_num', type: 'varchar(18)', semanticStatus: 'SUGGESTED', riskLevel: 'HIGH', role: 'Attribute' },
+            { name: 'birth_ts', type: 'datetime', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Time' },
+            { name: 'weight_kg', type: 'decimal(4,2)', semanticStatus: 'UNANALYZED', riskLevel: 'MEDIUM', role: 'Measure' },
+            { name: 'hospital_id', type: 'int', semanticStatus: 'UNANALYZED', riskLevel: 'LOW', role: 'ForeignKey' },
+            { name: 'is_deleted', type: 'tinyint', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Status' }
         ]
     },
     'BO_CERT': {

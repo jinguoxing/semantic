@@ -44,11 +44,13 @@ import ConflictDetectionView from './views/ConflictDetectionView';
 import SmartDataHubView from './views/SmartDataHubView';
 import ApiGatewayView from './views/ApiGatewayView';
 import CacheStrategyView from './views/CacheStrategyView';
+import SemanticVersionView from './views/SemanticVersionView';
 import DataSourceManagementView from './views/DataSourceManagementView';
 import AssetScanningView from './views/AssetScanningView';
 import AskDataView from './views/AskDataView';
 import { DataCatalogView } from './views/DataCatalogView';
 import SemanticAssetManagerView from './views/SemanticAssetManagerView';
+import { FieldSemanticWorkbenchView } from './views/FieldSemanticWorkbenchView';
 import { useModuleNavigation } from './hooks/useModuleNavigation';
 
 // ==========================================
@@ -61,6 +63,12 @@ export default function SemanticLayerApp() {
     // 确保 mockBusinessObjects 存在且不为空，避免 undefined 错误
     const [selectedBO, setSelectedBO] = useState(mockBusinessObjects && mockBusinessObjects.length > 0 ? mockBusinessObjects[0] : null);
     const [showRuleEditor, setShowRuleEditor] = useState(null);
+    const [navigationParams, setNavigationParams] = useState<any>(null);
+
+    const handleNavigateWithParams = (module: string, params: any) => {
+        setNavigationParams(params);
+        setActiveModule(module);
+    };
 
     // Lifted State: Business Objects
     const [businessObjects, setBusinessObjects] = useState(mockBusinessObjects);
@@ -111,7 +119,13 @@ export default function SemanticLayerApp() {
                 businessObjects={businessObjects}
                 setBusinessObjects={setBusinessObjects}
                 setActiveModule={setActiveModule}
+                initialState={navigationParams}
             />;
+            case 'field_semantic': return <FieldSemanticWorkbenchView
+                scanResults={scanResults}
+                onNavigateToField={(tableId, fieldName) => handleNavigateWithParams('bu_semantic', { tableId, mode: 'SEMANTIC', focusField: fieldName })}
+            />;
+            case 'semantic_version': return <SemanticVersionView />;
             case 'bu_candidates': return <CandidateGenerationView scanResults={scanResults} setScanResults={setScanResults} onAddBusinessObject={handleAddBusinessObject} />;
             case 'governance': return <ConflictDetectionView />;
             case 'smart_data': return <SmartDataHubView businessObjects={businessObjects} />;
@@ -140,6 +154,5 @@ export default function SemanticLayerApp() {
         </div>
     );
 }
-
 
 

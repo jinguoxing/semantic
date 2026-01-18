@@ -49,7 +49,7 @@ export const BatchOperationBar: React.FC<BatchOperationBarProps> = ({
                     }`}
             >
                 <Sparkles size={14} />
-                批量生成建议（{selectedCount}）
+                批量生成【语义建议】（{selectedCount}）
             </button>
             <div className="text-[10px] text-slate-400">
                 {selectedCount > 0

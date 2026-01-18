@@ -26,7 +26,25 @@ export interface TableRuleScore {
     total: number;
 }
 
+
 export type GovernanceStatus = 'S0' | 'S1' | 'S2' | 'S3';
+
+// V2.4: Table Semantic Stage
+export type TableSemanticStage =
+    | 'NOT_STARTED'        // 未开始语义建模
+    | 'FIELD_PENDING'      // 字段语义待确认
+    | 'MODELING_IN_PROGRESS' // 语义建模进行中
+    | 'READY_FOR_OBJECT';  // 可进入对象建模
+
+// V2.4: Field Semantic Status
+export type FieldSemanticStatus =
+    | 'UNANALYZED'
+    | 'SUGGESTED'
+    | 'RULE_MATCHED'
+    | 'DECIDED'
+    | 'BLOCKED';
+
+export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 
 export interface ReviewStats {
     pendingReviewFields: number;
@@ -46,7 +64,17 @@ export interface RunSummary {
     estimateTime?: string;
 }
 
-export type SemanticRole = 'Identifier' | 'BusAttr' | 'ForeignKey' | 'Status' | 'EventHint' | 'Audit';
+export type SemanticRole =
+    | 'Identifier'
+    | 'ForeignKey'
+    | 'Status'
+    | 'Time'
+    | 'Measure'
+    | 'Attribute'
+    | 'Audit'
+    | 'Technical'
+    | 'BusAttr' // Keep for backward compatibility if needed, or map it
+    | 'EventHint'; // Keep for backward compatibility
 
 // V2 Beta: Object Type Classification
 export type ObjectType = 'entity' | 'event' | 'state' | 'rule' | 'attribute';
@@ -78,11 +106,15 @@ export interface FieldSemanticProfile {
     aiSuggestion?: string;
     ruleHit?: string;
     // V2 Beta: Field-level enhancements
-    businessTerm?: string;
     businessDefinition?: string;
+    // logicalType?: string; // Removed or commented if not needed, or just keep
     logicalType?: string;
     unit?: string;
     governanceStatus?: GovernanceStatus;
+    // V2.4 Field Semantic Extensions
+    semanticStatus?: FieldSemanticStatus;
+    riskLevel?: RiskLevel;
+    tags?: string[];
 }
 
 export interface TableSemanticProfile {
@@ -130,6 +162,8 @@ export interface TableSemanticProfile {
     confirmedBy?: string;
     confirmedAt?: string;
     confirmScope?: string;
+    // V2.4 Table Extensions
+    semanticStage?: TableSemanticStage;
 }
 
 export interface PreviewField {
