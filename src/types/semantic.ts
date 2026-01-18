@@ -1,4 +1,13 @@
 
+// P0: Actionable Governance Recommendations
+export interface ActionItem {
+    type: 'sql' | 'workflow' | 'manual';
+    title: string;
+    description: string;
+    sqlTemplate?: string;
+    priority: 'high' | 'medium' | 'low';
+}
+
 export interface SemanticGateResult {
     result: 'PASS' | 'REJECT' | 'REVIEW';
     details: {
@@ -7,6 +16,7 @@ export interface SemanticGateResult {
         tableType: boolean; // T-04
     };
     reasons: string[];
+    actionItems?: ActionItem[]; // P0: Specific remediation steps
 }
 
 export interface TableRuleScore {

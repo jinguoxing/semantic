@@ -1,4 +1,4 @@
-import { SemanticGateResult, TableSemanticProfile, FieldSemanticProfile, SemanticRole } from '../../types/semantic';
+import { SemanticGateResult, TableSemanticProfile, FieldSemanticProfile, SemanticRole, ActionItem } from '../../types/semantic';
 
 /**
  * Gatekeeper Rules (Hard Rules)
@@ -12,7 +12,8 @@ export const checkGatekeeper = (tableName: string, fields: any[]): SemanticGateR
             lifecycle: false,
             tableType: true
         },
-        reasons: []
+        reasons: [],
+        actionItems: [] // P0: Initialize actionable recommendations
     };
 
     // T-04: Table Type Exclusion (graylist + hard reject)
@@ -38,6 +39,19 @@ export const checkGatekeeper = (tableName: string, fields: any[]): SemanticGateR
         result.details.primaryKey = true;
     } else {
         result.reasons.push('未找到主键字段。');
+        result.actionItems!.push({
+            type: 'sql',
+            title: '添加主键字段',
+            description: '为表添加主键约束以确保数据唯一性',
+            sqlTemplate: `-- 方案1: 添加自增主键
+ALTER TABLE ${tableName} 
+  ADD COLUMN id BIGINT AUTO_INCREMENT PRIMARY KEY FIRST;
+
+-- 方案2: 基于业务字段设置主键
+ALTER TABLE ${tableName} 
+  ADD PRIMARY KEY ({business_key_column});`,
+            priority: 'high'
+        });
     }
 
     // T-03: Lifecycle Field Check
@@ -50,6 +64,17 @@ export const checkGatekeeper = (tableName: string, fields: any[]): SemanticGateR
         result.details.lifecycle = true;
     } else {
         result.reasons.push('未找到生命周期字段 (如: create_time, update_time)。');
+        result.actionItems!.push({
+            type: 'sql',
+            title: '添加生命周期字段',
+            description: '添加审计字段以支持数据溯源和变更追踪',
+            sqlTemplate: `ALTER TABLE ${tableName} 
+  ADD COLUMN create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  ADD COLUMN update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  ADD COLUMN create_user_id VARCHAR(64) COMMENT '创建人ID',
+  ADD COLUMN update_user_id VARCHAR(64) COMMENT '更新人ID';`,
+            priority: 'high'
+        });
     }
 
     // Determine final Gate Result
