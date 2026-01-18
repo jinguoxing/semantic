@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import {
     Layout, Database, GitMerge, CheckCircle, AlertCircle,
-    Cpu, Plus, Link, Settings, Sparkles, X, ArrowLeft, ArrowRight, Wand2, Search, Filter
+    Cpu, Plus, Link, Settings, Sparkles, X, ArrowLeft, ArrowRight, Wand2, Search, Filter,
+    Eye, Bot, Code, Info
 } from 'lucide-react';
 
 import { mockDataSources, mockBOTableMappings } from '../data/mockData';
@@ -42,6 +43,42 @@ const commonVariations: Record<string, string[]> = {
     'user': ['user', 'account', 'creator', 'modifier'],
     'time': ['time', 'date', 'at', 'on']
 };
+
+// Mock Sample Data for physical columns (Data Profiling)
+const mockColumnSamples: Record<string, string[]> = {
+    'id': ['1001', '1002', '1003'],
+    'p_name': ['张三', '李四', '王五'],
+    'name': ['张三', '李四', '王五'],
+    'id_card_num': ['110101199001011234', '320102198512255678', '440303199203031111'],
+    'birth_ts': ['2024-01-15 08:30:00', '2024-02-20 14:22:00', '2024-03-10 06:45:00'],
+    'weight_kg': ['3.25', '3.50', '2.98'],
+    'hospital_id': ['H001', 'H002', 'H003'],
+    'is_deleted': ['0', '0', '1'],
+    'gender': ['M', 'F', 'M'],
+    'phone': ['13812345678', '13987654321', '15011112222'],
+    'email': ['zhang@test.com', 'li@test.com', 'wang@test.com'],
+    'status': ['active', 'inactive', 'pending'],
+    'amount': ['199.00', '299.50', '99.99'],
+    'created_at': ['2024-01-01', '2024-02-15', '2024-03-20'],
+};
+
+// Generate AI explanation for mapping confidence
+const getAIMappingExplanation = (boField: string, tblField: string, score: number): string => {
+    if (score >= 0.95) {
+        return `字段名 '${tblField}' 与 '${boField}' 完全匹配，置信度极高。`;
+    } else if (score >= 0.8) {
+        return `字段 '${tblField}' 与 '${boField}' 语义相似度高，采样数据类型一致。`;
+    } else if (score >= 0.6) {
+        return `基于语义分析，'${tblField}' 可能对应 '${boField}'，但建议人工确认。`;
+    }
+    return `AI 推荐映射，请验证数据采样值。`;
+};
+
+// Determine if mapping has transformation
+const hasTransformation = (rule: string): boolean => {
+    return Boolean(rule && rule !== 'Direct Map' && rule !== '直接映射');
+};
+
 
 interface BOMappingStudioViewProps {
     selectedBO: any;
@@ -660,27 +697,55 @@ const BOMappingStudioView = ({ selectedBO, showRuleEditor, setShowRuleEditor, bu
                                     <stop offset="0%" style={{ stopColor: '#3b82f6', stopOpacity: 0.5 }} />
                                     <stop offset="100%" style={{ stopColor: '#10b981', stopOpacity: 0.5 }} />
                                 </linearGradient>
+                                <linearGradient id="gradAI" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" style={{ stopColor: '#8b5cf6', stopOpacity: 0.7 }} />
+                                    <stop offset="100%" style={{ stopColor: '#06b6d4', stopOpacity: 0.7 }} />
+                                </linearGradient>
                             </defs>
-                            {connections.map(conn => (
-                                <g key={conn.id}>
-                                    <path
-                                        d={conn.path}
-                                        stroke="url(#grad1)"
-                                        strokeWidth="2"
-                                        fill="none"
-                                        className="transition-all duration-300"
-                                    />
-                                    {/* Action Button on Line */}
-                                    <foreignObject x={conn.xMid - 12} y={conn.yMid - 12} width="24" height="24" className="overflow-visible pointer-events-auto">
-                                        <button
-                                            onClick={() => setShowRuleEditor({ boField: conn.boField, tblField: conn.tblField })}
-                                            className="w-6 h-6 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-purple-600 hover:border-purple-300 hover:shadow-md flex items-center justify-center transition-all"
-                                        >
-                                            <Settings size={12} />
-                                        </button>
-                                    </foreignObject>
-                                </g>
-                            ))}
+                            {connections.map(conn => {
+                                const mapping = currentMapping?.mappings?.find((m: any) =>
+                                    m.boField === conn.boField && m.tblField === conn.tblField
+                                );
+                                const isAIGenerated = mapping?.rule === 'Smart Map' || mapping?.score !== undefined;
+                                const isTransformed = hasTransformation(mapping?.rule || '');
+                                const confidence = mapping?.score ? Math.round(mapping.score * 100) : null;
+
+                                return (
+                                    <g key={conn.id}>
+                                        <path
+                                            d={conn.path}
+                                            stroke={isAIGenerated ? 'url(#gradAI)' : 'url(#grad1)'}
+                                            strokeWidth={isTransformed ? 3 : 2}
+                                            strokeDasharray={isAIGenerated ? '8,4' : 'none'}
+                                            fill="none"
+                                            className="transition-all duration-300"
+                                        />
+                                        {/* Action Button on Line */}
+                                        <foreignObject x={conn.xMid - 12} y={conn.yMid - 12} width="24" height="24" className="overflow-visible pointer-events-auto">
+                                            <button
+                                                onClick={() => setShowRuleEditor({ boField: conn.boField, tblField: conn.tblField })}
+                                                className={`w-6 h-6 rounded-full bg-white border text-slate-400 hover:text-purple-600 hover:border-purple-300 hover:shadow-md flex items-center justify-center transition-all ${isTransformed ? 'border-amber-400 text-amber-500' : 'border-slate-200'
+                                                    }`}
+                                                title={isTransformed ? '包含转换逻辑' : '直接映射'}
+                                            >
+                                                {isTransformed ? <Code size={12} /> : <Settings size={12} />}
+                                            </button>
+                                        </foreignObject>
+                                        {/* AI Confidence Badge */}
+                                        {isAIGenerated && confidence && (
+                                            <foreignObject x={conn.xMid + 16} y={conn.yMid - 10} width="60" height="20" className="overflow-visible pointer-events-auto">
+                                                <div
+                                                    className="flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 border border-purple-200 rounded-full text-[10px] text-purple-700 font-medium cursor-help"
+                                                    title={getAIMappingExplanation(conn.boField, conn.tblField, mapping?.score || 0)}
+                                                >
+                                                    <Bot size={10} />
+                                                    {confidence}%
+                                                </div>
+                                            </foreignObject>
+                                        )}
+                                    </g>
+                                );
+                            })}
                         </svg>
 
                         {/* Empty/Action States (Rendered below SVG) */}
@@ -739,6 +804,8 @@ const BOMappingStudioView = ({ selectedBO, showRuleEditor, setShowRuleEditor, bu
                         <div className="flex-1 overflow-y-auto p-2" ref={tableListRef}>
                             {selectedTable?.columns?.filter((col: any) => col.name.toLowerCase().includes(tableSearchTerm.toLowerCase())).map((col: any, idx: number) => {
                                 const mapping = currentMapping?.mappings?.find((m: any) => m.tblField === col.name);
+                                const sampleData = mockColumnSamples[col.name] || mockColumnSamples[col.name.toLowerCase()] || ['—', '—', '—'];
+
                                 return (
                                     <div
                                         key={idx}
@@ -751,7 +818,31 @@ const BOMappingStudioView = ({ selectedBO, showRuleEditor, setShowRuleEditor, bu
                                         <div className={`absolute -left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-white ${mapping ? 'bg-emerald-500' : 'bg-slate-300 group-hover:bg-emerald-400'} cursor-pointer transition-colors shadow-sm`} />
 
                                         <div className="flex-1 min-w-0">
-                                            <div className="font-mono text-slate-700">{col.name}</div>
+                                            <div className="font-mono text-slate-700 flex items-center gap-1">
+                                                {col.name}
+                                                {/* Data Preview Icon with Tooltip */}
+                                                <div className="relative ml-1">
+                                                    <Eye size={12} className="text-slate-300 group-hover:text-emerald-500 cursor-help transition-colors" />
+                                                    {/* Sample Data Tooltip */}
+                                                    <div className="absolute left-6 top-1/2 -translate-y-1/2 hidden group-hover:block z-50">
+                                                        <div className="bg-slate-800 text-white text-[10px] px-2.5 py-2 rounded-lg shadow-xl min-w-[120px] whitespace-nowrap">
+                                                            <div className="text-slate-400 text-[9px] font-medium mb-1.5 flex items-center gap-1">
+                                                                <Database size={10} />
+                                                                采样数据 Top 3
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                {sampleData.slice(0, 3).map((val: string, i: number) => (
+                                                                    <div key={i} className="font-mono text-emerald-300 truncate max-w-[150px]">
+                                                                        "{val}"
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                            {/* Arrow */}
+                                                            <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-slate-800 rotate-45" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
                                             <div className="text-[10px] text-slate-400">{col.comment} · {col.type}</div>
                                         </div>
                                         {mapping && <CheckCircle size={14} className="text-emerald-500" />}

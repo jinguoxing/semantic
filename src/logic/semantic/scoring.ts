@@ -41,7 +41,10 @@ export const calculateTableRuleScore = (tableName: string, fields: any[], commen
 
     // T-05: Behavior Density
     const safeFieldCount = fields.length || 1;
-    const behaviorFields = fields.filter((f: any) => BEHAVIOR_KEYWORDS.test(f.name.toLowerCase()));
+    const behaviorFields = fields.filter((f: any) => {
+        const fieldName = (f.name || f.fieldName || f.col || f.field || '').toLowerCase();
+        return BEHAVIOR_KEYWORDS.test(fieldName);
+    });
     const behaviorRatio = behaviorFields.length / safeFieldCount;
     if (behaviorRatio < 0.35) {
         score.behavior = 0.85;
@@ -55,7 +58,10 @@ export const calculateTableRuleScore = (tableName: string, fields: any[], commen
     }
 
     // T-06: Comment
-    const fieldWithComment = fields.filter((f: any) => f.comment && f.comment.trim()).length;
+    const fieldWithComment = fields.filter((f: any) => {
+        const comment = f.comment || f.businessDefinition || f.description || '';
+        return comment && comment.trim();
+    }).length;
     const commentCoverage = fieldWithComment / safeFieldCount;
     if (comment && comment.length > 2) {
         score.comment = 0.6;

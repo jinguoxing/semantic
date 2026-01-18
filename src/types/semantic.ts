@@ -16,6 +16,26 @@ export interface TableRuleScore {
     total: number;
 }
 
+export type GovernanceStatus = 'S0' | 'S1' | 'S3';
+
+export interface ReviewStats {
+    pendingReviewFields: number;
+    gateFailedItems: number;
+    riskItems: number;
+}
+
+export interface RunSummary {
+    runId: string;
+    status: 'queued' | 'running' | 'success' | 'failed';
+    startedAt?: string;
+    finishedAt?: string;
+    sampleRows?: number;
+    ruleVersion?: string;
+    modelVersion?: string;
+    queueInfo?: string;
+    estimateTime?: string;
+}
+
 export type SemanticRole = 'Identifier' | 'BusAttr' | 'ForeignKey' | 'Status' | 'EventHint' | 'Audit';
 
 // V2 Beta: Object Type Classification
@@ -52,6 +72,7 @@ export interface FieldSemanticProfile {
     businessDefinition?: string;
     logicalType?: string;
     unit?: string;
+    governanceStatus?: GovernanceStatus;
 }
 
 export interface TableSemanticProfile {
@@ -93,6 +114,12 @@ export interface TableSemanticProfile {
     relationships?: { targetTable: string; type: string; key: string; description: string }[];
     qualityScore?: number;
     analysisStep?: 'idle' | 'analyzing' | 'done';
+    governanceStatus?: GovernanceStatus;
+    reviewStats?: ReviewStats;
+    lastRun?: RunSummary;
+    confirmedBy?: string;
+    confirmedAt?: string;
+    confirmScope?: string;
 }
 
 export interface PreviewField {

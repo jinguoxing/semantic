@@ -25,10 +25,20 @@ interface ScoringBreakdownPanelProps {
 
 export const ScoringBreakdownPanel: React.FC<ScoringBreakdownPanelProps> = ({ profile, fields }) => {
     const [isExpanded, setIsExpanded] = useState(false);
+    const gateDetails = profile.gateResult?.details || { primaryKey: false, lifecycle: false, tableType: true };
+    const safeFields = Array.isArray(fields) ? fields : [];
 
     // Detect scenario based on table characteristics
-    const detectScenario = (): 'DWS' | 'DWD' | 'DIM' => {
+    const detectScenario = (): 'DWS' | 'DWD' | 'DIM' | 'ODS' | 'SNAP' => {
         const tableName = profile.tableName.toLowerCase();
+
+        if (tableName.startsWith('ods_') || tableName.includes('_ods')) {
+            return 'ODS';
+        }
+
+        if (tableName.includes('snapshot') || tableName.includes('_snap') || tableName.includes('snap_')) {
+            return 'SNAP';
+        }
 
         // DWS: 汇总宽表 (summary/aggregate tables)
         if (tableName.includes('_sum') || tableName.includes('_agg') || tableName.includes('dws_')) {
@@ -45,20 +55,20 @@ export const ScoringBreakdownPanel: React.FC<ScoringBreakdownPanelProps> = ({ pr
     };
 
     // Calculate dimension scores
-    const calculateDimensions = (scenarioType: 'DWS' | 'DWD' | 'DIM'): ScoringDimension[] => {
+    const calculateDimensions = (scenarioType: 'DWS' | 'DWD' | 'DIM' | 'ODS' | 'SNAP'): ScoringDimension[] => {
         // Comment coverage
-        const fieldsWithComment = fields.filter(f => f.comment && f.comment.trim() !== '').length;
-        const commentCoverage = fields.length > 0 ? (fieldsWithComment / fields.length) * 100 : 0;
+        const fieldsWithComment = safeFields.filter(f => f.comment && f.comment.trim() !== '').length;
+        const commentCoverage = safeFields.length > 0 ? (fieldsWithComment / safeFields.length) * 100 : 0;
 
         // Primary key detection
-        const hasPrimaryKey = fields.some(f => f.key === 'PK' || f.role === 'Identifier');
+        const hasPrimaryKey = safeFields.some(f => f.key === 'PK' || f.role === 'Identifier');
 
         // Naming convention check (simple heuristic)
-        const wellNamedFields = fields.filter(f => {
-            const name = f.name.toLowerCase();
+        const wellNamedFields = safeFields.filter(f => {
+            const name = (f.name || f.fieldName || '').toLowerCase();
             return name.length > 2 && !name.includes('col') && !name.includes('field');
         }).length;
-        const namingScore = fields.length > 0 ? (wellNamedFields / fields.length) * 100 : 0;
+        const namingScore = safeFields.length > 0 ? (wellNamedFields / safeFields.length) * 100 : 0;
 
         if (scenarioType === 'DWS') {
             const commentDim: ScoringDimension = {
@@ -92,9 +102,9 @@ export const ScoringBreakdownPanel: React.FC<ScoringBreakdownPanelProps> = ({ pr
             return [commentDim, pkDim, namingDim];
         }
 
-        else if (scenarioType === 'DWD') {
+        else if (scenarioType === 'DWD' || scenarioType === 'ODS') {
             const pkDim: ScoringDimension = {
-                name: '主键完整性',
+                name: scenarioType === 'ODS' ? '源系统主键' : '主键完整性',
                 weight: 40,
                 score: hasPrimaryKey ? 40 : 0,
                 status: hasPrimaryKey ? 'pass' : 'warning',
@@ -103,7 +113,7 @@ export const ScoringBreakdownPanel: React.FC<ScoringBreakdownPanelProps> = ({ pr
             };
 
             const commentDim: ScoringDimension = {
-                name: '业务注释',
+                name: scenarioType === 'ODS' ? '字段注释' : '业务注释',
                 weight: 30,
                 score: Math.round(commentCoverage / 100 * 30),
                 status: commentCoverage >= 50 ? 'pass' : 'warning',
@@ -112,15 +122,47 @@ export const ScoringBreakdownPanel: React.FC<ScoringBreakdownPanelProps> = ({ pr
             };
 
             const lifecycleDim: ScoringDimension = {
-                name: '生命周期字段',
+                name: scenarioType === 'ODS' ? '同步时间字段' : '生命周期字段',
                 weight: 30,
-                score: profile.gateResult.details.lifecycle ? 30 : 0,
-                status: profile.gateResult.details.lifecycle ? 'pass' : 'warning',
-                diagnosis: profile.gateResult.details.lifecycle ? '生命周期字段完备' : '缺少时间字段',
-                suggestion: profile.gateResult.details.lifecycle ? '时间字段设置合理' : '建议：添加 created_time/updated_time'
+                score: gateDetails.lifecycle ? 30 : 0,
+                status: gateDetails.lifecycle ? 'pass' : 'warning',
+                diagnosis: gateDetails.lifecycle ? '时间字段完备' : '缺少时间字段',
+                suggestion: gateDetails.lifecycle ? '时间字段设置合理' : '建议：添加 created_time/updated_time'
             };
 
             return [pkDim, commentDim, lifecycleDim];
+        }
+
+        else if (scenarioType === 'SNAP') {
+            const snapshotField = safeFields.some(f => {
+                const name = (f.name || f.fieldName || '').toLowerCase();
+                return name.includes('snapshot') || name.startsWith('dt_') || name.endsWith('_dt');
+            });
+            const snapshotDim: ScoringDimension = {
+                name: '快照日期字段',
+                weight: 40,
+                score: snapshotField ? 40 : 0,
+                status: snapshotField ? 'pass' : 'warning',
+                diagnosis: snapshotField ? '快照日期字段已识别' : '缺少快照日期字段',
+                suggestion: snapshotField ? '快照字段设置合理' : '建议：补充 dt/snapshot_date 字段'
+            };
+            const namingDim: ScoringDimension = {
+                name: '字段命名',
+                weight: 30,
+                score: Math.round(namingScore / 100 * 30),
+                status: namingScore >= 70 ? 'pass' : 'warning',
+                diagnosis: namingScore >= 70 ? '命名规范良好' : '部分字段命名不规范',
+                suggestion: namingScore >= 70 ? '命名清晰易懂' : '建议：使用有业务含义的字段名'
+            };
+            const commentDim: ScoringDimension = {
+                name: '字段注释',
+                weight: 30,
+                score: Math.round(commentCoverage / 100 * 30),
+                status: commentCoverage >= 60 ? 'pass' : 'warning',
+                diagnosis: commentCoverage >= 60 ? '注释覆盖率良好' : '注释覆盖率不足',
+                suggestion: commentCoverage >= 60 ? '保持注释习惯' : '建议：补充快照关键字段注释'
+            };
+            return [snapshotDim, namingDim, commentDim];
         }
 
         else { // DIM
@@ -155,23 +197,50 @@ export const ScoringBreakdownPanel: React.FC<ScoringBreakdownPanelProps> = ({ pr
         }
     };
 
-    const scenarioType = detectScenario();
+    const autoScenario = detectScenario();
+    const [selectedScenario, setSelectedScenario] = useState<'DWS' | 'DWD' | 'DIM' | 'ODS' | 'SNAP'>(autoScenario);
+    const scenarioType = selectedScenario || autoScenario;
     const dimensions = calculateDimensions(scenarioType);
     const totalScore = dimensions.reduce((sum, d) => sum + d.score, 0);
     const maxScore = dimensions.reduce((sum, d) => sum + d.weight, 0);
     const scorePercentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+    const baselineDimensions = calculateDimensions(autoScenario);
+    const baselineScore = baselineDimensions.reduce((sum, d) => sum + d.score, 0);
+    const baselineMax = baselineDimensions.reduce((sum, d) => sum + d.weight, 0);
+    const baselineScorePercentage = baselineMax > 0 ? Math.round((baselineScore / baselineMax) * 100) : 0;
+    const scoreDelta = scorePercentage - baselineScorePercentage;
 
     const scenarioNames = {
         'DWS': 'DWS 汇总宽表标准',
         'DWD': 'DWD 明细表标准',
-        'DIM': 'DIM 维度表标准'
+        'DIM': 'DIM 维度表标准',
+        'ODS': 'ODS 贴源层标准',
+        'SNAP': '快照表标准'
     };
 
     const scenarioFocus = {
         'DWS': '重点考核语义清晰度',
         'DWD': '重点考核主键完整性',
-        'DIM': '重点考核属性规范性'
+        'DIM': '重点考核属性规范性',
+        'ODS': '重点考核同步与字段完整性',
+        'SNAP': '重点考核快照日期与字段稳定性'
     };
+    const dimensionPercent = (dim: ScoringDimension) => dim.weight > 0 ? Math.round((dim.score / dim.weight) * 100) : 0;
+    const baselineDimensionMap = new Map(baselineDimensions.map(dim => [dim.name, dimensionPercent(dim)]));
+    const activeDimensionMap = new Map(dimensions.map(dim => [dim.name, dimensionPercent(dim)]));
+    const diffItems = Array.from(new Set([...baselineDimensionMap.keys(), ...activeDimensionMap.keys()]))
+        .map(name => {
+            const baseValue = baselineDimensionMap.get(name) ?? 0;
+            const nextValue = activeDimensionMap.get(name) ?? 0;
+            return {
+                name,
+                delta: nextValue - baseValue,
+                current: nextValue
+            };
+        })
+        .filter(item => item.delta !== 0)
+        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+        .slice(0, 3);
 
     const getStatusIcon = (status: string) => {
         switch (status) {
@@ -198,19 +267,59 @@ export const ScoringBreakdownPanel: React.FC<ScoringBreakdownPanelProps> = ({ pr
                             <div className="font-bold text-slate-800">📊 评分透视</div>
                             <div className="text-xs text-slate-500 mt-0.5">
                                 当前策略：{scenarioNames[scenarioType]} ({scenarioFocus[scenarioType]})
+                                {scenarioType !== autoScenario && (
+                                    <span className="ml-2 text-[10px] text-slate-400">系统推荐：{scenarioNames[autoScenario]}</span>
+                                )}
                             </div>
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
                         <div className="text-right">
                             <div className="text-2xl font-bold text-indigo-600">{scorePercentage}%</div>
-                            <div className="text-xs text-slate-500">{totalScore}/{maxScore} 分</div>
+                            <div className="text-xs text-slate-500">综合评分（0-100）</div>
                         </div>
                         <button className="text-slate-400 hover:text-slate-600">
                             {isExpanded ? '收起 ▲' : '展开 ▼'}
                         </button>
                     </div>
                 </div>
+                <div className="mt-3 flex items-center gap-3 text-xs text-slate-500">
+                    <span>策略模板</span>
+                    <select
+                        value={scenarioType}
+                        onChange={(e) => setSelectedScenario(e.target.value as 'DWS' | 'DWD' | 'DIM' | 'ODS' | 'SNAP')}
+                        onClick={(e) => e.stopPropagation()}
+                        className="px-2 py-1 border border-slate-200 rounded bg-white text-slate-600"
+                    >
+                        {Object.keys(scenarioNames).map(key => (
+                            <option key={key} value={key}>{scenarioNames[key as keyof typeof scenarioNames]}</option>
+                        ))}
+                    </select>
+                </div>
+                {scenarioType !== autoScenario && (
+                    <div className="mt-3 bg-white/70 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-600">
+                        <div className="flex items-center justify-between">
+                            <span>
+                                切换前：{scenarioNames[autoScenario]} {baselineScorePercentage}%
+                                {' → '}
+                                切换后：{scenarioNames[scenarioType]} {scorePercentage}%
+                            </span>
+                            <span className={`font-semibold ${scoreDelta >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                {scoreDelta >= 0 ? `+${scoreDelta}` : scoreDelta}%
+                            </span>
+                        </div>
+                        {diffItems.length > 0 && (
+                            <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-slate-500">
+                                影响因子：
+                                {diffItems.map(item => (
+                                    <span key={item.name} className="px-1.5 py-0.5 bg-slate-100 rounded">
+                                        {item.name} {item.delta >= 0 ? `+${item.delta}` : item.delta}%
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Detailed Breakdown */}
@@ -237,12 +346,15 @@ export const ScoringBreakdownPanel: React.FC<ScoringBreakdownPanelProps> = ({ pr
                                         </div>
                                     </td>
                                     <td className="px-4 py-3 text-center">
-                                        <span className={`font-bold ${dim.status === 'pass' ? 'text-emerald-600' :
-                                                dim.status === 'warning' ? 'text-amber-600' :
-                                                    'text-blue-600'
-                                            }`}>
-                                            {dim.score}/{dim.weight}
-                                        </span>
+                                        <div className="flex flex-col items-center gap-0.5">
+                                            <span className={`font-bold ${dim.status === 'pass' ? 'text-emerald-600' :
+                                                    dim.status === 'warning' ? 'text-amber-600' :
+                                                        'text-blue-600'
+                                                }`}>
+                                                {dimensionPercent(dim)}%
+                                            </span>
+                                            <span className="text-[10px] text-slate-400">权重 {dim.weight}%</span>
+                                        </div>
                                     </td>
                                     <td className="px-4 py-3">
                                         <div>

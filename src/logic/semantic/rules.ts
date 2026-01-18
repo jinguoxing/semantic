@@ -30,7 +30,10 @@ export const checkGatekeeper = (tableName: string, fields: any[]): SemanticGateR
 
     // T-02: Primary Key Check
     // Check for 'id' field, or field ending in '_id', or primary key definition (mocked here as we just check field names)
-    const hasPrimaryKey = fields.some(f => f.primaryKey || f.name.toLowerCase() === 'id' || f.name.toLowerCase().endsWith('_id'));
+    const hasPrimaryKey = fields.some(f => {
+        const fieldName = (f.name || f.fieldName || f.col || f.field || '').toLowerCase();
+        return f.primaryKey || fieldName === 'id' || fieldName.endsWith('_id');
+    });
     if (hasPrimaryKey) {
         result.details.primaryKey = true;
     } else {
@@ -39,7 +42,10 @@ export const checkGatekeeper = (tableName: string, fields: any[]): SemanticGateR
 
     // T-03: Lifecycle Field Check
     const lifecyclePatterns = [/create_time/i, /update_time/i, /created_at/i, /updated_at/i, /valid_from/i];
-    const hasLifecycle = fields.some(f => lifecyclePatterns.some(p => p.test(f.name)));
+    const hasLifecycle = fields.some(f => {
+        const fieldName = (f.name || f.fieldName || f.col || f.field || '').toLowerCase();
+        return lifecyclePatterns.some(p => p.test(fieldName));
+    });
     if (hasLifecycle) {
         result.details.lifecycle = true;
     } else {
@@ -60,7 +66,9 @@ export const checkGatekeeper = (tableName: string, fields: any[]): SemanticGateR
  * Field Semantic Analysis (Column Level)
  */
 export const analyzeField = (field: any): FieldSemanticProfile => {
-    const name = field.name.toLowerCase();
+    const displayName = field.name || field.fieldName || field.col || field.field || '';
+    const name = displayName.toLowerCase();
+    const dataType = field.type || field.dataType || field.dtype || field.datatype || '';
 
     let role: SemanticRole = 'BusAttr';
     let sensitivity: 'L1' | 'L2' | 'L3' | 'L4' = 'L1';
@@ -106,8 +114,8 @@ export const analyzeField = (field: any): FieldSemanticProfile => {
     const roleConfidence = ruleHit === 'C-06' ? 0.6 : 0.9;
 
     return {
-        fieldName: field.name,
-        dataType: field.type,
+        fieldName: displayName,
+        dataType,
         role,
         roleConfidence,
         sensitivity,

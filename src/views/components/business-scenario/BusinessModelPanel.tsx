@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
 import {
     Database, Table, Activity, GitMerge, List, Settings,
-    Save, ChevronRight, Layout, Key, Shield, AlertCircle
+    Save, ChevronRight, Layout, Key, Shield, AlertCircle, History
 } from 'lucide-react';
 import { AnalysisResultVNext } from '../../../types/analysisVNext';
-import { BusinessModel, CandidateItem } from '../../../types/scene-model';
+import { BusinessModel, CandidateItem, ModelVersion } from '../../../types/scene-model';
 import { validationService, ValidationResult } from '../../../services/validation/validationService';
+import VersionHistoryPanel from './VersionHistoryPanel';
 
 interface BusinessModelPanelProps {
     data: AnalysisResultVNext | BusinessModel['working_copy'];
+    versions?: ModelVersion[];
     onSave: () => void;
-    onPublish?: () => void; // New prop for publishing
+    onPublish?: () => void;
+    onRollback?: (versionId: string) => void;
 }
 
 // Internal normalized view structure
@@ -98,13 +101,14 @@ const normalizeData = (data: AnalysisResultVNext | BusinessModel['working_copy']
     };
 }
 
-const BusinessModelPanel: React.FC<BusinessModelPanelProps> = ({ data, onSave, onPublish }) => {
+const BusinessModelPanel: React.FC<BusinessModelPanelProps> = ({ data, versions = [], onSave, onPublish, onRollback }) => {
     const viewData = normalizeData(data);
     const { allObjects, primaryObject, fieldSuggestions, relations, stateMachine, constraints, isV2 } = viewData;
 
     const [selectedObjectId, setSelectedObjectId] = useState<string>(primaryObject.id);
     const [activeView, setActiveView] = useState<'schema' | 'states' | 'rules'>('schema');
     const [validation, setValidation] = useState<ValidationResult | null>(null);
+    const [showVersionHistory, setShowVersionHistory] = useState(false);
 
     // Validate on load if V2
     React.useEffect(() => {
@@ -153,6 +157,17 @@ const BusinessModelPanel: React.FC<BusinessModelPanelProps> = ({ data, onSave, o
                             {validation.isValid ? <Shield size={11} /> : <AlertCircle size={11} />}
                             <span>完整度: {validation.score}%</span>
                         </div>
+                    )}
+
+                    {/* Version History Button */}
+                    {versions.length > 0 && (
+                        <button
+                            onClick={() => setShowVersionHistory(true)}
+                            className="px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded text-[11px] font-medium flex items-center gap-1 transition-colors shadow-sm"
+                            title="查看版本历史"
+                        >
+                            <History size={12} /> {versions.length}
+                        </button>
                     )}
 
                     <button
@@ -414,6 +429,25 @@ const BusinessModelPanel: React.FC<BusinessModelPanelProps> = ({ data, onSave, o
                     </div>
                 )}
             </div>
+
+            {/* Version History Modal */}
+            {showVersionHistory && (
+                <VersionHistoryPanel
+                    versions={versions}
+                    currentVersionId={versions[0]?.version_id}
+                    onPreview={(version) => {
+                        // For now, just log - could show a preview modal
+                        console.log('Preview version:', version);
+                    }}
+                    onRollback={(version) => {
+                        if (onRollback) {
+                            onRollback(version.version_id);
+                            setShowVersionHistory(false);
+                        }
+                    }}
+                    onClose={() => setShowVersionHistory(false)}
+                />
+            )}
         </div>
     );
 };

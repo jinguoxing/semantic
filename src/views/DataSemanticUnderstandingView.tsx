@@ -1,9 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { Sparkles, Activity, CheckCircle, ChevronDown, ChevronRight, Bot, AlertTriangle, ArrowLeft, RefreshCw, Table, Share2, Layers, Shield, Database, Search, Settings, Filter, Plus, FileText, Key, Hash, CheckCircle2, XCircle, Info, PanelLeftOpen, PanelLeftClose, Server, Clock, Edit3, X, Box, ListPlus, Cpu, Star, Tag, ShieldCheck, AlertCircle } from 'lucide-react';
 import { checkGatekeeper, analyzeField } from '../logic/semantic/rules';
 import { calculateTableRuleScore, calculateFusionScore } from '../logic/semantic/scoring';
 import { analyzeTableWithMockAI } from '../services/mockAiService';
-import { TableSemanticProfile, FieldSemanticProfile } from '../types/semantic';
+import { TableSemanticProfile, GovernanceStatus, ReviewStats, RunSummary } from '../types/semantic';
 import { SemanticAnalysisCard } from './semantic/SemanticAnalysisCard';
 import { SemanticConclusionCard } from './semantic/SemanticConclusionCard';
 import { DeepAnalysisTabs } from './semantic/DeepAnalysisTabs';
@@ -37,6 +37,13 @@ const DataSemanticUnderstandingView = ({
     const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
     const [expandedTypes, setExpandedTypes] = useState<string[]>(['MySQL', 'Oracle', 'PostgreSQL']);
     const [searchTerm, setSearchTerm] = useState('');
+    const [listFilters, setListFilters] = useState({
+        review: false,
+        gate: false,
+        risk: false
+    });
+    const [sortField, setSortField] = useState<'pendingReviewFields' | 'gateFailedItems' | 'riskItems' | 'updateTime' | null>(null);
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
     // Direct Generation State
     const [showDirectGenModal, setShowDirectGenModal] = useState(false);
     const [pendingGenData, setPendingGenData] = useState<any>(null);
@@ -50,6 +57,14 @@ const DataSemanticUnderstandingView = ({
     const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
     const [currentAnalyzing, setCurrentAnalyzing] = useState<string | null>(null); // P0: Streaming progress
     const [completedResults, setCompletedResults] = useState<typeof batchResults>([]); // P0: Real-time results
+    const [showRunModal, setShowRunModal] = useState(false);
+    const [runConfig, setRunConfig] = useState({
+        sampleRows: 10000,
+        ruleVersion: 'v2.4',
+        modelVersion: 'model-v1',
+        concurrency: 3,
+        queue: 'default'
+    });
     const [batchResults, setBatchResults] = useState<{
         tableId: string;
         tableName: string;
@@ -78,6 +93,15 @@ const DataSemanticUnderstandingView = ({
         timestamp: string;
         rolledBack: boolean;
     }[]>([]);
+    const [auditLogs, setAuditLogs] = useState<{
+        id: string;
+        tableId: string;
+        field?: string;
+        action: 'accept' | 'override' | 'pending' | 'confirm';
+        source?: string;
+        reason?: string;
+        timestamp: string;
+    }[]>([]);
 
 
     // Detail View State
@@ -85,7 +109,12 @@ const DataSemanticUnderstandingView = ({
     const [editMode, setEditMode] = useState(false);
     const [pendingAnalysisResult, setPendingAnalysisResult] = useState<TableSemanticProfile | null>(null);
     const [detailTab, setDetailTab] = useState<'fields' | 'graph' | 'dimensions' | 'quality'>('fields');
+    const [fieldViewMode, setFieldViewMode] = useState<'structure' | 'semantic'>('structure');
     const [fieldSearchTerm, setFieldSearchTerm] = useState('');
+    const [fieldProblemFilter, setFieldProblemFilter] = useState<'all' | 'review'>('all');
+    const [fieldGroupFilter, setFieldGroupFilter] = useState<'all' | 'A' | 'B' | 'C'>('all');
+    const [selectedFieldNames, setSelectedFieldNames] = useState<string[]>([]);
+    const [fieldReviewStatus, setFieldReviewStatus] = useState<Record<string, 'suggested' | 'confirmed' | 'pending'>>({});
     const [expandedFields, setExpandedFields] = useState<string[]>([]);
     const [focusField, setFocusField] = useState<string | null>(null);
     const [resultTab, setResultTab] = useState<'overview' | 'evidence' | 'fields' | 'logs'>('overview');
@@ -113,7 +142,9 @@ const DataSemanticUnderstandingView = ({
         tags: [],
         fields: [],
         aiEvidence: [],
-        ruleEvidence: []
+        ruleEvidence: [],
+        governanceStatus: 'S0',
+        reviewStats: { pendingReviewFields: 0, gateFailedItems: 0, riskItems: 0 }
     };
 
     const [semanticProfile, setSemanticProfile] = useState<TableSemanticProfile & { analysisStep: 'idle' | 'analyzing' | 'done', relationships?: any[] }>({
@@ -130,6 +161,156 @@ const DataSemanticUnderstandingView = ({
     // Mapping Details Modal State
     const [viewMappingBO, setViewMappingBO] = useState<string | null>(null);
 
+    const isIdle = semanticProfile.analysisStep === 'idle';
+    const governanceLabelMap: Record<GovernanceStatus, string> = {
+        S0: '未理解',
+        S1: '建议已生成',
+        S3: '已确认生效'
+    };
+    const governanceToneMap: Record<GovernanceStatus, string> = {
+        S0: 'bg-slate-100 text-slate-500',
+        S1: 'bg-amber-50 text-amber-700 border border-amber-100',
+        S3: 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+    };
+    const governanceHintMap: Record<GovernanceStatus, string> = {
+        S0: '未理解，暂无建议',
+        S1: '建议已生成，待确认',
+        S3: '已确认生效，可追溯版本'
+    };
+    const rolledBackTone = 'bg-orange-50 text-orange-700 border border-orange-100';
+    const runStatusLabelMap: Record<RunSummary['status'], string> = {
+        queued: '排队中',
+        running: '运行中',
+        success: '完成',
+        failed: '失败'
+    };
+    const runStatusToneMap: Record<RunSummary['status'], string> = {
+        queued: 'text-amber-600',
+        running: 'text-blue-600',
+        success: 'text-emerald-600',
+        failed: 'text-red-600'
+    };
+
+    const resolveGovernanceStatus = (asset: any): GovernanceStatus => {
+        if (asset?.governanceStatus) return asset.governanceStatus as GovernanceStatus;
+        if (asset?.semanticAnalysis?.governanceStatus) return asset.semanticAnalysis.governanceStatus as GovernanceStatus;
+        if (asset?.status === 'confirmed' || asset?.status === 'effective') return 'S3';
+        if (asset?.status === 'pending_review' || asset?.status === 'analyzed') return 'S1';
+        if (asset?.semanticAnalysis?.analysisStep === 'done') return 'S1';
+        return 'S0';
+    };
+
+    const isSuggestionsReady = (status?: GovernanceStatus) => (status || 'S0') !== 'S0';
+    const getGovernanceDisplay = (status: GovernanceStatus, rolledBack?: boolean) => {
+        if (rolledBack) {
+            return {
+                label: '已回滚',
+                tone: rolledBackTone,
+                hint: '已回滚，可恢复版本'
+            };
+        }
+        return {
+            label: governanceLabelMap[status],
+            tone: governanceToneMap[status],
+            hint: governanceHintMap[status]
+        };
+    };
+    const normalizeFields = (fields: any[]) => {
+        return fields
+            .map((field: any) => {
+                const name = field.name || field.fieldName || field.col || field.field || '';
+                const type = field.type || field.dataType || field.dtype || field.datatype || '';
+                const comment = field.comment || field.businessDefinition || field.description || '';
+                const primaryKey = typeof field.primaryKey === 'boolean'
+                    ? field.primaryKey
+                    : typeof field.isPrimary === 'boolean'
+                        ? field.isPrimary
+                        : field.key === 'PK';
+                return { ...field, name, type, comment, primaryKey };
+            })
+            .filter((field: any) => field.name);
+    };
+
+    const buildReviewStats = (tableName: string, fields: any[], comment?: string): ReviewStats => {
+        const safeFields = normalizeFields(Array.isArray(fields) ? fields : []);
+        if (safeFields.length === 0) {
+            return { pendingReviewFields: 0, gateFailedItems: 0, riskItems: 0 };
+        }
+        const gateResult = checkGatekeeper(tableName, safeFields);
+        const analyzedFields = safeFields.map((f: any) => analyzeField(f));
+        const pendingReviewFields = analyzedFields.filter((f: any) =>
+            ['L3', 'L4'].includes(f.sensitivity) || (f.roleConfidence || 0) < 0.7
+        ).length;
+        const gateFailedItems = gateResult.result === 'PASS'
+            ? 0
+            : Math.max(gateResult.reasons?.length || 0, 1);
+        const { score } = calculateTableRuleScore(tableName, safeFields, comment);
+        const sensitiveRatio = analyzedFields.length === 0
+            ? 0
+            : analyzedFields.filter((f: any) => ['L3', 'L4'].includes(f.sensitivity)).length / analyzedFields.length;
+        let riskItems = 0;
+        if (score.total < 0.6) riskItems += 1;
+        if (sensitiveRatio >= 0.3) riskItems += 1;
+        if (gateResult.result === 'REJECT') riskItems += 1;
+        return { pendingReviewFields, gateFailedItems, riskItems };
+    };
+
+    const getDirectGenEligibility = (table: any, profile: TableSemanticProfile | any) => {
+        const safeProfile = profile || {};
+        const safeTableName = table?.table || safeProfile.tableName || '';
+        const fields = normalizeFields(Array.isArray(table?.fields) ? table.fields : (safeProfile.fields || []));
+        const gateDetails = safeProfile.gateResult?.details || {};
+        const gateResult = safeProfile.gateResult?.result || 'PASS';
+        const reviewStats = safeProfile.reviewStats || buildReviewStats(safeTableName, fields, table?.comment);
+        const isTableConfirmed = (safeProfile.governanceStatus || semanticProfile.governanceStatus) === 'S3';
+        const primaryKeyFields = fields.filter((field: any) =>
+            field.primaryKey || field.key === 'PK' || field.name === 'id' || field.name.endsWith('_id')
+        );
+        const primaryKeyConfirmed = primaryKeyFields.length > 0 && (
+            isTableConfirmed || primaryKeyFields.every((field: any) => fieldReviewStatus[field.name] === 'confirmed')
+        );
+        const lifecyclePassed = gateDetails.lifecycle === true;
+        const sensitiveFields = fields.filter((field: any) => {
+            const analysis = analyzeField(field);
+            const sensitivity = sensitivityOverrides[field.name] || analysis.sensitivity;
+            return sensitivity === 'L3' || sensitivity === 'L4';
+        });
+        const sensitivePending = sensitiveFields.filter((field: any) =>
+            !isTableConfirmed && fieldReviewStatus[field.name] !== 'confirmed'
+        );
+        const sensitiveProcessed = sensitivePending.length === 0;
+        const pendingReviewCount = reviewStats?.pendingReviewFields || 0;
+        const impactAcceptable = pendingReviewCount === 0 && gateResult === 'PASS';
+
+        const checklist = [
+            {
+                key: 'pk',
+                label: '主键已确认',
+                passed: primaryKeyConfirmed,
+                detail: primaryKeyFields.length === 0 ? '未检测到主键字段' : (primaryKeyConfirmed ? '已确认' : '存在未确认主键')
+            },
+            {
+                key: 'lifecycle',
+                label: '生命周期 Gate 通过',
+                passed: lifecyclePassed,
+                detail: lifecyclePassed ? '通过' : '未通过'
+            },
+            {
+                key: 'sensitive',
+                label: '敏感冲突已处理',
+                passed: sensitiveProcessed,
+                detail: sensitiveProcessed ? '已处理' : `待处理 ${sensitivePending.length} 个敏感字段`
+            },
+            {
+                key: 'impact',
+                label: '影响范围可接受',
+                passed: impactAcceptable,
+                detail: impactAcceptable ? '待Review=0' : `待Review ${pendingReviewCount}`
+            }
+        ];
+        const canGenerate = checklist.every(item => item.passed);
+        return { checklist, canGenerate };
+    };
 
     // Derived Data
     // Get unique data sources from scan results (assuming scanResults contains source info)
@@ -158,17 +339,78 @@ const DataSemanticUnderstandingView = ({
         return acc;
     }, {} as Record<string, any[]>);
 
-    // Filtered Assets list for Right Panel
-    const filteredAssets = assets.filter(asset => {
-        const matchesSource = selectedDataSourceId ? asset.sourceId === selectedDataSourceId : true;
-        const matchesSearch = searchTerm === '' ||
-            asset.table.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (asset.comment || '').includes(searchTerm) ||
-            (asset.semanticAnalysis?.businessName || '').includes(searchTerm);
-        return matchesSource && matchesSearch;
-    });
+    const listAssets = useMemo(() => {
+        return assets.map(asset => {
+            const governanceStatus = resolveGovernanceStatus(asset);
+            const reviewStats = governanceStatus === 'S0'
+                ? null
+                : (asset.reviewStats || buildReviewStats(asset.table, asset.fields || [], asset.comment));
+            const lastRun = asset.lastRun || asset.semanticAnalysis?.lastRun || null;
+            return { ...asset, governanceStatus, reviewStats, lastRun };
+        });
+    }, [assets]);
 
-    const selectedTable = assets.find(a => a.table === selectedTableId);
+    const rolledBackTableIds = useMemo(() => {
+        return new Set(
+            upgradeHistory.filter(entry => entry.rolledBack).map(entry => entry.tableId)
+        );
+    }, [upgradeHistory]);
+
+    // Filtered Assets list for Right Panel
+    const filteredAssets = useMemo(() => {
+        const keyword = searchTerm.trim().toLowerCase();
+        const filtered = listAssets.filter(asset => {
+            const matchesSource = selectedDataSourceId ? asset.sourceId === selectedDataSourceId : true;
+            const matchesSearch = keyword === '' ||
+                asset.table.toLowerCase().includes(keyword) ||
+                (asset.comment || '').toLowerCase().includes(keyword) ||
+                (asset.semanticAnalysis?.businessName || '').toLowerCase().includes(keyword);
+            const stats = asset.reviewStats as ReviewStats | null;
+            const matchesReview = !listFilters.review || (stats?.pendingReviewFields || 0) > 0;
+            const matchesGate = !listFilters.gate || (stats?.gateFailedItems || 0) > 0;
+            const matchesRisk = !listFilters.risk || (stats?.riskItems || 0) > 0;
+            return matchesSource && matchesSearch && matchesReview && matchesGate && matchesRisk;
+        });
+
+        if (!sortField) return filtered;
+        const direction = sortOrder === 'asc' ? 1 : -1;
+        return [...filtered].sort((a, b) => {
+            const aStats = a.reviewStats as ReviewStats | null;
+            const bStats = b.reviewStats as ReviewStats | null;
+            if (sortField === 'updateTime') {
+                const aTime = a.updateTime ? new Date(a.updateTime).getTime() : 0;
+                const bTime = b.updateTime ? new Date(b.updateTime).getTime() : 0;
+                return (aTime - bTime) * direction;
+            }
+            const aVal = aStats ? (aStats as any)[sortField] || 0 : 0;
+            const bVal = bStats ? (bStats as any)[sortField] || 0 : 0;
+            return (aVal - bVal) * direction;
+        });
+    }, [listAssets, selectedDataSourceId, searchTerm, listFilters, sortField, sortOrder]);
+
+    const selectedTable = scanResults.find((item: any) => item.table === selectedTableId)
+        || assets.find(a => a.table === selectedTableId);
+    const selectedTableFields = useMemo(
+        () => normalizeFields(Array.isArray(selectedTable?.fields) ? selectedTable.fields : []),
+        [selectedTable]
+    );
+    const hasFieldAnalysis = Array.isArray(semanticProfile.fields) && semanticProfile.fields.length > 0;
+
+    useEffect(() => {
+        if (!selectedTableId || viewMode !== 'detail') return;
+        const asset = scanResults.find((item: any) => item.table === selectedTableId);
+        if (!asset?.semanticAnalysis) return;
+        const governanceStatus = resolveGovernanceStatus(asset);
+        setSemanticProfile(prev => ({
+            ...prev,
+            ...asset.semanticAnalysis,
+            governanceStatus,
+            analysisStep: governanceStatus === 'S0'
+                ? (asset.semanticAnalysis.analysisStep || 'idle')
+                : 'done',
+            relationships: prev.relationships
+        }));
+    }, [scanResults, selectedTableId, viewMode]);
 
     // Helpers
     const toggleType = (type: string) => {
@@ -185,17 +427,27 @@ const DataSemanticUnderstandingView = ({
 
     const handleTableClick = (tableId: string) => {
         setSelectedTableId(tableId);
+        setFieldProblemFilter('all');
+        setFieldGroupFilter('all');
+        setFieldSearchTerm('');
+        setSelectedFieldNames([]);
+        setFieldReviewStatus({});
+        setResultTab('overview');
 
         // Prepare semantic profile for detail view
         const asset = assets.find(a => a.table === tableId);
         if (asset?.semanticAnalysis) {
+            const governanceStatus = resolveGovernanceStatus(asset);
             // If we have saved analysis, load it (adapting structure if necessary)
             // simplified for now: just reset to empty if structure mismatch or use saved
             setSemanticProfile({
                 ...emptyProfile,
                 ...asset.semanticAnalysis,
-                analysisStep: asset.status === 'analyzed' ? 'done' : (asset.semanticAnalysis.analysisStep || 'idle')
+                analysisStep: governanceStatus === 'S0' ? (asset.semanticAnalysis.analysisStep || 'idle') : 'done',
+                governanceStatus,
+                reviewStats: asset.reviewStats
             });
+            setFieldViewMode(isSuggestionsReady(governanceStatus) ? 'semantic' : 'structure');
             setEditMode(false);
         } else {
             // New / Unanalyzed
@@ -203,12 +455,16 @@ const DataSemanticUnderstandingView = ({
                 ...emptyProfile,
                 tableName: tableId,
                 analysisStep: 'idle',
-                relationships: []
+                relationships: [],
+                governanceStatus: 'S0'
             });
+            setFieldViewMode('structure');
             setEditMode(true);
         }
 
         setViewMode('detail');
+        setDetailTab('fields');
+        setExpandedFields([]);
     };
 
     const handleBackToList = () => {
@@ -217,7 +473,7 @@ const DataSemanticUnderstandingView = ({
     };
 
     const handleFocusField = (fieldName: string) => {
-        const fields = selectedTable?.fields || [];
+        const fields = selectedTableFields;
         if (fields.length === 0) return;
         const lowerTarget = fieldName.toLowerCase();
         const exactMatch = fields.find((f: any) => f.name === fieldName);
@@ -237,6 +493,102 @@ const DataSemanticUnderstandingView = ({
         }
     };
 
+    const handleViewEvidence = () => {
+        setResultTab('evidence');
+        scrollToSection('result-key-evidence');
+    };
+
+    const handleViewLogs = () => {
+        setResultTab('logs');
+        scrollToSection('result-logs');
+    };
+
+    const recordAuditLog = (payload: {
+        field?: string;
+        action: 'accept' | 'override' | 'pending' | 'confirm';
+        source?: string;
+        reason?: string;
+        timestamp: string;
+    }) => {
+        if (!selectedTable) return;
+        const entry = {
+            id: `AUD-${Date.now()}`,
+            tableId: selectedTable.table,
+            ...payload
+        };
+        setAuditLogs(prev => [entry, ...prev]);
+    };
+
+    const handleEvidenceAction = (payload: {
+        action: 'accept' | 'override' | 'pending';
+        field?: string;
+        source?: string;
+        reason?: string;
+    }) => {
+        recordAuditLog({ ...payload, timestamp: new Date().toISOString() });
+        if (payload.action === 'override') {
+            setEditMode(true);
+        }
+        if (payload.field) {
+            handleFocusField(payload.field);
+        } else {
+            setResultTab('fields');
+        }
+    };
+
+    const handleConfirmEffective = () => {
+        if (!selectedTable) return;
+        const confirmedAt = new Date().toISOString();
+        const confirmedBy = '当前用户';
+        const confirmScope = selectedTable.sourceName
+            ? `${selectedTable.sourceName} / ${selectedTable.table}`
+            : selectedTable.table;
+        const confirmFieldNames = selectedTableFields.map(field => field.name);
+        const updatedProfile = {
+            ...semanticProfile,
+            governanceStatus: 'S3' as GovernanceStatus,
+            confirmedBy,
+            confirmedAt,
+            confirmScope
+        };
+        setSemanticProfile(prev => ({ ...prev, ...updatedProfile }));
+        if (confirmFieldNames.length > 0) {
+            setFieldReviewStatus(prev => {
+                const next = { ...prev };
+                confirmFieldNames.forEach(name => {
+                    next[name] = 'confirmed';
+                });
+                return next;
+            });
+        }
+        setScanResults((prev: any[]) => prev.map((item: any) =>
+            item.table === selectedTable.table
+                ? { ...item, status: 'analyzed', governanceStatus: 'S3', semanticAnalysis: { ...item.semanticAnalysis, ...updatedProfile } }
+                : item
+        ));
+        recordAuditLog({
+            action: 'confirm',
+            source: '融合',
+            reason: '确认生效',
+            timestamp: confirmedAt
+        });
+    };
+
+    const handleJumpToProblemFields = () => {
+        setDetailTab('fields');
+        setFieldProblemFilter('review');
+        setFieldSearchTerm('');
+        if (isSuggestionsReady(semanticProfile.governanceStatus as GovernanceStatus)) {
+            setFieldViewMode('semantic');
+        }
+        scrollToSection('detail-fields-table');
+    };
+
+    const handleOpenGateDetail = () => {
+        setResultTab('overview');
+        scrollToSection('result-gate-detail');
+    };
+
     const handleAnalyze = async () => {
         if (!selectedTable) return;
         setIsAnalyzing(true);
@@ -245,7 +597,7 @@ const DataSemanticUnderstandingView = ({
         // 1. Logic Layer: Rules Checking
         // Mock fields since selectedTable might not have full field details in assets list
         // In real app, we would fetch fields for selectedTable.table
-        const mockFields = selectedTable.fields || [
+        const mockFields = selectedTableFields.length > 0 ? selectedTableFields : [
             { name: 'id', type: 'bigint', primaryKey: true },
             { name: 'create_time', type: 'datetime' },
             { name: 'name', type: 'varchar' }
@@ -301,7 +653,9 @@ const DataSemanticUnderstandingView = ({
                 dataLayer: 'DWD',
                 updateStrategy: '增量追加',
                 retentionPeriod: '永久',
-                securityLevel: 'L2'
+                securityLevel: 'L2',
+                governanceStatus: 'S1',
+                reviewStats: buildReviewStats(selectedTable.table, mockFields, selectedTable.comment)
             };
 
             // Store result in state for AnalysisProgressPanel to use
@@ -343,8 +697,35 @@ const DataSemanticUnderstandingView = ({
         );
     };
 
+    const handleRunStart = () => {
+        if (selectedTables.length === 0) return;
+        const runId = `RUN-${Date.now()}`;
+        const startedAt = new Date().toISOString();
+        const estimateMinutes = Math.max(1, Math.ceil(selectedTables.length / Math.max(runConfig.concurrency, 1)) * 2);
+        const runSummary: RunSummary = {
+            runId,
+            status: 'running',
+            startedAt,
+            sampleRows: runConfig.sampleRows,
+            ruleVersion: runConfig.ruleVersion,
+            modelVersion: runConfig.modelVersion,
+            queueInfo: `${Math.min(selectedTables.length, runConfig.concurrency)}/${runConfig.concurrency}`,
+            estimateTime: `${estimateMinutes}~${estimateMinutes + 1} 分钟`
+        };
+        setShowRunModal(false);
+        setScanResults((prev: any[]) => prev.map((item: any) =>
+            selectedTables.includes(item.table)
+                ? { ...item, lastRun: { ...runSummary } }
+                : item
+        ));
+        handleBatchAnalyze(runId, runSummary);
+    };
+
     const analyzeTableForBatch = async (table: any) => {
-        const mockFields = table.fields || [
+        const rawFields = Array.isArray(table.fields) ? table.fields : [];
+        const mockFields = rawFields.length > 0
+            ? normalizeFields(rawFields)
+            : [
             { name: 'id', type: 'bigint', primaryKey: true },
             { name: 'create_time', type: 'datetime' },
             { name: 'name', type: 'varchar' }
@@ -368,7 +749,7 @@ const DataSemanticUnderstandingView = ({
     };
 
     // Handle batch analysis for selected tables
-    const handleBatchAnalyze = async () => {
+    const handleBatchAnalyze = async (runId: string, runSummary: RunSummary) => {
         if (selectedTables.length === 0) return;
         setBatchAnalyzing(true);
         setBatchProgress({ current: 0, total: selectedTables.length });
@@ -390,6 +771,8 @@ const DataSemanticUnderstandingView = ({
             const {
                 analyzedFields,
                 ruleScore,
+                ruleEvidence,
+                gateResult,
                 aiResult,
                 finalScore
             } = await analyzeTableForBatch(table);
@@ -410,6 +793,21 @@ const DataSemanticUnderstandingView = ({
             if (ruleScore.total < 0.6) {
                 lowConfidenceReasons.push('规则评分偏低，命名或注释可能不规范');
             }
+
+            const reviewStats: ReviewStats = {
+                pendingReviewFields: analyzedFields.filter((f: any) =>
+                    ['L3', 'L4'].includes(f.sensitivity) || (f.roleConfidence || 0) < 0.7
+                ).length,
+                gateFailedItems: gateResult.result === 'PASS' ? 0 : Math.max(gateResult.reasons?.length || 0, 1),
+                riskItems: (() => {
+                    const sensitiveRatio = analyzedFields.length === 0 ? 0 : analyzedFields.filter((f: any) => ['L3', 'L4'].includes(f.sensitivity)).length / analyzedFields.length;
+                    let count = 0;
+                    if (ruleScore.total < 0.6) count += 1;
+                    if (sensitiveRatio >= 0.3) count += 1;
+                    if (gateResult.result === 'REJECT') count += 1;
+                    return count;
+                })()
+            };
 
             results.push({
                 tableId: table.table,
@@ -443,7 +841,29 @@ const DataSemanticUnderstandingView = ({
 
             setScanResults((prev: any[]) => prev.map((item: any) =>
                 item.table === tableId
-                    ? { ...item, status: 'pending_review', scorePercent, semanticAnalysis: aiResult }
+                    ? {
+                        ...item,
+                        status: 'pending_review',
+                        governanceStatus: 'S1',
+                        scorePercent,
+                        reviewStats,
+                        lastRun: {
+                            ...runSummary,
+                            runId,
+                            status: 'success',
+                            finishedAt: new Date().toISOString()
+                        },
+                        semanticAnalysis: {
+                            ...aiResult,
+                            governanceStatus: 'S1',
+                            analysisStep: 'done',
+                            reviewStats,
+                            fields: analyzedFields,
+                            gateResult,
+                            ruleScore,
+                            ruleEvidence
+                        }
+                    }
                     : item
             ));
         }
@@ -539,16 +959,22 @@ const DataSemanticUnderstandingView = ({
         // Update scan result
         setScanResults((prev: any[]) => prev.map((item: any) =>
             item.table === table.table
-                ? { ...item, status: 'analyzed', semanticAnalysis: { ...profile } }
+                ? { ...item, status: 'analyzed', governanceStatus: 'S1', semanticAnalysis: { ...profile } }
                 : item
         ));
 
+        setSemanticProfile(prev => ({ ...prev, governanceStatus: 'S1' }));
         setEditMode(false);
         // Toast or specific feedback handled by UI
         if (setActiveModule) setActiveModule('candidate_confirmation');
     };
 
     const executeDirectGenerate = (table: any, profile: any) => {
+        const eligibility = getDirectGenEligibility(table, profile);
+        if (!eligibility.canGenerate) {
+            alert('生成前置条件未满足，请先完成 Gate/Review 处理。');
+            return;
+        }
         const newBO = {
             id: `BO-${Date.now()}`,
             name: profile.businessName,
@@ -574,10 +1000,11 @@ const DataSemanticUnderstandingView = ({
         // Update scan result
         setScanResults((prev: any[]) => prev.map((item: any) =>
             item.table === table.table
-                ? { ...item, status: 'analyzed', semanticAnalysis: { ...profile } }
+                ? { ...item, status: 'analyzed', governanceStatus: 'S3', semanticAnalysis: { ...profile } }
                 : item
         ));
 
+        setSemanticProfile(prev => ({ ...prev, governanceStatus: 'S3' }));
         setEditMode(false);
         setShowDirectGenModal(false);
         if (setActiveModule) setActiveModule('td_modeling');
@@ -589,7 +1016,7 @@ const DataSemanticUnderstandingView = ({
         // Update scan result with current profile
         setScanResults((prev: any[]) => prev.map((item: any) =>
             item.table === selectedTable.table
-                ? { ...item, semanticAnalysis: { ...semanticProfile } } // Save current state
+                ? { ...item, governanceStatus: 'S1', semanticAnalysis: { ...semanticProfile, governanceStatus: 'S1' } } // Save current state
                 : item
         ));
 
@@ -743,19 +1170,45 @@ const DataSemanticUnderstandingView = ({
                     {viewMode === 'list' && (
                         <div className="flex flex-col h-full">
                             {/* List Header & Filter */}
-                            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-start gap-4">
                                 <div>
                                     <h3 className="font-bold text-slate-800 text-lg">逻辑视图列表</h3>
                                     <p className="text-xs text-slate-500 mt-1">
                                         {selectedDataSourceId
                                             ? `当前筛选: ${(dataSources.find((d: any) => d.id === selectedDataSourceId) as any)?.name}`
-                                            : '显示所有已扫描的物理资产'}
+                                            : '显示所有已扫描的逻辑视图'}
                                     </p>
+                                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                                        <span className="text-slate-400">快速筛选:</span>
+                                        {([
+                                            { key: 'review', label: '待Review' },
+                                            { key: 'gate', label: 'Gate 未通过' },
+                                            { key: 'risk', label: '高风险' }
+                                        ] as const).map(item => (
+                                            <button
+                                                key={item.key}
+                                                onClick={() => setListFilters(prev => ({ ...prev, [item.key]: !prev[item.key] }))}
+                                                className={`px-2 py-1 rounded-full border transition-colors ${listFilters[item.key]
+                                                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                                            >
+                                                {item.label}
+                                            </button>
+                                        ))}
+                                        {(listFilters.review || listFilters.gate || listFilters.risk) && (
+                                            <button
+                                                onClick={() => setListFilters({ review: false, gate: false, risk: false })}
+                                                className="px-2 py-1 rounded-full border border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                                            >
+                                                清除筛选
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="relative w-64">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                                     <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                                        placeholder="搜索表名、业务名..."
+                                        placeholder="搜索逻辑视图/业务名称..."
                                         className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                     />
                                 </div>
@@ -783,7 +1236,7 @@ const DataSemanticUnderstandingView = ({
                                         <span className="text-sm text-slate-600 px-6">全选</span>
                                         {selectedTables.length > 0 && (
                                             <span className="text-sm text-blue-600 font-medium">
-                                                已选 {selectedTables.length} 张表
+                                                已选 {selectedTables.length} 张
                                             </span>
                                         )}
                                     </div>
@@ -801,17 +1254,24 @@ const DataSemanticUnderstandingView = ({
                                                 />
                                             </div>
                                         ) : (
-                                            <button
-                                                onClick={handleBatchAnalyze}
-                                                disabled={selectedTables.length === 0}
-                                                className={`px-4 py-1.5 text-sm rounded-lg flex items-center gap-2 transition-all ${selectedTables.length > 0
-                                                    ? 'bg-gradient-to-r from-purple-600 to-pink-500 text-white hover:from-purple-700 hover:to-pink-600 shadow-md hover:shadow-lg'
-                                                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                                    }`}
-                                            >
-                                                <Sparkles size={14} />
-                                                语义理解
-                                            </button>
+                                            <div className="flex flex-col items-end gap-1">
+                                                <button
+                                                    onClick={() => setShowRunModal(true)}
+                                                    disabled={selectedTables.length === 0}
+                                                    className={`px-4 py-1.5 text-sm rounded-lg flex items-center gap-2 transition-all ${selectedTables.length > 0
+                                                        ? 'bg-gradient-to-r from-blue-600 to-indigo-500 text-white hover:from-blue-700 hover:to-indigo-600 shadow-md hover:shadow-lg'
+                                                        : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                                        }`}
+                                                >
+                                                    <Sparkles size={14} />
+                                                    批量生成建议（{selectedTables.length}）
+                                                </button>
+                                                <div className="text-[10px] text-slate-400">
+                                                    {selectedTables.length > 0
+                                                        ? `预计耗时 ${Math.max(1, Math.ceil(selectedTables.length / Math.max(runConfig.concurrency, 1)) * 2)}~${Math.max(2, Math.ceil(selectedTables.length / Math.max(runConfig.concurrency, 1)) * 2 + 1)} 分钟 · 采样 ${runConfig.sampleRows / 1000}k 行/表 · 队列 ${Math.min(selectedTables.length, runConfig.concurrency)}/${runConfig.concurrency}`
+                                                        : '请选择表以生成建议'}
+                                                </div>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -819,12 +1279,75 @@ const DataSemanticUnderstandingView = ({
                                     <thead className="bg-gradient-to-r from-slate-50 to-slate-100/50 text-slate-500 border-b border-slate-200 sticky top-0 z-10">
                                         <tr>
                                             <th className="px-3 py-3.5 w-12"></th>
-                                            <th className="px-4 py-3.5 font-medium text-left min-w-[200px]">表技术名称</th>
-                                            <th className="px-4 py-3.5 font-medium text-left min-w-[140px]">表业务名称</th>
+                                            <th className="px-4 py-3.5 font-medium text-left min-w-[200px]">逻辑视图名称</th>
+                                            <th className="px-4 py-3.5 font-medium text-left min-w-[140px]">业务名称</th>
                                             <th className="px-4 py-3.5 font-medium text-left min-w-[160px]">所属数据源</th>
                                             <th className="px-4 py-3.5 font-medium text-right w-24">行数</th>
                                             <th className="px-4 py-3.5 font-medium text-center w-32">更新时间</th>
-                                            <th className="px-4 py-3.5 font-medium text-center w-28">分析状态</th>
+                                            <th className="px-4 py-3.5 font-medium text-center w-32">治理状态</th>
+                                            <th className="px-4 py-3.5 font-medium text-center w-28">
+                                                <button
+                                                    onClick={() => {
+                                                        setSortField(prev => {
+                                                            if (prev === 'pendingReviewFields') {
+                                                                setSortOrder(o => (o === 'asc' ? 'desc' : 'asc'));
+                                                                return prev;
+                                                            }
+                                                            setSortOrder('desc');
+                                                            return 'pendingReviewFields';
+                                                        });
+                                                    }}
+                                                    className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
+                                                >
+                                                    待Review字段
+                                                    <ChevronDown
+                                                        size={12}
+                                                        className={`transition-transform ${sortField === 'pendingReviewFields' && sortOrder === 'asc' ? 'rotate-180' : ''} ${sortField === 'pendingReviewFields' ? 'text-slate-600' : 'text-slate-300'}`}
+                                                    />
+                                                </button>
+                                            </th>
+                                            <th className="px-4 py-3.5 font-medium text-center w-28">
+                                                <button
+                                                    onClick={() => {
+                                                        setSortField(prev => {
+                                                            if (prev === 'gateFailedItems') {
+                                                                setSortOrder(o => (o === 'asc' ? 'desc' : 'asc'));
+                                                                return prev;
+                                                            }
+                                                            setSortOrder('desc');
+                                                            return 'gateFailedItems';
+                                                        });
+                                                    }}
+                                                    className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
+                                                >
+                                                    Gate未通过
+                                                    <ChevronDown
+                                                        size={12}
+                                                        className={`transition-transform ${sortField === 'gateFailedItems' && sortOrder === 'asc' ? 'rotate-180' : ''} ${sortField === 'gateFailedItems' ? 'text-slate-600' : 'text-slate-300'}`}
+                                                    />
+                                                </button>
+                                            </th>
+                                            <th className="px-4 py-3.5 font-medium text-center w-24">
+                                                <button
+                                                    onClick={() => {
+                                                        setSortField(prev => {
+                                                            if (prev === 'riskItems') {
+                                                                setSortOrder(o => (o === 'asc' ? 'desc' : 'asc'));
+                                                                return prev;
+                                                            }
+                                                            setSortOrder('desc');
+                                                            return 'riskItems';
+                                                        });
+                                                    }}
+                                                    className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
+                                                >
+                                                    风险项
+                                                    <ChevronDown
+                                                        size={12}
+                                                        className={`transition-transform ${sortField === 'riskItems' && sortOrder === 'asc' ? 'rotate-180' : ''} ${sortField === 'riskItems' ? 'text-slate-600' : 'text-slate-300'}`}
+                                                    />
+                                                </button>
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
@@ -914,15 +1437,64 @@ const DataSemanticUnderstandingView = ({
                                                         </div>
                                                     </td>
                                                     <td className="px-4 py-4 text-center">
-                                                        {asset.status === 'analyzed' ? (
-                                                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-purple-50 to-pink-50 text-purple-600 text-xs font-medium whitespace-nowrap border border-purple-100">
-                                                                <Sparkles size={10} /> 已理解
-                                                            </span>
-                                                        ) : (
-                                                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 text-xs whitespace-nowrap">
-                                                                待理解
-                                                            </span>
-                                                        )}
+                                                        {(() => {
+                                                            const governanceStatus = asset.governanceStatus as GovernanceStatus;
+                                                            const runSummary = asset.lastRun as RunSummary | null;
+                                                            const display = getGovernanceDisplay(governanceStatus, rolledBackTableIds.has(asset.table));
+                                                            return (
+                                                                <div className="flex flex-col items-center gap-1">
+                                                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${display.tone}`}>
+                                                                        {display.label}
+                                                                    </span>
+                                                                    {runSummary ? (
+                                                                        <span className={`text-[10px] ${runStatusToneMap[runSummary.status]}`}>
+                                                                            Run {runSummary.runId} · {runStatusLabelMap[runSummary.status]}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-[10px] text-slate-400">未运行</span>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                    </td>
+                                                    <td className="px-4 py-4 text-center">
+                                                        {(() => {
+                                                            const governanceStatus = asset.governanceStatus as GovernanceStatus;
+                                                            const stats = asset.reviewStats as ReviewStats | null;
+                                                            if (governanceStatus === 'S0') return <span className="text-slate-300">-</span>;
+                                                            const value = stats?.pendingReviewFields || 0;
+                                                            return (
+                                                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${value > 0 ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-slate-100 text-slate-500'}`}>
+                                                                    {value}
+                                                                </span>
+                                                            );
+                                                        })()}
+                                                    </td>
+                                                    <td className="px-4 py-4 text-center">
+                                                        {(() => {
+                                                            const governanceStatus = asset.governanceStatus as GovernanceStatus;
+                                                            const stats = asset.reviewStats as ReviewStats | null;
+                                                            if (governanceStatus === 'S0') return <span className="text-slate-300">-</span>;
+                                                            const value = stats?.gateFailedItems || 0;
+                                                            return (
+                                                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${value > 0 ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-slate-100 text-slate-500'}`}>
+                                                                    {value}
+                                                                </span>
+                                                            );
+                                                        })()}
+                                                    </td>
+                                                    <td className="px-4 py-4 text-center">
+                                                        {(() => {
+                                                            const governanceStatus = asset.governanceStatus as GovernanceStatus;
+                                                            const stats = asset.reviewStats as ReviewStats | null;
+                                                            if (governanceStatus === 'S0') return <span className="text-slate-300">-</span>;
+                                                            const value = stats?.riskItems || 0;
+                                                            return (
+                                                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${value > 0 ? 'bg-orange-50 text-orange-700 border border-orange-100' : 'bg-slate-100 text-slate-500'}`}>
+                                                                    {value}
+                                                                </span>
+                                                            );
+                                                        })()}
                                                     </td>
                                                 </tr>
                                             ));
@@ -997,7 +1569,8 @@ const DataSemanticUnderstandingView = ({
                         </div>
                     )}
 
-                    {viewMode === 'detail' && selectedTable && (
+                    {viewMode === 'detail' && (
+                        selectedTable ? (
                         <div className="flex flex-col h-full animate-slide-in-right">
                             {/* Detail Header */}
                             <div className="p-5 border-b border-slate-100 bg-white flex justify-between items-start">
@@ -1012,42 +1585,59 @@ const DataSemanticUnderstandingView = ({
                                                 {selectedTable.sourceType}
                                             </span>
                                             {/* Analysis Status Badge */}
-                                            {semanticProfile.analysisStep === 'done' ? (
-                                                <span className="px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 text-xs font-bold border border-purple-100 flex items-center gap-1">
-                                                    <Sparkles size={10} /> 语义理解完成
-                                                </span>
-                                            ) : (
-                                                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs border border-slate-200">
-                                                    待理解
-                                                </span>
-                                            )}
+                                            {(() => {
+                                                const status = (semanticProfile.governanceStatus || (semanticProfile.analysisStep === 'done' ? 'S1' : 'S0')) as GovernanceStatus;
+                                                const display = getGovernanceDisplay(status, rolledBackTableIds.has(selectedTable.table));
+                                                return (
+                                                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold border flex items-center gap-1 ${display.tone}`}>
+                                                        {status === 'S1' && !rolledBackTableIds.has(selectedTable.table) && <Sparkles size={10} />}
+                                                        {display.label}
+                                                    </span>
+                                                );
+                                            })()}
                                         </div>
                                         <p className="text-slate-500 text-sm mt-1">{selectedTable.comment || '暂无物理表注释'}</p>
                                     </div>
                                 </div>
-                                <div className="flex gap-2">
-                                    <button onClick={handleBackToList} className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50">
-                                        返回列表
-                                    </button>
-                                    <button
-                                        onClick={handleAnalyze}
-                                        disabled={isAnalyzing}
-                                        className={`px-4 py-1.5 rounded-lg text-sm shadow-sm flex items-center gap-2 text-white transition-all ${isAnalyzing ? 'bg-slate-400 cursor-not-allowed' :
-                                            semanticProfile.analysisStep === 'done' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600'
-                                            }`}
-                                    >
-                                        {isAnalyzing ? (
-                                            <><RefreshCw size={14} className="animate-spin" /> 语义理解中...</>
-                                        ) : semanticProfile.analysisStep === 'done' ? (
-                                            <><RefreshCw size={14} /> 重新理解</>
-                                        ) : (
-                                            <><Sparkles size={14} /> 开始语义理解</>
-                                        )}
-                                    </button>
+                                <div className="flex flex-col items-end gap-1">
+                                    <div className="flex gap-2">
+                                        <button onClick={handleBackToList} className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50">
+                                            返回列表
+                                        </button>
+                                        <button
+                                            onClick={handleAnalyze}
+                                            disabled={isAnalyzing}
+                                            className={`px-4 py-1.5 rounded-lg text-sm shadow-sm flex items-center gap-2 text-white transition-all ${isAnalyzing ? 'bg-slate-400 cursor-not-allowed' :
+                                                semanticProfile.analysisStep === 'done' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600'
+                                                }`}
+                                        >
+                                            {isAnalyzing ? (
+                                                <><RefreshCw size={14} className="animate-spin" /> 语义理解中...</>
+                                            ) : semanticProfile.analysisStep === 'done' ? (
+                                                <><RefreshCw size={14} /> 重新理解</>
+                                            ) : (
+                                                <><Sparkles size={14} /> 开始语义理解</>
+                                            )}
+                                        </button>
+                                    </div>
+                                    {isIdle && (
+                                        <div className="text-xs text-slate-400">
+                                            将基于规则与 AI 生成语义建议，需人工确认后生效。
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+                                {isIdle && (
+                                    <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700 flex items-start gap-2">
+                                        <Info size={14} className="mt-0.5 text-blue-600" />
+                                        <div>
+                                            <div className="font-medium">当前仅展示字段结构与统计特征</div>
+                                            <div className="text-xs text-blue-600">语义理解完成后生成业务语义建议。</div>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Analysis Progress / Result Area */}
                                 <div className="mb-6">
@@ -1058,9 +1648,23 @@ const DataSemanticUnderstandingView = ({
                                             onComplete={(result) => {
                                                 setSemanticProfile({
                                                     ...result,
+                                                    governanceStatus: (result.governanceStatus || 'S1') as GovernanceStatus,
                                                     analysisStep: 'done',
                                                     relationships: semanticProfile.relationships
                                                 });
+                                                setScanResults((prev: any[]) => prev.map((item: any) =>
+                                                    item.table === selectedTable.table
+                                                        ? {
+                                                            ...item,
+                                                            status: 'pending_review',
+                                                            governanceStatus: 'S1',
+                                                            reviewStats: result.reviewStats,
+                                                            semanticAnalysis: { ...result, analysisStep: 'done' }
+                                                        }
+                                                        : item
+                                                ));
+                                                setResultTab('overview');
+                                                setFieldViewMode('semantic');
                                                 setEditMode(true);
                                                 setIsAnalyzing(false);
                                                 setPendingAnalysisResult(null);
@@ -1074,89 +1678,157 @@ const DataSemanticUnderstandingView = ({
                                         <>
                                             {(() => {
                                                 const scorePercent = Math.round((semanticProfile.finalScore || 0) * 100);
-                                                const ruleEvidence = semanticProfile.ruleEvidence || [];
-                                                const aiEvidenceItems = semanticProfile.aiEvidenceItems || [];
+                                                const ruleEvidence = Array.isArray(semanticProfile.ruleEvidence)
+                                                    ? semanticProfile.ruleEvidence
+                                                    : [];
+                                                const aiEvidenceItems = Array.isArray(semanticProfile.aiEvidenceItems)
+                                                    ? semanticProfile.aiEvidenceItems
+                                                    : [];
                                                 const conflictCount = ruleEvidence.filter((item) => /冲突|待确认|复核/.test(item)).length;
                                                 const commentCoverage = Math.round((semanticProfile.ruleScore?.comment || 0) * 100);
-                                                const pendingCount = conflictCount + (semanticProfile.gateResult?.result === 'REVIEW' ? 1 : 0);
                                                 const gateResult = semanticProfile.gateResult?.result;
-                                                let riskLabel = '中风险';
-                                                let riskTone: 'red' | 'amber' | 'emerald' = 'amber';
-                                                if (gateResult === 'REJECT') {
+                                                const reviewStats = semanticProfile.reviewStats
+                                                    || buildReviewStats(selectedTable.table, selectedTableFields, selectedTable.comment);
+                                                const pendingReviewCount = reviewStats?.pendingReviewFields || 0;
+                                                const gateFailedCount = reviewStats?.gateFailedItems || 0;
+                                                const riskItemsCount = reviewStats?.riskItems || 0;
+                                                const ruleScoreTotal = semanticProfile.ruleScore?.total || 0;
+                                                const analyzedFieldsForRisk = selectedTableFields.map((field: any) => analyzeField(field));
+                                                const sensitiveCount = analyzedFieldsForRisk.filter((field) => ['L3', 'L4'].includes(field.sensitivity)).length;
+                                                const sensitivityRatio = analyzedFieldsForRisk.length === 0 ? 0 : sensitiveCount / analyzedFieldsForRisk.length;
+                                                const sensitivityPercent = Math.round(sensitivityRatio * 100);
+                                                let riskLabel = '低风险';
+                                                let riskTone: 'red' | 'amber' | 'emerald' = 'emerald';
+                                                if (gateResult === 'REJECT' || riskItemsCount >= 2) {
                                                     riskLabel = '高风险';
                                                     riskTone = 'red';
-                                                } else if (gateResult === 'REVIEW') {
+                                                } else if (gateResult === 'REVIEW' || riskItemsCount === 1) {
                                                     riskLabel = '中风险';
                                                     riskTone = 'amber';
-                                                } else if (scorePercent >= 85) {
-                                                    riskLabel = '低风险';
-                                                    riskTone = 'emerald';
-                                                } else if (scorePercent >= 65) {
-                                                    riskLabel = '中风险';
-                                                    riskTone = 'amber';
-                                                } else {
-                                                    riskLabel = '高风险';
-                                                    riskTone = 'red';
                                                 }
-                                                const actionHints = [
-                                                    gateResult === 'REVIEW' ? '补充主键或生命周期字段' : null,
-                                                    commentCoverage < 60 ? '补充字段口径注释' : null,
-                                                    (semanticProfile.ruleScore?.behavior || 0) < 0.6 ? '复核行为字段密度' : null,
-                                                    conflictCount > 0 ? '处理冲突字段' : null
+                                                const gateFallbackReasons: string[] = [];
+                                                if (semanticProfile.gateResult?.details?.primaryKey === false) {
+                                                    gateFallbackReasons.push('未找到主键字段。');
+                                                }
+                                                if (semanticProfile.gateResult?.details?.lifecycle === false) {
+                                                    gateFallbackReasons.push('未找到生命周期字段 (如: create_time, update_time)。');
+                                                }
+                                                if (semanticProfile.gateResult?.details?.tableType === false) {
+                                                    gateFallbackReasons.push('表类型命中排除规则。');
+                                                }
+                                                const gateReasonsSource = semanticProfile.gateResult?.reasons?.length
+                                                    ? semanticProfile.gateResult.reasons
+                                                    : gateFallbackReasons;
+                                                const uniqueGateReasons = Array.from(new Set(gateReasonsSource));
+                                                const gateIssueCount = gateResult === 'PASS'
+                                                    ? 0
+                                                    : Math.max(gateFailedCount, uniqueGateReasons.length || 0, 1);
+                                                const gateTitle = gateResult === 'REVIEW' ? 'Gate 需复核项' : 'Gate 未通过项';
+                                                const gateSummaryItems = uniqueGateReasons.slice(0, 3);
+                                                const riskReasonCandidates = [
+                                                    ...ruleEvidence.filter((item) => /冲突|敏感|风险|复核|缺失/.test(item)),
+                                                    ...aiEvidenceItems.map(item => `${item.field}：${item.reason}`),
+                                                    conflictCount > 0 ? `冲突字段 ${conflictCount} 个` : null,
+                                                    commentCoverage < 60 ? `口径覆盖度 ${commentCoverage}%` : null,
+                                                    ruleScoreTotal < 0.6 ? `规则评分 ${Math.round(ruleScoreTotal * 100)}%` : null,
+                                                    sensitivityRatio >= 0.3 ? `高敏字段占比 ${sensitivityPercent}%` : null,
+                                                    scorePercent < 65 ? `通过率 ${scorePercent}%` : null,
+                                                    gateResult === 'REJECT' ? 'Gate 未通过' : gateResult === 'REVIEW' ? 'Gate 需复核' : null
                                                 ].filter(Boolean) as string[];
-                                                const summaryText = gateResult === 'REJECT'
-                                                    ? '规则门槛未通过，需补齐关键字段后再评估。'
-                                                    : gateResult === 'REVIEW'
-                                                        ? '需复核关键规则，建议先处理冲突字段。'
-                                                        : scorePercent >= 85
-                                                            ? '规则与AI一致性较高，可推进发布。'
-                                                            : '结论基本可用，建议补充口径后再发布。';
+                                                const riskSummaryItems = riskReasonCandidates.slice(0, 3);
+                                                const pendingSummaryItems = [
+                                                    `字段 ${pendingReviewCount}`,
+                                                    `对象 ${pendingReviewCount > 0 ? 1 : 0}`
+                                                ];
+                                                const summarySections = [
+                                                    { key: 'gate', title: gateTitle, count: gateIssueCount, items: gateSummaryItems },
+                                                    { key: 'risk', title: '风险项', count: riskItemsCount, items: riskSummaryItems },
+                                                    { key: 'review', title: '待Review', count: pendingReviewCount, items: pendingSummaryItems }
+                                                ];
                                                 const gateLabelMap: Record<string, string> = {
                                                     PASS: '通过',
                                                     REVIEW: '需复核',
                                                     REJECT: '未通过'
                                                 };
                                                 const gateLabel = gateResult ? (gateLabelMap[gateResult] || gateResult) : '-';
+                                                const gateReviewable = gateResult ? gateResult !== 'PASS' : false;
+                                                const canJumpToReview = pendingReviewCount > 0;
+                                                const canOpenGateDetail = gateReviewable;
                                                 const riskStyles = {
                                                     red: 'bg-red-50 text-red-600 border-red-100',
                                                     amber: 'bg-amber-50 text-amber-600 border-amber-100',
                                                     emerald: 'bg-emerald-50 text-emerald-600 border-emerald-100'
                                                 };
-                                                const hintTone: 'red' | 'amber' | 'emerald' = gateResult === 'REJECT'
-                                                    ? 'red'
-                                                    : (gateResult === 'REVIEW' || conflictCount > 0 || commentCoverage < 60)
-                                                        ? 'amber'
-                                                        : 'emerald';
-                                                const hintStyles = {
-                                                    red: 'bg-red-50 text-red-600 border-red-100',
-                                                    amber: 'bg-amber-50 text-amber-700 border-amber-100',
-                                                    emerald: 'bg-emerald-50 text-emerald-600 border-emerald-100'
-                                                };
+                                                const gateDetailItems = uniqueGateReasons.map((reason) => {
+                                                    if (/主键/.test(reason)) {
+                                                        return {
+                                                            title: '主键',
+                                                            reason,
+                                                            impact: '无法建立唯一标识，影响关联与治理。',
+                                                            action: '补充主键字段或指定唯一键。'
+                                                        };
+                                                    }
+                                                    if (/生命周期|create_time|update_time/.test(reason)) {
+                                                        return {
+                                                            title: '生命周期',
+                                                            reason,
+                                                            impact: '无法识别变更路径，影响状态治理。',
+                                                            action: '补充 create_time/update_time 等生命周期字段。'
+                                                        };
+                                                    }
+                                                    if (/临时|备份|关联|强排/.test(reason)) {
+                                                        return {
+                                                            title: '表类型',
+                                                            reason,
+                                                            impact: '不建议纳入治理范围，需明确用途。',
+                                                            action: '确认是否排除并记录责任人与原因。'
+                                                        };
+                                                    }
+                                                    if (/日志|明细|history|trace/.test(reason)) {
+                                                        return {
+                                                            title: '表类型',
+                                                            reason,
+                                                            impact: '对象类型不清晰，易误纳入治理。',
+                                                            action: '补充表类型说明或明确排除。'
+                                                        };
+                                                    }
+                                                    return {
+                                                        title: '规则项',
+                                                        reason,
+                                                        impact: '存在规则异常，需人工复核。',
+                                                        action: '补充说明或调整规则配置。'
+                                                    };
+                                                });
+                                                const status = (semanticProfile.governanceStatus || (semanticProfile.analysisStep === 'done' ? 'S1' : 'S0')) as GovernanceStatus;
+                                                const statusDisplay = getGovernanceDisplay(status, rolledBackTableIds.has(selectedTable.table));
+                                                const statusSummary = statusDisplay.hint || statusDisplay.label;
                                                 const evidenceList = [
                                                     ...ruleEvidence.map(text => ({ type: '规则', text })),
                                                     ...aiEvidenceItems.map(item => ({ type: 'AI', text: `${item.field}：${item.reason}` }))
                                                 ];
                                                 const evidenceTop = evidenceList.slice(0, 5);
                                                 const evidenceCount = ruleEvidence.length + aiEvidenceItems.length;
-                                                const fieldsCount = (selectedTable.fields || []).length;
+                                                const fieldsCount = selectedTableFields.length;
                                                 const logsCount = upgradeHistory.filter(entry => entry.tableId === selectedTable.table).length;
+                                                const overviewAnchors = [
+                                                    { id: 'result-summary', label: '治理摘要' },
+                                                    { id: 'result-key-evidence', label: '关键证据' },
+                                                    ...(gateReviewable ? [{ id: 'result-gate-detail', label: 'Gate 明细' }] : []),
+                                                    { id: 'result-score-breakdown', label: '评分拆解' }
+                                                ];
                                                 const anchors = {
-                                                    overview: [
-                                                        { id: 'result-summary', label: '结论摘要' },
-                                                        { id: 'result-key-evidence', label: '关键证据' },
-                                                        { id: 'result-score-breakdown', label: '评分拆解' }
-                                                    ],
+                                                    overview: overviewAnchors,
                                                     evidence: [
-                                                        { id: 'result-summary', label: '结论摘要' },
+                                                        { id: 'result-summary', label: '治理摘要' },
                                                         { id: 'result-conclusion', label: '综合结论' },
                                                         { id: 'result-analysis', label: '分析详情' }
                                                     ],
                                                     fields: [
-                                                        { id: 'result-summary', label: '结论摘要' },
+                                                        { id: 'result-summary', label: '治理摘要' },
                                                         { id: 'result-fields', label: '字段分析' }
                                                     ],
                                                     logs: [
-                                                        { id: 'result-summary', label: '结论摘要' },
+                                                        { id: 'result-summary', label: '治理摘要' },
                                                         { id: 'result-logs', label: '操作记录' }
                                                     ]
                                                 };
@@ -1166,9 +1838,14 @@ const DataSemanticUnderstandingView = ({
                                                         <div id="result-summary" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
                                                             <div className="flex items-start justify-between gap-4">
                                                                 <div>
-                                                                    <div className="text-xs text-slate-500">语义理解结果摘要</div>
-                                                                    <div className="mt-2 text-lg font-semibold text-slate-800 flex items-center gap-2">
-                                                                        {summaryText}
+                                                                    <div className="text-xs text-slate-500">治理建议摘要</div>
+                                                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${statusDisplay.tone}`}>
+                                                                            {statusDisplay.label}
+                                                                        </span>
+                                                                        <span className="text-base font-semibold text-slate-800">
+                                                                            {statusSummary}
+                                                                        </span>
                                                                     </div>
                                                                     <div className="mt-1 text-xs text-slate-400">基于规则门槛、字段评分与 AI 语义识别综合生成</div>
                                                                 </div>
@@ -1189,24 +1866,44 @@ const DataSemanticUnderstandingView = ({
                                                                     <div className="text-xs text-slate-500">覆盖度</div>
                                                                     <div className="text-lg font-semibold text-slate-800">{commentCoverage}%</div>
                                                                 </div>
-                                                                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                                                                    <div className="text-xs text-slate-500">待处理</div>
-                                                                    <div className="text-lg font-semibold text-slate-800">{pendingCount}</div>
-                                                                </div>
-                                                                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                                                                <button
+                                                                    onClick={canJumpToReview ? handleJumpToProblemFields : undefined}
+                                                                    disabled={!canJumpToReview}
+                                                                    className={`rounded-lg border border-slate-100 bg-slate-50 p-3 text-left transition-colors ${canJumpToReview ? 'hover:border-amber-200 hover:bg-amber-50/40 cursor-pointer' : 'cursor-not-allowed opacity-70'}`}
+                                                                >
+                                                                    <div className="text-xs text-slate-500">待Review字段</div>
+                                                                    <div className="text-lg font-semibold text-slate-800">{pendingReviewCount}</div>
+                                                                    <div className="text-[10px] text-slate-400 mt-1">{canJumpToReview ? '点击定位问题字段' : '暂无待Review字段'}</div>
+                                                                </button>
+                                                                <button
+                                                                    onClick={canOpenGateDetail ? handleOpenGateDetail : undefined}
+                                                                    disabled={!canOpenGateDetail}
+                                                                    className={`rounded-lg border border-slate-100 bg-slate-50 p-3 text-left transition-colors ${canOpenGateDetail ? 'hover:border-red-200 hover:bg-red-50/40 cursor-pointer' : 'cursor-not-allowed opacity-70'}`}
+                                                                >
                                                                     <div className="text-xs text-slate-500">门槛状态</div>
                                                                     <div className="text-lg font-semibold text-slate-800">{gateLabel}</div>
-                                                                </div>
+                                                                    <div className="text-[10px] text-slate-400 mt-1">{canOpenGateDetail ? '查看 Gate 明细' : '门槛通过'}</div>
+                                                                </button>
                                                             </div>
-                                                            <div className="mt-4">
-                                                                <div className="text-xs font-medium text-slate-500 mb-2">行动建议</div>
-                                                                <div className="flex flex-wrap gap-2 text-xs text-slate-600">
-                                                                    {(actionHints.length > 0 ? actionHints : ['结论稳定，可推进发布。']).map((item, idx) => (
-                                                                        <span key={idx} className={`px-2 py-1 rounded-full border ${hintStyles[hintTone]}`}>
-                                                                            {item}
-                                                                        </span>
-                                                                    ))}
-                                                                </div>
+                                                            <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
+                                                                {summarySections.map(section => (
+                                                                    <div key={section.key} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                                                                        <div className="flex items-center justify-between text-xs text-slate-500">
+                                                                            <span>{section.title}</span>
+                                                                            <span className="font-medium text-slate-700">{section.count}</span>
+                                                                        </div>
+                                                                        <div className="mt-2 space-y-1 text-xs text-slate-600">
+                                                                            {section.items.length > 0 ? section.items.map((item, idx) => (
+                                                                                <div key={`${section.key}-${idx}`} className="flex items-start gap-2">
+                                                                                    <span className="text-slate-400">-</span>
+                                                                                    <span>{item}</span>
+                                                                                </div>
+                                                                            )) : (
+                                                                                <div className="text-xs text-slate-400">无</div>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
                                                             </div>
                                                         </div>
 
@@ -1265,6 +1962,33 @@ const DataSemanticUnderstandingView = ({
                                                                                     )}
                                                                                 </div>
                                                                             </div>
+                                                                            {gateReviewable && (
+                                                                                <div id="result-gate-detail" className="rounded-lg border border-slate-100 bg-white p-4">
+                                                                                    <div className="flex items-center justify-between gap-3">
+                                                                                        <div className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                                                                                            <AlertTriangle size={14} className="text-amber-500" /> Gate 明细
+                                                                                        </div>
+                                                                                        <span className="text-[10px] text-slate-400">未通过项 / 原因 / 影响 / 推荐操作</span>
+                                                                                    </div>
+                                                                                    <div className="mt-3 space-y-3 text-xs">
+                                                                                        {gateDetailItems.length > 0 ? gateDetailItems.map((item, idx) => (
+                                                                                            <div key={`gate-${idx}`} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                                                                                                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                                                                                                    <span>{item.title}</span>
+                                                                                                    <span className="text-amber-600">需复核</span>
+                                                                                                </div>
+                                                                                                <div className="mt-2 space-y-1 text-slate-600">
+                                                                                                    <div><span className="text-slate-400">原因：</span>{item.reason}</div>
+                                                                                                    <div><span className="text-slate-400">影响：</span>{item.impact}</div>
+                                                                                                    <div><span className="text-slate-400">推荐操作：</span>{item.action}</div>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        )) : (
+                                                                                            <div className="text-xs text-slate-400">暂无 Gate 异常项</div>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
                                                                             <div id="result-score-breakdown" className="rounded-lg border border-slate-100 bg-white p-4">
                                                                                 <div className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                                                                                     <Activity size={14} className="text-blue-600" /> 评分拆解
@@ -1299,9 +2023,12 @@ const DataSemanticUnderstandingView = ({
                                                                             <div id="result-conclusion">
                                                                                 <SemanticConclusionCard
                                                                                     profile={semanticProfile}
-                                                                                    fields={selectedTable.fields || []}
+                                                                                    fields={semanticProfile.fields && semanticProfile.fields.length > 0 ? semanticProfile.fields : selectedTableFields}
                                                                                     onAccept={handleSaveToMetadata}
                                                                                     onReject={handleIgnore}
+                                                                                    onConfirmEffective={handleConfirmEffective}
+                                                                                    onViewLogs={handleViewLogs}
+                                                                                    onEvidenceAction={handleEvidenceAction}
                                                                                     onEdit={() => setEditMode(true)}
                                                                                     isEditing={editMode}
                                                                                     onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
@@ -1319,7 +2046,7 @@ const DataSemanticUnderstandingView = ({
                                                                             <div id="result-analysis">
                                                                                 <SemanticAnalysisCard
                                                                                     profile={semanticProfile}
-                                                                                    fields={selectedTable.fields || []}
+                                                                                    fields={selectedTableFields}
                                                                                     onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
                                                                                     onUpgradeAccepted={(beforeState, afterState) => {
                                                                                         if (!selectedTable) return;
@@ -1339,7 +2066,7 @@ const DataSemanticUnderstandingView = ({
                                                                         <div id="result-fields">
                                                                             <DeepAnalysisTabs
                                                                                 profile={semanticProfile}
-                                                                                fields={selectedTable.fields || []}
+                                                                                fields={selectedTableFields}
                                                                                 onProfileChange={(updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
                                                                                 activeTabOverride={focusField ? 'fields' : undefined}
                                                                                 focusField={focusField}
@@ -1349,40 +2076,77 @@ const DataSemanticUnderstandingView = ({
 
                                                                     {resultTab === 'logs' && (
                                                                         <div id="result-logs">
-                                                                            {upgradeHistory.some(entry => entry.tableId === selectedTable.table) ? (
-                                                                                <div className="bg-white rounded-lg border border-slate-200 p-4">
-                                                                                    <div className="text-sm font-medium text-slate-700 flex items-center gap-2 mb-3">
-                                                                                        <Clock size={14} className="text-slate-500" /> 升级操作记录
+                                                                            <div className="space-y-4">
+                                                                                {auditLogs.some(entry => entry.tableId === selectedTable.table) ? (
+                                                                                    <div className="bg-white rounded-lg border border-slate-200 p-4">
+                                                                                        <div className="text-sm font-medium text-slate-700 flex items-center gap-2 mb-3">
+                                                                                            <CheckCircle size={14} className="text-slate-500" /> 证据裁决日志
+                                                                                        </div>
+                                                                                        <div className="space-y-2 max-h-60 overflow-y-auto">
+                                                                                            {(() => {
+                                                                                                const actionLabelMap: Record<string, string> = {
+                                                                                                    accept: '接受建议',
+                                                                                                    override: '改判',
+                                                                                                    pending: '待定',
+                                                                                                    confirm: '确认生效'
+                                                                                                };
+                                                                                                return auditLogs
+                                                                                                    .filter(entry => entry.tableId === selectedTable.table)
+                                                                                                    .map(entry => (
+                                                                                                        <div key={entry.id} className="flex items-center justify-between text-xs bg-slate-50 rounded-md px-2 py-1.5">
+                                                                                                            <div className="text-slate-600">
+                                                                                                                <span className="font-mono text-slate-700">{entry.field || '-'}</span>
+                                                                                                                <span className="text-slate-400"> · {actionLabelMap[entry.action] || entry.action}</span>
+                                                                                                                {entry.source && (
+                                                                                                                    <span className="text-slate-400"> · {entry.source}</span>
+                                                                                                                )}
+                                                                                                                <span className="text-slate-400"> · {entry.timestamp}</span>
+                                                                                                            </div>
+                                                                                                            <span className="text-slate-400 truncate max-w-[240px]">{entry.reason || ''}</span>
+                                                                                                        </div>
+                                                                                                    ));
+                                                                                            })()}
+                                                                                        </div>
                                                                                     </div>
-                                                                                    <div className="space-y-2 max-h-60 overflow-y-auto">
-                                                                                        {upgradeHistory
-                                                                                            .filter(entry => entry.tableId === selectedTable.table)
-                                                                                            .map(entry => (
-                                                                                                <div key={entry.id} className="flex items-center justify-between text-xs bg-slate-50 rounded-md px-2 py-1.5">
-                                                                                                    <div className="text-slate-600">
-                                                                                                        <span className="font-mono text-slate-700">{entry.tableName}</span>
-                                                                                                        <span className="text-slate-400"> · {entry.timestamp}</span>
-                                                                                                        {entry.rolledBack && (
-                                                                                                            <span className="ml-2 text-orange-600">已撤销</span>
-                                                                                                        )}
+                                                                                ) : (
+                                                                                    <div className="text-sm text-slate-400">暂无证据裁决日志</div>
+                                                                                )}
+
+                                                                                {upgradeHistory.some(entry => entry.tableId === selectedTable.table) ? (
+                                                                                    <div className="bg-white rounded-lg border border-slate-200 p-4">
+                                                                                        <div className="text-sm font-medium text-slate-700 flex items-center gap-2 mb-3">
+                                                                                            <Clock size={14} className="text-slate-500" /> 升级操作记录
+                                                                                        </div>
+                                                                                        <div className="space-y-2 max-h-60 overflow-y-auto">
+                                                                                            {upgradeHistory
+                                                                                                .filter(entry => entry.tableId === selectedTable.table)
+                                                                                                .map(entry => (
+                                                                                                    <div key={entry.id} className="flex items-center justify-between text-xs bg-slate-50 rounded-md px-2 py-1.5">
+                                                                                                        <div className="text-slate-600">
+                                                                                                            <span className="font-mono text-slate-700">{entry.tableName}</span>
+                                                                                                            <span className="text-slate-400"> · {entry.timestamp}</span>
+                                                                                                            {entry.rolledBack && (
+                                                                                                                <span className="ml-2 text-orange-600">已撤销</span>
+                                                                                                            )}
+                                                                                                        </div>
+                                                                                                        <button
+                                                                                                            onClick={() => rollbackUpgrade(entry.id)}
+                                                                                                            disabled={entry.rolledBack}
+                                                                                                            className={`px-2 py-1 rounded ${entry.rolledBack
+                                                                                                                ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
+                                                                                                                : 'text-orange-600 bg-orange-50 hover:bg-orange-100'
+                                                                                                                }`}
+                                                                                                        >
+                                                                                                            撤销
+                                                                                                        </button>
                                                                                                     </div>
-                                                                                                    <button
-                                                                                                        onClick={() => rollbackUpgrade(entry.id)}
-                                                                                                        disabled={entry.rolledBack}
-                                                                                                        className={`px-2 py-1 rounded ${entry.rolledBack
-                                                                                                            ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
-                                                                                                            : 'text-orange-600 bg-orange-50 hover:bg-orange-100'
-                                                                                                            }`}
-                                                                                                    >
-                                                                                                        撤销
-                                                                                                    </button>
-                                                                                                </div>
-                                                                                            ))}
+                                                                                                ))}
+                                                                                        </div>
                                                                                     </div>
-                                                                                </div>
-                                                                            ) : (
-                                                                                <div className="text-sm text-slate-400">暂无操作记录</div>
-                                                                            )}
+                                                                                ) : (
+                                                                                    <div className="text-sm text-slate-400">暂无升级操作记录</div>
+                                                                                )}
+                                                                            </div>
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -1420,7 +2184,7 @@ const DataSemanticUnderstandingView = ({
                                                 onClick={() => setDetailTab('fields')}
                                                 className={`px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors ${detailTab === 'fields' ? 'border-blue-500 text-blue-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'}`}
                                             >
-                                                <Table size={16} /> 字段结构 ({selectedTable.fields?.length || 0})
+                                                <Table size={16} /> 字段结构 ({selectedTableFields.length})
                                             </button>
                                             {semanticProfile.analysisStep !== 'idle' && (
                                                 <button
@@ -1431,9 +2195,9 @@ const DataSemanticUnderstandingView = ({
                                                 </button>
                                             )}
                                             <button
-                                                onClick={() => semanticProfile.analysisStep !== 'idle' && setDetailTab('dimensions')}
-                                                title={semanticProfile.analysisStep === 'idle' ? "需语义理解" : ""}
-                                                className={`px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors ${detailTab === 'dimensions' ? 'border-blue-500 text-blue-600 bg-white' : semanticProfile.analysisStep === 'idle' ? 'border-transparent text-slate-300 cursor-not-allowed' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'}`}
+                                                onClick={() => setDetailTab('dimensions')}
+                                                title={isIdle ? "语义维度待理解" : ""}
+                                                className={`px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors ${detailTab === 'dimensions' ? 'border-blue-500 text-blue-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'}`}
                                             >
                                                 <Layers size={16} /> 语义维度
                                             </button>
@@ -1536,216 +2300,292 @@ const DataSemanticUnderstandingView = ({
                                         ) : detailTab === 'dimensions' ? (
                                             // Dimensions Tab - Seven Dimension Accordion View
                                             <div className="p-4 space-y-2 max-h-[500px] overflow-y-auto">
-                                                <div className="flex justify-between items-center mb-3">
-                                                    <span className="text-sm text-slate-500">共 {selectedTable.fields?.length || 0} 个字段</span>
-                                                    <button
-                                                        onClick={() => setExpandedFields(expandedFields.length === selectedTable.fields?.length ? [] : selectedTable.fields?.map((f: any) => f.name) || [])}
-                                                        className="text-xs text-blue-600 hover:text-blue-700"
-                                                    >
-                                                        {expandedFields.length === selectedTable.fields?.length ? '全部折叠' : '全部展开'}
-                                                    </button>
-                                                </div>
-                                                {selectedTable.fields?.map((field: any, idx: number) => {
-                                                    const isExpanded = expandedFields.includes(field.name);
-                                                    // Semantic calculations
-                                                    const ruleRole = field.name.endsWith('_id') ? 'Identifier' :
-                                                        field.name.includes('time') ? 'EventHint' :
-                                                            field.name.includes('status') ? 'Status' : 'BusAttr';
-                                                    const getSensitivity = (name: string): 'L1' | 'L2' | 'L3' | 'L4' => {
-                                                        if (name.includes('id_card') || name.includes('bank')) return 'L4';
-                                                        if (name.includes('mobile') || name.includes('phone') || name.includes('name') || name.includes('address')) return 'L3';
-                                                        if (name.includes('user') || name.includes('employee')) return 'L2';
-                                                        return 'L1';
-                                                    };
-                                                    const sensitivity = getSensitivity(field.name);
-                                                    const getValueDomain = (type: string): string => {
-                                                        if (type.includes('tinyint') || type.includes('enum')) return '枚举型';
-                                                        if (type.includes('decimal') || type.includes('int')) return '范围型';
-                                                        if (type.includes('varchar') && type.includes('18')) return '格式型';
-                                                        return '自由文本';
-                                                    };
-                                                    const valueDomain = getValueDomain(field.type);
-                                                    const nullRate = Math.floor(Math.random() * 10);
-                                                    const uniqueness = field.name.includes('id') ? 100 : Math.floor(Math.random() * 50) + 50;
-
-                                                    return (
-                                                        <div key={idx} className="border border-slate-200 rounded-lg overflow-hidden">
-                                                            <button
-                                                                onClick={() => setExpandedFields(isExpanded
-                                                                    ? expandedFields.filter(f => f !== field.name)
-                                                                    : [...expandedFields, field.name]
-                                                                )}
-                                                                className="w-full px-4 py-3 bg-white hover:bg-slate-50 flex items-center justify-between transition-colors"
-                                                            >
-                                                                <div className="flex items-center gap-3">
-                                                                    <ChevronRight size={16} className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                                                                    <span className="font-mono font-medium text-slate-700">{field.name}</span>
-                                                                    <span className="text-xs text-slate-400">({field.type})</span>
-                                                                </div>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-600">{ruleRole}</span>
-                                                                    <span className={`px-2 py-0.5 rounded text-xs ${sensitivity === 'L4' ? 'bg-red-50 text-red-600' : sensitivity === 'L3' ? 'bg-orange-50 text-orange-600' : 'bg-slate-100 text-slate-500'}`}>{sensitivity}</span>
-                                                                </div>
-                                                            </button>
-                                                            {isExpanded && (
-                                                                <div className="bg-slate-50 px-4 py-3 border-t border-slate-100 grid grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
-                                                                    <div className="bg-white p-3 rounded-lg border border-slate-100">
-                                                                        <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-01 语义角色</div>
-                                                                        <div className="font-medium text-slate-700">{ruleRole}</div>
-                                                                        <div className="text-xs text-slate-400 mt-1">置信度: 95%</div>
-                                                                    </div>
-                                                                    <div className="bg-white p-3 rounded-lg border border-slate-100">
-                                                                        <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-02 类型语义</div>
-                                                                        <div className="font-medium text-slate-700">{field.type}</div>
-                                                                        <div className="text-xs text-slate-400 mt-1">推断: {field.comment || '未知'}</div>
-                                                                    </div>
-                                                                    <div className="bg-white p-3 rounded-lg border border-slate-100">
-                                                                        <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-03 值域特征</div>
-                                                                        <div className="font-medium text-slate-700">{valueDomain}</div>
-                                                                        {/* Enhanced value domain details */}
-                                                                        {valueDomain === '枚举型' && (
-                                                                            <div className="mt-2">
-                                                                                <div className="text-[10px] text-slate-400 mb-1">可能值:</div>
-                                                                                <div className="flex flex-wrap gap-1">
-                                                                                    {(field.name.includes('status')
-                                                                                        ? ['待处理', '进行中', '已完成', '已取消']
-                                                                                        : field.name.includes('type')
-                                                                                            ? ['普通', 'VIP', '企业']
-                                                                                            : ['值1', '值2', '值3']
-                                                                                    ).map((v, i) => (
-                                                                                        <span key={i} className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[10px] rounded">{v}</span>
-                                                                                    ))}
-                                                                                </div>
-                                                                            </div>
-                                                                        )}
-                                                                        {valueDomain === '格式型' && (
-                                                                            <div className="mt-2 text-[10px] text-slate-500 font-mono bg-slate-50 px-2 py-1 rounded">
-                                                                                {field.name.includes('mobile') || field.name.includes('phone')
-                                                                                    ? '格式: ^1[3-9]\\d{9}$'
-                                                                                    : field.name.includes('id_card') || field.name.includes('sfz')
-                                                                                        ? '格式: ^\\d{17}[\\dX]$'
-                                                                                        : field.name.includes('email')
-                                                                                            ? '格式: ^[\\w.-]+@[\\w.-]+$'
-                                                                                            : '格式: 固定18位'}
-                                                                            </div>
-                                                                        )}
-                                                                        {valueDomain === '范围型' && (
-                                                                            <div className="mt-2 flex items-center gap-3 text-[10px]">
-                                                                                <span className="text-slate-400">MIN: <span className="text-slate-600 font-medium">{field.name.includes('amt') || field.name.includes('price') ? '0.01' : '1'}</span></span>
-                                                                                <span className="text-slate-400">MAX: <span className="text-slate-600 font-medium">{field.name.includes('amt') || field.name.includes('price') ? '99999.99' : '9999'}</span></span>
-                                                                                <span className="text-slate-400">AVG: <span className="text-slate-600 font-medium">{field.name.includes('amt') || field.name.includes('price') ? '258.50' : '156'}</span></span>
-                                                                            </div>
-                                                                        )}
-                                                                        {valueDomain === '自由文本' && (
-                                                                            <div className="mt-2 text-[10px] text-slate-500">
-                                                                                长度分布: 平均 {Math.floor(Math.random() * 50) + 20} 字符
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="bg-white p-3 rounded-lg border border-slate-100">
-                                                                        <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-04 敏感等级</div>
-                                                                        <div className={`font-medium ${sensitivity === 'L4' ? 'text-red-600' : sensitivity === 'L3' ? 'text-orange-600' : 'text-slate-700'}`}>
-                                                                            {sensitivity === 'L4' ? 'L4 高敏' : sensitivity === 'L3' ? 'L3 敏感' : sensitivity === 'L2' ? 'L2 内部' : 'L1 公开'}
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="bg-white p-3 rounded-lg border border-slate-100">
-                                                                        <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-05 业务元信息</div>
-                                                                        <input
-                                                                            type="text"
-                                                                            defaultValue={field.comment || ''}
-                                                                            placeholder="业务名称..."
-                                                                            className="w-full text-sm font-medium text-slate-700 border-b border-slate-200 focus:border-blue-400 outline-none bg-transparent"
-                                                                        />
-                                                                        {/* Enhanced metadata */}
-                                                                        <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
-                                                                            <div>
-                                                                                <span className="text-slate-400">责任人:</span>
-                                                                                <span className="ml-1 text-slate-600">{field.name.includes('user') ? '用户中心' : field.name.includes('order') ? '交易中心' : '数据管理部'}</span>
-                                                                            </div>
-                                                                            <div>
-                                                                                <span className="text-slate-400">标准:</span>
-                                                                                <span className="ml-1 text-blue-600">{field.name.includes('id') ? 'GB/T 35273' : field.name.includes('time') ? 'ISO 8601' : '-'}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="bg-white p-3 rounded-lg border border-slate-100">
-                                                                        <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-06 质量信号</div>
-                                                                        <div className="space-y-1.5">
-                                                                            <div className="flex items-center justify-between text-xs">
-                                                                                <span className="text-slate-500">空值率</span>
-                                                                                <div className="flex items-center gap-2">
-                                                                                    <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                                                                        <div className={`h-full rounded-full ${nullRate > 10 ? 'bg-red-500' : nullRate > 5 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(nullRate * 5, 100)}%` }}></div>
-                                                                                    </div>
-                                                                                    <span className={`font-medium ${nullRate > 5 ? 'text-amber-600' : 'text-emerald-600'}`}>{nullRate}%</span>
-                                                                                </div>
-                                                                            </div>
-                                                                            <div className="flex items-center justify-between text-xs">
-                                                                                <span className="text-slate-500">唯一性</span>
-                                                                                <div className="flex items-center gap-2">
-                                                                                    <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                                                                        <div className="h-full bg-blue-500 rounded-full" style={{ width: `${uniqueness}%` }}></div>
-                                                                                    </div>
-                                                                                    <span className="font-medium text-slate-700">{uniqueness}%</span>
-                                                                                </div>
-                                                                            </div>
-                                                                            <div className="flex items-center justify-between text-xs">
-                                                                                <span className="text-slate-500">格式一致</span>
-                                                                                <span className="font-medium text-emerald-600">{field.name.includes('id') ? '100%' : Math.floor(95 + Math.random() * 5) + '%'}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="bg-white p-3 rounded-lg border border-slate-100 col-span-2 lg:col-span-3">
-                                                                        <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-07 关联性</div>
-                                                                        <div className="text-sm text-slate-600">
-                                                                            {field.name.endsWith('_id') ? (
-                                                                                <div className="flex items-center gap-4">
-                                                                                    <span className="flex items-center gap-1.5">
-                                                                                        <Share2 size={12} className="text-blue-500" />
-                                                                                        <span className="text-slate-500">外键:</span>
-                                                                                        <span className="font-mono text-blue-600">t_{field.name.replace('_id', '')}</span>
-                                                                                    </span>
-                                                                                    <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[10px] rounded">显式FK</span>
-                                                                                </div>
-                                                                            ) : field.name.includes('code') || field.name.includes('no') ? (
-                                                                                <div className="flex items-center gap-4">
-                                                                                    <span className="flex items-center gap-1.5">
-                                                                                        <Share2 size={12} className="text-amber-500" />
-                                                                                        <span className="text-slate-500">潜在关联:</span>
-                                                                                        <span className="font-mono text-amber-600">可能与外部系统关联</span>
-                                                                                    </span>
-                                                                                    <span className="px-1.5 py-0.5 bg-amber-50 text-amber-600 text-[10px] rounded">隐式FK</span>
-                                                                                </div>
-                                                                            ) : field.name.includes('total') || field.name.includes('sum') || field.name.includes('count') ? (
-                                                                                <div className="flex items-center gap-4">
-                                                                                    <span className="flex items-center gap-1.5">
-                                                                                        <Activity size={12} className="text-purple-500" />
-                                                                                        <span className="text-slate-500">派生字段</span>
-                                                                                    </span>
-                                                                                    <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[10px] rounded">计算字段</span>
-                                                                                </div>
-                                                                            ) : (
-                                                                                <span className="text-slate-400">无关联</span>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            )}
+                                                {isIdle ? (
+                                                    <>
+                                                        <div className="flex justify-between items-center mb-3">
+                                                            <span className="text-sm text-slate-500">共 {selectedTableFields.length} 个字段</span>
+                                                            <div className="flex items-center gap-3">
+                                                                <span className="text-xs text-slate-400">语义维度将在语义理解完成后生成</span>
+                                                                <button
+                                                                    onClick={() => setExpandedFields(expandedFields.length === selectedTableFields.length ? [] : selectedTableFields.map((f: any) => f.name))}
+                                                                    className="text-xs text-blue-600 hover:text-blue-700"
+                                                                >
+                                                                    {expandedFields.length === selectedTableFields.length ? '全部折叠' : '全部展开'}
+                                                                </button>
+                                                            </div>
                                                         </div>
-                                                    );
-                                                })}
+                                                        {selectedTableFields.map((field: any, idx: number) => {
+                                                            const isExpanded = expandedFields.includes(field.name);
+                                                            return (
+                                                                <div key={idx} className="border border-slate-200 rounded-lg overflow-hidden">
+                                                                    <button
+                                                                        onClick={() => setExpandedFields(isExpanded
+                                                                            ? expandedFields.filter(f => f !== field.name)
+                                                                            : [...expandedFields, field.name]
+                                                                        )}
+                                                                        className="w-full px-4 py-3 bg-white hover:bg-slate-50 flex items-center justify-between transition-colors"
+                                                                    >
+                                                                        <div className="flex items-center gap-3">
+                                                                            <ChevronRight size={16} className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                                                            <span className="font-mono font-medium text-slate-700">{field.name}</span>
+                                                                            <span className="text-xs text-slate-400">({field.type})</span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-400">未识别</span>
+                                                                            <span className="px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-400">待识别</span>
+                                                                        </div>
+                                                                    </button>
+                                                                    {isExpanded && (
+                                                                        <div className="bg-slate-50 px-4 py-3 border-t border-slate-100 grid grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-01 语义角色</div>
+                                                                                <div className="text-xs text-slate-400">未识别（需语义理解）</div>
+                                                                            </div>
+                                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-02 类型语义</div>
+                                                                                <div className="text-xs text-slate-400">未分析</div>
+                                                                            </div>
+                                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-03 值域特征</div>
+                                                                                <div className="text-xs text-slate-400">未分析</div>
+                                                                            </div>
+                                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-04 敏感等级</div>
+                                                                                <div className="text-xs text-slate-400">待识别</div>
+                                                                            </div>
+                                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-05 业务元信息</div>
+                                                                                <div className="text-xs text-slate-400">尚未生成</div>
+                                                                            </div>
+                                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-06 质量信号</div>
+                                                                                <div className="text-xs text-slate-400">仅展示统计项</div>
+                                                                            </div>
+                                                                            <div className="bg-white p-3 rounded-lg border border-slate-100 col-span-2 lg:col-span-3">
+                                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-07 关联性</div>
+                                                                                <div className="text-xs text-slate-400">未分析</div>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        <div className="text-xs text-slate-400">
+                                                            语义维度将在语义理解完成后生成，用于辅助确认字段业务含义。
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <div className="flex justify-between items-center mb-3">
+                                                            <span className="text-sm text-slate-500">共 {selectedTableFields.length} 个字段</span>
+                                                            <button
+                                                                onClick={() => setExpandedFields(expandedFields.length === selectedTableFields.length ? [] : selectedTableFields.map((f: any) => f.name))}
+                                                                className="text-xs text-blue-600 hover:text-blue-700"
+                                                            >
+                                                                {expandedFields.length === selectedTableFields.length ? '全部折叠' : '全部展开'}
+                                                            </button>
+                                                        </div>
+                                                        {selectedTableFields.map((field: any, idx: number) => {
+                                                            const isExpanded = expandedFields.includes(field.name);
+                                                            // Semantic calculations
+                                                            const ruleRole = field.name.endsWith('_id') ? 'Identifier' :
+                                                                field.name.includes('time') ? 'EventHint' :
+                                                                    field.name.includes('status') ? 'Status' : 'BusAttr';
+                                                            const getSensitivity = (name: string): 'L1' | 'L2' | 'L3' | 'L4' => {
+                                                                if (name.includes('id_card') || name.includes('bank')) return 'L4';
+                                                                if (name.includes('mobile') || name.includes('phone') || name.includes('name') || name.includes('address')) return 'L3';
+                                                                if (name.includes('user') || name.includes('employee')) return 'L2';
+                                                                return 'L1';
+                                                            };
+                                                            const sensitivity = getSensitivity(field.name);
+                                                            const getValueDomain = (type: string): string => {
+                                                                if (type.includes('tinyint') || type.includes('enum')) return '枚举型';
+                                                                if (type.includes('decimal') || type.includes('int')) return '范围型';
+                                                                if (type.includes('varchar') && type.includes('18')) return '格式型';
+                                                                return '自由文本';
+                                                            };
+                                                            const valueDomain = getValueDomain(field.type);
+                                                            const nullRate = Math.floor(Math.random() * 10);
+                                                            const uniqueness = field.name.includes('id') ? 100 : Math.floor(Math.random() * 50) + 50;
 
-                                                {/* Upgrade Suggestions Section */}
-                                                {(() => {
+                                                            return (
+                                                                <div key={idx} className="border border-slate-200 rounded-lg overflow-hidden">
+                                                                    <button
+                                                                        onClick={() => setExpandedFields(isExpanded
+                                                                            ? expandedFields.filter(f => f !== field.name)
+                                                                            : [...expandedFields, field.name]
+                                                                        )}
+                                                                        className="w-full px-4 py-3 bg-white hover:bg-slate-50 flex items-center justify-between transition-colors"
+                                                                    >
+                                                                        <div className="flex items-center gap-3">
+                                                                            <ChevronRight size={16} className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                                                            <span className="font-mono font-medium text-slate-700">{field.name}</span>
+                                                                            <span className="text-xs text-slate-400">({field.type})</span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-600">{ruleRole}</span>
+                                                                            <span className={`px-2 py-0.5 rounded text-xs ${sensitivity === 'L4' ? 'bg-red-50 text-red-600' : sensitivity === 'L3' ? 'bg-orange-50 text-orange-600' : 'bg-slate-100 text-slate-500'}`}>{sensitivity}</span>
+                                                                        </div>
+                                                                    </button>
+                                                                    {isExpanded && (
+                                                                        <div className="bg-slate-50 px-4 py-3 border-t border-slate-100 grid grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-01 语义角色</div>
+                                                                                <div className="font-medium text-slate-700">{ruleRole}</div>
+                                                                                <div className="text-xs text-slate-400 mt-1">置信度: 95%</div>
+                                                                            </div>
+                                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-02 类型语义</div>
+                                                                                <div className="font-medium text-slate-700">{field.type}</div>
+                                                                                <div className="text-xs text-slate-400 mt-1">推断: {field.comment || '未知'}</div>
+                                                                            </div>
+                                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-03 值域特征</div>
+                                                                                <div className="font-medium text-slate-700">{valueDomain}</div>
+                                                                                {/* Enhanced value domain details */}
+                                                                                {valueDomain === '枚举型' && (
+                                                                                    <div className="mt-2">
+                                                                                        <div className="text-[10px] text-slate-400 mb-1">可能值:</div>
+                                                                                        <div className="flex flex-wrap gap-1">
+                                                                                            {(field.name.includes('status')
+                                                                                                ? ['待处理', '进行中', '已完成', '已取消']
+                                                                                                : field.name.includes('type')
+                                                                                                    ? ['普通', 'VIP', '企业']
+                                                                                                    : ['值1', '值2', '值3']
+                                                                                            ).map((v, i) => (
+                                                                                                <span key={i} className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[10px] rounded">{v}</span>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                )}
+                                                                                {valueDomain === '格式型' && (
+                                                                                    <div className="mt-2 text-[10px] text-slate-500 font-mono bg-slate-50 px-2 py-1 rounded">
+                                                                                        {field.name.includes('mobile') || field.name.includes('phone')
+                                                                                            ? '格式: ^1[3-9]\\d{9}$'
+                                                                                            : field.name.includes('id_card') || field.name.includes('sfz')
+                                                                                                ? '格式: ^\\d{17}[\\dX]$'
+                                                                                                : field.name.includes('email')
+                                                                                                    ? '格式: ^[\\w.-]+@[\\w.-]+$'
+                                                                                                    : '格式: 固定18位'}
+                                                                                    </div>
+                                                                                )}
+                                                                                {valueDomain === '范围型' && (
+                                                                                    <div className="mt-2 flex items-center gap-3 text-[10px]">
+                                                                                        <span className="text-slate-400">MIN: <span className="text-slate-600 font-medium">{field.name.includes('amt') || field.name.includes('price') ? '0.01' : '1'}</span></span>
+                                                                                        <span className="text-slate-400">MAX: <span className="text-slate-600 font-medium">{field.name.includes('amt') || field.name.includes('price') ? '99999.99' : '9999'}</span></span>
+                                                                                        <span className="text-slate-400">AVG: <span className="text-slate-600 font-medium">{field.name.includes('amt') || field.name.includes('price') ? '258.50' : '156'}</span></span>
+                                                                                    </div>
+                                                                                )}
+                                                                                {valueDomain === '自由文本' && (
+                                                                                    <div className="mt-2 text-[10px] text-slate-500">
+                                                                                        长度分布: 平均 {Math.floor(Math.random() * 50) + 20} 字符
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-04 敏感等级</div>
+                                                                                <div className={`font-medium ${sensitivity === 'L4' ? 'text-red-600' : sensitivity === 'L3' ? 'text-orange-600' : 'text-slate-700'}`}>
+                                                                                    {sensitivity === 'L4' ? 'L4 高敏' : sensitivity === 'L3' ? 'L3 敏感' : sensitivity === 'L2' ? 'L2 内部' : 'L1 公开'}
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-05 业务元信息</div>
+                                                                                <input
+                                                                                    type="text"
+                                                                                    defaultValue={field.comment || ''}
+                                                                                    placeholder="业务名称..."
+                                                                                    className="w-full text-sm font-medium text-slate-700 border-b border-slate-200 focus:border-blue-400 outline-none bg-transparent"
+                                                                                />
+                                                                                {/* Enhanced metadata */}
+                                                                                <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
+                                                                                    <div>
+                                                                                        <span className="text-slate-400">责任人:</span>
+                                                                                        <span className="ml-1 text-slate-600">{field.name.includes('user') ? '用户中心' : field.name.includes('order') ? '交易中心' : '数据管理部'}</span>
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <span className="text-slate-400">标准:</span>
+                                                                                        <span className="ml-1 text-blue-600">{field.name.includes('id') ? 'GB/T 35273' : field.name.includes('time') ? 'ISO 8601' : '-'}</span>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="bg-white p-3 rounded-lg border border-slate-100">
+                                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-06 质量信号</div>
+                                                                                <div className="space-y-1.5">
+                                                                                    <div className="flex items-center justify-between text-xs">
+                                                                                        <span className="text-slate-500">空值率</span>
+                                                                                        <div className="flex items-center gap-2">
+                                                                                            <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                                                                <div className={`h-full rounded-full ${nullRate > 10 ? 'bg-red-500' : nullRate > 5 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(nullRate * 5, 100)}%` }}></div>
+                                                                                            </div>
+                                                                                            <span className={`font-medium ${nullRate > 5 ? 'text-amber-600' : 'text-emerald-600'}`}>{nullRate}%</span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="flex items-center justify-between text-xs">
+                                                                                        <span className="text-slate-500">唯一性</span>
+                                                                                        <div className="flex items-center gap-2">
+                                                                                            <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                                                                <div className="h-full bg-blue-500 rounded-full" style={{ width: `${uniqueness}%` }}></div>
+                                                                                            </div>
+                                                                                            <span className="font-medium text-slate-700">{uniqueness}%</span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="flex items-center justify-between text-xs">
+                                                                                        <span className="text-slate-500">格式一致</span>
+                                                                                        <span className="font-medium text-emerald-600">{field.name.includes('id') ? '100%' : Math.floor(95 + Math.random() * 5) + '%'}</span>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="bg-white p-3 rounded-lg border border-slate-100 col-span-2 lg:col-span-3">
+                                                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">D-07 关联性</div>
+                                                                                <div className="text-sm text-slate-600">
+                                                                                    {field.name.endsWith('_id') ? (
+                                                                                        <div className="flex items-center gap-4">
+                                                                                            <span className="flex items-center gap-1.5">
+                                                                                                <Share2 size={12} className="text-blue-500" />
+                                                                                                <span className="text-slate-500">外键:</span>
+                                                                                                <span className="font-mono text-blue-600">t_{field.name.replace('_id', '')}</span>
+                                                                                            </span>
+                                                                                            <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[10px] rounded">显式FK</span>
+                                                                                        </div>
+                                                                                    ) : field.name.includes('code') || field.name.includes('no') ? (
+                                                                                        <div className="flex items-center gap-4">
+                                                                                            <span className="flex items-center gap-1.5">
+                                                                                                <Share2 size={12} className="text-amber-500" />
+                                                                                                <span className="text-slate-500">潜在关联:</span>
+                                                                                                <span className="font-mono text-amber-600">可能与外部系统关联</span>
+                                                                                            </span>
+                                                                                            <span className="px-1.5 py-0.5 bg-amber-50 text-amber-600 text-[10px] rounded">隐式FK</span>
+                                                                                        </div>
+                                                                                    ) : field.name.includes('total') || field.name.includes('sum') || field.name.includes('count') ? (
+                                                                                        <div className="flex items-center gap-4">
+                                                                                            <span className="flex items-center gap-1.5">
+                                                                                                <Activity size={12} className="text-purple-500" />
+                                                                                                <span className="text-slate-500">派生字段</span>
+                                                                                            </span>
+                                                                                            <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[10px] rounded">计算字段</span>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <span className="text-slate-400">无关联</span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+
+                                                        {/* Upgrade Suggestions Section */}
+                                                        {(() => {
                                                     // Status Object Detection: status/state fields with expected multiple values
-                                                    const statusFields = (selectedTable.fields || []).filter((f: any) =>
+                                                    const statusFields = selectedTableFields.filter((f: any) =>
                                                         f.name.includes('status') || f.name.includes('state') ||
                                                         f.name.includes('phase') || f.name.includes('stage')
                                                     );
 
                                                     // Behavior Object Detection: time fields with verb-like semantics
                                                     const behaviorVerbs = ['pay', 'create', 'update', 'submit', 'approve', 'confirm', 'cancel', 'delete', 'login', 'logout', 'sign', 'complete', 'finish', 'start', 'end'];
-                                                    const behaviorFields = (selectedTable.fields || []).filter((f: any) => {
+                                                    const behaviorFields = selectedTableFields.filter((f: any) => {
                                                         if (!f.name.includes('time') && !f.name.includes('date') && !f.name.includes('_at')) return false;
                                                         return behaviorVerbs.some(verb => f.name.includes(verb));
                                                     });
@@ -1856,6 +2696,8 @@ const DataSemanticUnderstandingView = ({
                                                         </div>
                                                     );
                                                 })()}
+                                                    </>
+                                                )}
                                             </div>
                                         ) : detailTab === 'quality' ? (
                                             // Quality Overview Tab
@@ -1929,46 +2771,53 @@ const DataSemanticUnderstandingView = ({
                                                 </div>
 
                                                 {/* Sensitivity Distribution */}
-                                                <div className="bg-white p-4 rounded-xl border border-slate-200">
-                                                    <h4 className="font-medium text-slate-700 mb-4">敏感字段分布</h4>
-                                                    <div className="flex items-end gap-4 h-32">
-                                                        {(() => {
-                                                            const fields = selectedTable.fields || [];
-                                                            const getSensitivity = (name: string): 'L1' | 'L2' | 'L3' | 'L4' => {
-                                                                if (name.includes('id_card') || name.includes('bank')) return 'L4';
-                                                                if (name.includes('mobile') || name.includes('phone') || name.includes('name') || name.includes('address')) return 'L3';
-                                                                if (name.includes('user') || name.includes('employee')) return 'L2';
-                                                                return 'L1';
-                                                            };
-                                                            const counts = { L1: 0, L2: 0, L3: 0, L4: 0 };
-                                                            fields.forEach((f: any) => counts[getSensitivity(f.name)]++);
-                                                            const maxCount = Math.max(...Object.values(counts), 1);
-                                                            const config = [
-                                                                { level: 'L1', label: '公开', color: 'bg-slate-300', count: counts.L1 },
-                                                                { level: 'L2', label: '内部', color: 'bg-blue-400', count: counts.L2 },
-                                                                { level: 'L3', label: '敏感', color: 'bg-orange-400', count: counts.L3 },
-                                                                { level: 'L4', label: '高敏', color: 'bg-red-500', count: counts.L4 },
-                                                            ];
-                                                            return config.map((item, i) => (
-                                                                <div key={i} className="flex-1 flex flex-col items-center">
-                                                                    <div className={`w-full ${item.color} rounded-t-lg transition-all duration-500`}
-                                                                        style={{ height: `${(item.count / maxCount) * 100}%`, minHeight: item.count > 0 ? '8px' : '0' }}>
-                                                                    </div>
-                                                                    <div className="mt-2 text-center">
-                                                                        <div className="text-lg font-bold text-slate-700">{item.count}</div>
-                                                                        <div className="text-xs text-slate-500">{item.level}</div>
-                                                                        <div className="text-[10px] text-slate-400">{item.label}</div>
-                                                                    </div>
-                                                                </div>
-                                                            ));
-                                                        })()}
+                                                {isIdle ? (
+                                                    <div className="bg-white p-4 rounded-xl border border-slate-200">
+                                                        <h4 className="font-medium text-slate-700 mb-2">敏感字段分布</h4>
+                                                        <div className="text-xs text-slate-400">语义理解完成后生成敏感等级分布。</div>
                                                     </div>
-                                                </div>
+                                                ) : (
+                                                    <div className="bg-white p-4 rounded-xl border border-slate-200">
+                                                        <h4 className="font-medium text-slate-700 mb-4">敏感字段分布</h4>
+                                                        <div className="flex items-end gap-4 h-32">
+                                                            {(() => {
+                                                                const fields = selectedTableFields;
+                                                                const getSensitivity = (name: string): 'L1' | 'L2' | 'L3' | 'L4' => {
+                                                                    if (name.includes('id_card') || name.includes('bank')) return 'L4';
+                                                                    if (name.includes('mobile') || name.includes('phone') || name.includes('name') || name.includes('address')) return 'L3';
+                                                                    if (name.includes('user') || name.includes('employee')) return 'L2';
+                                                                    return 'L1';
+                                                                };
+                                                                const counts = { L1: 0, L2: 0, L3: 0, L4: 0 };
+                                                                fields.forEach((f: any) => counts[getSensitivity(f.name)]++);
+                                                                const maxCount = Math.max(...Object.values(counts), 1);
+                                                                const config = [
+                                                                    { level: 'L1', label: '公开', color: 'bg-slate-300', count: counts.L1 },
+                                                                    { level: 'L2', label: '内部', color: 'bg-blue-400', count: counts.L2 },
+                                                                    { level: 'L3', label: '敏感', color: 'bg-orange-400', count: counts.L3 },
+                                                                    { level: 'L4', label: '高敏', color: 'bg-red-500', count: counts.L4 },
+                                                                ];
+                                                                return config.map((item, i) => (
+                                                                    <div key={i} className="flex-1 flex flex-col items-center">
+                                                                        <div className={`w-full ${item.color} rounded-t-lg transition-all duration-500`}
+                                                                            style={{ height: `${(item.count / maxCount) * 100}%`, minHeight: item.count > 0 ? '8px' : '0' }}>
+                                                                        </div>
+                                                                        <div className="mt-2 text-center">
+                                                                            <div className="text-lg font-bold text-slate-700">{item.count}</div>
+                                                                            <div className="text-xs text-slate-500">{item.level}</div>
+                                                                            <div className="text-[10px] text-slate-400">{item.label}</div>
+                                                                        </div>
+                                                                    </div>
+                                                                ));
+                                                            })()}
+                                                        </div>
+                                                    </div>
+                                                )}
 
                                                 {/* Problem Fields Summary */}
                                                 <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
                                                     <h4 className="font-medium text-amber-800 mb-3 flex items-center gap-2">
-                                                        <AlertTriangle size={16} /> 质量问题字段 ({Math.min(2, selectedTable.fields?.length || 0)})
+                                                        <AlertTriangle size={16} /> 质量问题字段 ({Math.min(2, selectedTableFields.length)})
                                                     </h4>
                                                     <div className="space-y-2">
                                                         <div className="flex items-center justify-between bg-white px-3 py-2 rounded-lg text-sm">
@@ -1984,24 +2833,170 @@ const DataSemanticUnderstandingView = ({
                                             </div>
                                         ) : (() => {
                                             // Calculate conflict stats for batch actions
-                                            const allFields = selectedTable.fields || [];
+                                            const allFields = selectedTableFields;
+                                            const getRuleResult = (name: string, type: string) => {
+                                                if (name.endsWith('_id') || name === 'id') return { role: 'Identifier', reason: '字段名含_id后缀', confidence: 95 };
+                                                if (name.includes('time') || name.includes('date') || type.includes('datetime') || type.includes('timestamp')) return { role: 'EventHint', reason: '时间类型字段', confidence: 90 };
+                                                if (name.includes('status') || name.includes('state') || name.includes('type')) return { role: 'Status', reason: '状态/类型字段', confidence: 85 };
+                                                if (name.includes('amount') || name.includes('price') || name.includes('total') || type.includes('decimal')) return { role: 'Measure', reason: '金额/数量字段', confidence: 80 };
+                                                return { role: 'BusAttr', reason: '默认业务属性', confidence: 60 };
+                                            };
+                                            const getAIResult = (name: string) => {
+                                                const aiMappings: Record<string, { role: string; meaning: string; scenario: string; confidence: number }> = {
+                                                    'id': { role: 'id', meaning: '记录标识', scenario: '主键关联', confidence: 92 },
+                                                    'user_id': { role: 'user_id', meaning: '用户标识', scenario: '用户关联查询', confidence: 95 },
+                                                    'name': { role: 'name', meaning: '名称属性', scenario: '展示/搜索', confidence: 88 },
+                                                    'mobile': { role: 'phone', meaning: '手机号码', scenario: '联系/验证', confidence: 90 },
+                                                    'phone': { role: 'phone', meaning: '电话号码', scenario: '联系方式', confidence: 90 },
+                                                    'email': { role: 'email', meaning: '电子邮箱', scenario: '通知/登录', confidence: 92 },
+                                                    'status': { role: 'status', meaning: '状态标识', scenario: '状态流转', confidence: 85 },
+                                                    'create_time': { role: 'create_time', meaning: '创建时间', scenario: '审计追踪', confidence: 95 },
+                                                    'update_time': { role: 'update_time', meaning: '更新时间', scenario: '变更追踪', confidence: 95 },
+                                                    'address': { role: 'address', meaning: '地址信息', scenario: '配送/定位', confidence: 85 },
+                                                    'amount': { role: 'amount', meaning: '金额数值', scenario: '财务统计', confidence: 88 },
+                                                    'order_id': { role: 'order_id', meaning: '订单标识', scenario: '订单关联', confidence: 95 },
+                                                };
+                                                const key = Object.keys(aiMappings).find(k => name.includes(k));
+                                                if (key) return aiMappings[key];
+                                                return { role: 'unknown', meaning: '待识别', scenario: '-', confidence: 0 };
+                                            };
+                                            const analyzedFields = allFields.map((field: any) => ({
+                                                field,
+                                                analysis: analyzeField(field)
+                                            }));
+                                            const analysisMap = new Map(analyzedFields.map((entry) => [entry.field.name, entry.analysis]));
+                                            const getFieldGroup = (field: any) => {
+                                                const analysis = analysisMap.get(field.name) || analyzeField(field);
+                                                const ruleRole = getRuleResult(field.name, field.type || '').role;
+                                                const aiRole = field.suggestion || getAIResult(field.name).role;
+                                                const isResolved = !!fieldRoleOverrides[field.name];
+                                                const hasConflict = ruleRole.toLowerCase() !== aiRole.toLowerCase() && aiRole !== 'unknown' && !isResolved;
+                                                const sensitivity = sensitivityOverrides[field.name] || analysis.sensitivity;
+                                                const confidence = analysis.roleConfidence || 0;
+                                                if (sensitivity === 'L3' || sensitivity === 'L4') return 'C';
+                                                if (hasConflict || confidence < 0.7) return 'C';
+                                                if (confidence >= 0.85 && (sensitivity === 'L1' || sensitivity === 'L2')) return 'A';
+                                                return 'B';
+                                            };
+                                            const groupLabelMap: Record<string, string> = { A: '可批量', B: '需下钻', C: '高风险' };
+                                            const groupToneMap: Record<string, string> = {
+                                                A: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+                                                B: 'bg-slate-50 text-slate-600 border-slate-200',
+                                                C: 'bg-red-50 text-red-700 border-red-100'
+                                            };
+                                            const groupCounts = allFields.reduce((acc, field) => {
+                                                const group = getFieldGroup(field);
+                                                acc[group] = (acc[group] || 0) + 1;
+                                                return acc;
+                                            }, { A: 0, B: 0, C: 0 } as Record<string, number>);
+                                            const fieldGroupMap = new Map(allFields.map(field => [field.name, getFieldGroup(field)]));
+                                            const reviewFieldNames = new Set(
+                                                analyzedFields
+                                                    .filter((entry) => ['L3', 'L4'].includes(entry.analysis.sensitivity) || (entry.analysis.roleConfidence || 0) < 0.7)
+                                                    .map((entry) => entry.field.name)
+                                            );
+                                            const baseFields = fieldProblemFilter === 'review'
+                                                ? allFields.filter((field: any) => reviewFieldNames.has(field.name))
+                                                : allFields;
                                             // Filter fields by search term
                                             const filteredFields = fieldSearchTerm.trim()
-                                                ? allFields.filter((field: any) =>
+                                                ? baseFields.filter((field: any) =>
                                                     field.name.toLowerCase().includes(fieldSearchTerm.toLowerCase()) ||
                                                     field.type?.toLowerCase().includes(fieldSearchTerm.toLowerCase()) ||
                                                     field.comment?.toLowerCase().includes(fieldSearchTerm.toLowerCase())
                                                 )
-                                                : allFields;
+                                                : baseFields;
+                                            const displayFields = fieldGroupFilter === 'all'
+                                                ? filteredFields
+                                                : filteredFields.filter((field: any) => fieldGroupMap.get(field.name) === fieldGroupFilter);
+                                            const visibleFieldNames = displayFields.map(field => field.name);
+                                            const selectedFieldSet = new Set(selectedFieldNames);
+                                            const isAllVisibleSelected = visibleFieldNames.length > 0 && visibleFieldNames.every(name => selectedFieldSet.has(name));
+                                            const visibleSelectedCount = visibleFieldNames.filter(name => selectedFieldSet.has(name)).length;
+                                            const selectedHighConfidence = selectedFieldNames.filter(name => fieldGroupMap.get(name) === 'A');
+                                            const canViewEvidence = isSuggestionsReady(semanticProfile.governanceStatus as GovernanceStatus);
+                                            const isFieldAnalysisReady = isSuggestionsReady(semanticProfile.governanceStatus as GovernanceStatus) || hasFieldAnalysis;
+                                            const showSemanticColumns = isFieldAnalysisReady && fieldViewMode === 'semantic';
+                                            const tableColSpan = showSemanticColumns ? 10 : 5;
+                                            const hasSearch = fieldSearchTerm.trim().length > 0;
+                                            const hasProblemFilter = fieldProblemFilter !== 'all';
+                                            const hasGroupFilter = fieldGroupFilter !== 'all';
                                             const conflictFields = allFields.filter((field: any) => {
-                                                const ruleRole = field.name.endsWith('_id') ? 'Identifier' :
-                                                    field.name.includes('time') ? 'EventHint' :
-                                                        field.name.includes('status') ? 'Status' : 'BusAttr';
-                                                const aiRole = field.suggestion ? field.suggestion : ruleRole;
+                                                const ruleRole = getRuleResult(field.name, field.type || '').role;
+                                                const aiRole = field.suggestion ? field.suggestion : getAIResult(field.name).role;
                                                 const isResolved = !!fieldRoleOverrides[field.name];
                                                 return ruleRole !== aiRole && aiRole !== 'unknown' && !isResolved;
                                             });
                                             const resolvedCount = Object.keys(fieldRoleOverrides).length;
+                                            const isTableConfirmed = (semanticProfile.governanceStatus || 'S0') === 'S3';
+                                            const reviewStatusToneMap: Record<string, string> = {
+                                                suggested: 'bg-amber-50 text-amber-700 border-amber-100',
+                                                confirmed: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+                                                pending: 'bg-slate-50 text-slate-600 border-slate-200'
+                                            };
+                                            const reviewStatusLabelMap: Record<string, string> = {
+                                                suggested: '建议',
+                                                confirmed: '已确认',
+                                                pending: '待定'
+                                            };
+                                            const handleToggleSelectAll = (checked: boolean) => {
+                                                setSelectedFieldNames(prev => {
+                                                    if (checked) {
+                                                        const merged = new Set([...prev, ...visibleFieldNames]);
+                                                        return Array.from(merged);
+                                                    }
+                                                    return prev.filter(name => !visibleFieldNames.includes(name));
+                                                });
+                                            };
+                                            const handleToggleFieldSelection = (fieldName: string, checked: boolean) => {
+                                                setSelectedFieldNames(prev => {
+                                                    if (checked) {
+                                                        return prev.includes(fieldName) ? prev : [...prev, fieldName];
+                                                    }
+                                                    return prev.filter(name => name !== fieldName);
+                                                });
+                                            };
+                                            const applyReviewStatus = (
+                                                fieldNames: string[],
+                                                status: 'confirmed' | 'pending',
+                                                action: 'accept' | 'override' | 'pending',
+                                                reason: string
+                                            ) => {
+                                                if (fieldNames.length === 0) return;
+                                                setFieldReviewStatus(prev => {
+                                                    const next = { ...prev };
+                                                    fieldNames.forEach(name => {
+                                                        next[name] = status;
+                                                    });
+                                                    return next;
+                                                });
+                                                const timestamp = new Date().toISOString();
+                                                fieldNames.forEach(name => {
+                                                    recordAuditLog({
+                                                        field: name,
+                                                        action,
+                                                        source: '融合',
+                                                        reason,
+                                                        timestamp
+                                                    });
+                                                });
+                                            };
+                                            const handleBatchAcceptHighConfidence = () => {
+                                                if (selectedHighConfidence.length === 0) return;
+                                                applyReviewStatus(selectedHighConfidence, 'confirmed', 'accept', '批量接受高置信');
+                                                setSelectedFieldNames(prev => prev.filter(name => !selectedHighConfidence.includes(name)));
+                                            };
+                                            const handleBatchOverride = () => {
+                                                if (selectedFieldNames.length === 0) return;
+                                                applyReviewStatus(selectedFieldNames, 'pending', 'override', '批量改判');
+                                                setEditMode(true);
+                                                setSelectedFieldNames([]);
+                                            };
+                                            const handleBatchPending = () => {
+                                                if (selectedFieldNames.length === 0) return;
+                                                applyReviewStatus(selectedFieldNames, 'pending', 'pending', '加入待办');
+                                                setSelectedFieldNames([]);
+                                            };
 
                                             // Batch resolve all conflicts
                                             const batchResolve = (choice: 'rule' | 'ai') => {
@@ -2029,6 +3024,16 @@ const DataSemanticUnderstandingView = ({
                                                             <div>
                                                                 <div className="text-slate-500 text-xs font-medium mb-1">总字段数</div>
                                                                 <div className="text-2xl font-bold text-slate-800">{allFields.length}</div>
+                                                                <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1">
+                                                                    <span>来自元数据</span>
+                                                                    <button
+                                                                        onClick={handleViewEvidence}
+                                                                        disabled={!canViewEvidence}
+                                                                        className={`text-[10px] ${canViewEvidence ? 'text-blue-600 hover:underline' : 'text-slate-300 cursor-not-allowed'}`}
+                                                                    >
+                                                                        查看证据
+                                                                    </button>
+                                                                </div>
                                                             </div>
                                                             <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center group-hover:bg-blue-50 transition-colors">
                                                                 <Table size={20} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
@@ -2036,15 +3041,34 @@ const DataSemanticUnderstandingView = ({
                                                         </div>
 
                                                         {/* Primary Keys */}
-                                                        <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm relative overflow-hidden group hover:border-amber-300 transition-colors">
-                                                            <div>
-                                                                <div className="text-slate-500 text-xs font-medium mb-1">主键/标识</div>
-                                                                <div className="text-2xl font-bold text-slate-800">{allFields.filter((f: any) => f.key === 'PK' || f.name.endsWith('_id')).length}</div>
-                                                            </div>
-                                                            <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center group-hover:bg-amber-50 transition-colors">
-                                                                <Key size={20} className="text-slate-400 group-hover:text-amber-500 transition-colors" />
-                                                            </div>
-                                                        </div>
+                                                        {(() => {
+                                                            const pkFromMeta = allFields.filter((f: any) => f.key === 'PK' || f.primaryKey);
+                                                            const hasPkMeta = pkFromMeta.length > 0;
+                                                            const pkCount = hasPkMeta
+                                                                ? pkFromMeta.length
+                                                                : allFields.filter((f: any) => f.name.endsWith('_id') || f.name === 'id').length;
+                                                            return (
+                                                                <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm relative overflow-hidden group hover:border-amber-300 transition-colors">
+                                                                    <div>
+                                                                        <div className="text-slate-500 text-xs font-medium mb-1">主键/标识</div>
+                                                                        <div className="text-2xl font-bold text-slate-800">{pkCount}</div>
+                                                                        <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1">
+                                                                            <span>{hasPkMeta ? '来自元数据' : '规则建议'}</span>
+                                                                            <button
+                                                                                onClick={handleViewEvidence}
+                                                                                disabled={!canViewEvidence}
+                                                                                className={`text-[10px] ${canViewEvidence ? 'text-blue-600 hover:underline' : 'text-slate-300 cursor-not-allowed'}`}
+                                                                            >
+                                                                                查看证据
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center group-hover:bg-amber-50 transition-colors">
+                                                                        <Key size={20} className="text-slate-400 group-hover:text-amber-500 transition-colors" />
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })()}
 
                                                         {/* Sensitive Fields */}
                                                         <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm relative overflow-hidden group hover:border-red-300 transition-colors">
@@ -2055,6 +3079,16 @@ const DataSemanticUnderstandingView = ({
                                                                     return name.includes('id_card') || name.includes('sfz') || name.includes('bank') ||
                                                                         name.includes('mobile') || name.includes('phone') || name.includes('address');
                                                                 }).length}</div>
+                                                                <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1">
+                                                                    <span>规则建议</span>
+                                                                    <button
+                                                                        onClick={handleViewEvidence}
+                                                                        disabled={!canViewEvidence}
+                                                                        className={`text-[10px] ${canViewEvidence ? 'text-blue-600 hover:underline' : 'text-slate-300 cursor-not-allowed'}`}
+                                                                    >
+                                                                        查看证据
+                                                                    </button>
+                                                                </div>
                                                             </div>
                                                             <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center group-hover:bg-red-50 transition-colors">
                                                                 <Shield size={20} className="text-slate-400 group-hover:text-red-500 transition-colors" />
@@ -2062,19 +3096,37 @@ const DataSemanticUnderstandingView = ({
                                                         </div>
 
                                                         {/* Required Fields */}
-                                                        <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm relative overflow-hidden group hover:border-emerald-300 transition-colors">
-                                                            <div>
-                                                                <div className="text-slate-500 text-xs font-medium mb-1">必填字段</div>
-                                                                <div className="text-2xl font-bold text-slate-800">{allFields.filter((f: any) => f.required !== false).length}</div>
-                                                            </div>
-                                                            <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center group-hover:bg-emerald-50 transition-colors">
-                                                                <CheckCircle2 size={20} className="text-slate-400 group-hover:text-emerald-500 transition-colors" />
-                                                            </div>
-                                                        </div>
+                                                        {(() => {
+                                                            const hasRequiredMeta = allFields.some((f: any) => typeof f.required === 'boolean');
+                                                            const requiredCount = hasRequiredMeta
+                                                                ? allFields.filter((f: any) => f.required === true).length
+                                                                : 0;
+                                                            return (
+                                                                <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm relative overflow-hidden group hover:border-emerald-300 transition-colors">
+                                                                    <div>
+                                                                        <div className="text-slate-500 text-xs font-medium mb-1">必填字段</div>
+                                                                        <div className="text-2xl font-bold text-slate-800">{requiredCount}</div>
+                                                                        <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1">
+                                                                            <span>{hasRequiredMeta ? '来自元数据' : '未提供元数据'}</span>
+                                                                            <button
+                                                                                onClick={handleViewEvidence}
+                                                                                disabled={!canViewEvidence}
+                                                                                className={`text-[10px] ${canViewEvidence ? 'text-blue-600 hover:underline' : 'text-slate-300 cursor-not-allowed'}`}
+                                                                            >
+                                                                                查看证据
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center group-hover:bg-emerald-50 transition-colors">
+                                                                        <CheckCircle2 size={20} className="text-slate-400 group-hover:text-emerald-500 transition-colors" />
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })()}
                                                     </div>
 
                                                     {/* 2. Table Section */}
-                                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                                    <div id="detail-fields-table" className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                                                         {/* Toolbar */}
                                                         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/50">
                                                             <div className="flex items-center gap-3">
@@ -2088,17 +3140,89 @@ const DataSemanticUnderstandingView = ({
                                                                         className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white"
                                                                     />
                                                                 </div>
+                                                                {fieldProblemFilter !== 'all' && (
+                                                                    <button
+                                                                        onClick={() => setFieldProblemFilter('all')}
+                                                                        className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] bg-amber-50 text-amber-700 border border-amber-100 hover:bg-amber-100 transition-colors"
+                                                                    >
+                                                                        <Filter size={12} />
+                                                                        已筛选: 待Review字段
+                                                                        <X size={12} className="ml-1" />
+                                                                    </button>
+                                                                )}
+                                                                {hasGroupFilter && (
+                                                                    <button
+                                                                        onClick={() => setFieldGroupFilter('all')}
+                                                                        className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 transition-colors"
+                                                                    >
+                                                                        <Tag size={12} />
+                                                                        已筛选: {groupLabelMap[fieldGroupFilter]}
+                                                                        <X size={12} className="ml-1" />
+                                                                    </button>
+                                                                )}
                                                                 <div className="h-4 w-[1px] bg-slate-200"></div>
                                                                 <span className="text-xs text-slate-500">
-                                                                    显示 <span className="font-medium text-slate-900">{filteredFields.length}</span> / {allFields.length} 字段
+                                                                    显示 <span className="font-medium text-slate-900">{displayFields.length}</span> / {allFields.length} 字段
                                                                 </span>
+                                                                <div className="h-4 w-[1px] bg-slate-200"></div>
+                                                                <div className="flex items-center gap-1 text-[10px]">
+                                                                    <button
+                                                                        onClick={() => setFieldViewMode('structure')}
+                                                                        className={`px-2 py-1 rounded ${fieldViewMode === 'structure'
+                                                                            ? 'bg-slate-200 text-slate-700'
+                                                                            : 'text-slate-500 hover:bg-slate-100'}`}
+                                                                    >
+                                                                        结构视图
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => isSuggestionsReady(semanticProfile.governanceStatus as GovernanceStatus) && setFieldViewMode('semantic')}
+                                                                        title={isSuggestionsReady(semanticProfile.governanceStatus as GovernanceStatus) ? '' : '需生成建议后查看'}
+                                                                        className={`px-2 py-1 rounded ${fieldViewMode === 'semantic'
+                                                                            ? 'bg-blue-100 text-blue-700'
+                                                                            : isSuggestionsReady(semanticProfile.governanceStatus as GovernanceStatus)
+                                                                                ? 'text-slate-500 hover:bg-slate-100'
+                                                                                : 'text-slate-300 cursor-not-allowed'}`}
+                                                                    >
+                                                                        语义视图
+                                                                    </button>
+                                                                </div>
+                                                                {showSemanticColumns && (
+                                                                    <div className="flex items-center gap-1 text-[10px] ml-2">
+                                                                        <button
+                                                                            onClick={() => setFieldGroupFilter('all')}
+                                                                            className={`px-2 py-1 rounded ${fieldGroupFilter === 'all' ? 'bg-slate-200 text-slate-700' : 'text-slate-500 hover:bg-slate-100'}`}
+                                                                        >
+                                                                            全部
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => setFieldGroupFilter('A')}
+                                                                            className={`px-2 py-1 rounded ${fieldGroupFilter === 'A' ? 'bg-emerald-100 text-emerald-700' : 'text-slate-500 hover:bg-slate-100'}`}
+                                                                        >
+                                                                            可批量 {groupCounts.A}
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => setFieldGroupFilter('B')}
+                                                                            className={`px-2 py-1 rounded ${fieldGroupFilter === 'B' ? 'bg-slate-200 text-slate-700' : 'text-slate-500 hover:bg-slate-100'}`}
+                                                                        >
+                                                                            需下钻 {groupCounts.B}
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => setFieldGroupFilter('C')}
+                                                                            className={`px-2 py-1 rounded ${fieldGroupFilter === 'C' ? 'bg-red-100 text-red-700' : 'text-slate-500 hover:bg-slate-100'}`}
+                                                                        >
+                                                                            高风险 {groupCounts.C}
+                                                                        </button>
+                                                                    </div>
+                                                                )}
                                                             </div>
 
                                                             {/* Analysis Status Badge */}
                                                             {semanticProfile.analysisStep !== 'idle' && (
                                                                 <div className="px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-100 flex items-center gap-1.5">
                                                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                                                                    <span className="text-xs font-medium text-emerald-700">语义分析已完成</span>
+                                                                    <span className="text-xs font-medium text-emerald-700">
+                                                                        {getGovernanceDisplay((semanticProfile.governanceStatus || 'S1') as GovernanceStatus, rolledBackTableIds.has(selectedTable.table)).label}
+                                                                    </span>
                                                                 </div>
                                                             )}
                                                         </div>
@@ -2110,79 +3234,130 @@ const DataSemanticUnderstandingView = ({
                                                                 <span>大表提示: 当前表字段较多，建议使用搜索功能快速定位。</span>
                                                             </div>
                                                         )}
+                                                        {showSemanticColumns && (
+                                                            <div className="px-4 py-2 border-b border-slate-100 bg-white flex items-center justify-between">
+                                                                <div className="flex items-center gap-3 text-xs text-slate-500">
+                                                                    <label className="flex items-center gap-2 cursor-pointer">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={isAllVisibleSelected}
+                                                                            onChange={(e) => handleToggleSelectAll(e.target.checked)}
+                                                                            className="w-3.5 h-3.5"
+                                                                        />
+                                                                        全选当前筛选
+                                                                    </label>
+                                                                    <span>已选 {selectedFieldNames.length}</span>
+                                                                    <span className="text-slate-400">当前筛选 {visibleSelectedCount}</span>
+                                                                    <span className="text-emerald-600">高置信 {selectedHighConfidence.length}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <button
+                                                                        onClick={handleBatchAcceptHighConfidence}
+                                                                        disabled={selectedHighConfidence.length === 0}
+                                                                        className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${selectedHighConfidence.length > 0
+                                                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                                                            : 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'}`}
+                                                                    >
+                                                                        批量接受高置信
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={handleBatchOverride}
+                                                                        disabled={selectedFieldNames.length === 0}
+                                                                        className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${selectedFieldNames.length > 0
+                                                                            ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                                                                            : 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'}`}
+                                                                    >
+                                                                        批量改判
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={handleBatchPending}
+                                                                        disabled={selectedFieldNames.length === 0}
+                                                                        className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${selectedFieldNames.length > 0
+                                                                            ? 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                                                                            : 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'}`}
+                                                                    >
+                                                                        加入待办
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
 
-                                                        <div className={allFields.length > 30 ? "max-h-[500px] overflow-y-auto" : ""}>
-                                                            <table className="w-full text-sm text-left">
+                                                        <div className={`${allFields.length > 30 ? "max-h-[520px] overflow-y-auto" : ""} overflow-x-auto`}>
+                                                                    <table className="w-full min-w-[1160px] text-sm text-left">
                                                                 <thead className="bg-slate-50 text-slate-500 border-b border-slate-100 sticky top-0 z-10 shadow-sm">
                                                                     <tr>
-                                                                        <th className="px-4 py-3.5 w-12 text-xs font-semibold">#</th>
-                                                                        <th className="px-4 py-3.5 text-xs w-48 font-semibold">物理字段</th>
-                                                                        <th className="px-4 py-3.5 text-xs w-48 font-semibold">业务描述</th>
-                                                                        <th className="px-4 py-3.5 text-xs w-32 font-semibold">数据类型</th>
-                                                                        <th className="px-4 py-3.5 text-xs w-36 font-semibold">
-                                                                            <span className="flex items-center gap-1.5 text-purple-600"><Settings size={13} /> 规则判定</span>
-                                                                        </th>
-                                                                        <th className="px-4 py-3.5 text-xs w-40 font-semibold">
-                                                                            <span className="flex items-center gap-1.5 text-blue-600"><Sparkles size={13} /> AI 语义</span>
-                                                                        </th>
-                                                                        <th className="px-4 py-3.5 text-xs w-28 font-semibold">
+                                                                        {showSemanticColumns && (
+                                                                            <th className="px-4 py-4 w-10 text-xs font-semibold"></th>
+                                                                        )}
+                                                                        <th className="px-5 py-4 w-12 text-xs font-semibold">#</th>
+                                                                        <th className="px-5 py-4 text-xs w-56 font-semibold">物理字段</th>
+                                                                        <th className="px-5 py-4 text-xs w-56 font-semibold">业务描述</th>
+                                                                        <th className="px-5 py-4 text-xs w-36 font-semibold">数据类型</th>
+                                                                        {showSemanticColumns && (
+                                                                            <th className="px-5 py-4 text-xs w-40 font-semibold">
+                                                                                <span className="flex items-center gap-1.5 text-purple-600"><Settings size={13} /> 规则判定</span>
+                                                                            </th>
+                                                                        )}
+                                                                        {showSemanticColumns && (
+                                                                            <th className="px-5 py-4 text-xs w-44 font-semibold">
+                                                                                <span className="flex items-center gap-1.5 text-blue-600"><Sparkles size={13} /> AI 语义</span>
+                                                                            </th>
+                                                                        )}
+                                                                        <th className="px-5 py-4 text-xs w-32 font-semibold">
                                                                             <span className="flex items-center gap-1.5 text-slate-500"><Database size={13} /> 采样值</span>
                                                                         </th>
-                                                                        <th className="px-4 py-3.5 text-xs w-24 font-semibold">
-                                                                            <span className="flex items-center gap-1.5 text-orange-600"><Shield size={13} /> 敏感级</span>
-                                                                        </th>
-                                                                        <th className="px-4 py-3.5 text-xs text-center w-32 font-semibold">
-                                                                            <span className="flex items-center justify-center gap-1.5 text-emerald-600"><Layers size={13} /> 融合结果</span>
-                                                                        </th>
+                                                                        {showSemanticColumns && (
+                                                                            <th className="px-5 py-4 text-xs w-28 font-semibold">
+                                                                                <span className="flex items-center gap-1.5 text-orange-600"><Shield size={13} /> 敏感级</span>
+                                                                            </th>
+                                                                        )}
+                                                                        {showSemanticColumns && (
+                                                                            <th className="px-5 py-4 text-xs text-center w-36 font-semibold">
+                                                                                <span className="flex items-center justify-center gap-1.5 text-emerald-600"><Layers size={13} /> 融合结果</span>
+                                                                            </th>
+                                                                        )}
                                                                     </tr>
                                                                 </thead>
-                                                                <tbody className="divide-y divide-slate-50">
-                                                                    {filteredFields.length === 0 && fieldSearchTerm ? (
+                                                                <tbody className="divide-y divide-slate-100">
+                                                                    {displayFields.length === 0 && (hasSearch || hasProblemFilter || hasGroupFilter) ? (
                                                                         <tr>
-                                                                            <td colSpan={9} className="px-4 py-12 text-center text-slate-400 bg-slate-50/30">
+                                                                            <td colSpan={tableColSpan} className="px-5 py-14 text-center text-slate-400 bg-slate-50/30">
                                                                                 <Search size={32} className="mx-auto mb-3 opacity-30" />
-                                                                                <div className="text-sm font-medium">未找到匹配 "{fieldSearchTerm}" 的字段</div>
-                                                                                <button
-                                                                                    onClick={() => setFieldSearchTerm('')}
-                                                                                    className="mt-3 text-xs text-blue-500 hover:text-blue-600 hover:underline"
-                                                                                >
-                                                                                    清除搜索条件
-                                                                                </button>
+                                                                                <div className="text-sm font-medium">
+                                                                                    {hasSearch ? `未找到匹配 "${fieldSearchTerm}" 的字段` : hasProblemFilter ? '暂无待Review字段' : hasGroupFilter ? `暂无${groupLabelMap[fieldGroupFilter]}字段` : '暂无字段'}
+                                                                                </div>
+                                                                                <div className="mt-3 flex items-center justify-center gap-3">
+                                                                                    {hasSearch && (
+                                                                                        <button
+                                                                                            onClick={() => setFieldSearchTerm('')}
+                                                                                            className="text-xs text-blue-500 hover:text-blue-600 hover:underline"
+                                                                                        >
+                                                                                            清除搜索条件
+                                                                                        </button>
+                                                                                    )}
+                                                                                    {hasProblemFilter && (
+                                                                                        <button
+                                                                                            onClick={() => setFieldProblemFilter('all')}
+                                                                                            className="text-xs text-blue-500 hover:text-blue-600 hover:underline"
+                                                                                        >
+                                                                                            清除筛选条件
+                                                                                        </button>
+                                                                                    )}
+                                                                                    {hasGroupFilter && (
+                                                                                        <button
+                                                                                            onClick={() => setFieldGroupFilter('all')}
+                                                                                            className="text-xs text-blue-500 hover:text-blue-600 hover:underline"
+                                                                                        >
+                                                                                            清除分组筛选
+                                                                                        </button>
+                                                                                    )}
+                                                                                </div>
                                                                             </td>
                                                                         </tr>
-                                                                    ) : filteredFields.map((field: any, idx: number) => {
-                                                                        // Rule-based role determination with reasoning
-                                                                        const getRuleResult = (name: string, type: string) => {
-                                                                            if (name.endsWith('_id') || name === 'id') return { role: 'Identifier', reason: '字段名含_id后缀', confidence: 95 };
-                                                                            if (name.includes('time') || name.includes('date') || type.includes('datetime') || type.includes('timestamp')) return { role: 'EventHint', reason: '时间类型字段', confidence: 90 };
-                                                                            if (name.includes('status') || name.includes('state') || name.includes('type')) return { role: 'Status', reason: '状态/类型字段', confidence: 85 };
-                                                                            if (name.includes('amount') || name.includes('price') || name.includes('total') || type.includes('decimal')) return { role: 'Measure', reason: '金额/数量字段', confidence: 80 };
-                                                                            return { role: 'BusAttr', reason: '默认业务属性', confidence: 60 };
-                                                                        };
-                                                                        const ruleResult = getRuleResult(field.name, field.type);
+                                                                    ) : displayFields.map((field: any, idx: number) => {
+                                                                        const ruleResult = getRuleResult(field.name, field.type || '');
                                                                         const ruleRole = ruleResult.role;
 
-                                                                        // AI semantic analysis with business meaning
-                                                                        const getAIResult = (name: string) => {
-                                                                            const aiMappings: Record<string, { role: string; meaning: string; scenario: string; confidence: number }> = {
-                                                                                'id': { role: 'id', meaning: '记录标识', scenario: '主键关联', confidence: 92 },
-                                                                                'user_id': { role: 'user_id', meaning: '用户标识', scenario: '用户关联查询', confidence: 95 },
-                                                                                'name': { role: 'name', meaning: '名称属性', scenario: '展示/搜索', confidence: 88 },
-                                                                                'mobile': { role: 'phone', meaning: '手机号码', scenario: '联系/验证', confidence: 90 },
-                                                                                'phone': { role: 'phone', meaning: '电话号码', scenario: '联系方式', confidence: 90 },
-                                                                                'email': { role: 'email', meaning: '电子邮箱', scenario: '通知/登录', confidence: 92 },
-                                                                                'status': { role: 'status', meaning: '状态标识', scenario: '状态流转', confidence: 85 },
-                                                                                'create_time': { role: 'create_time', meaning: '创建时间', scenario: '审计追踪', confidence: 95 },
-                                                                                'update_time': { role: 'update_time', meaning: '更新时间', scenario: '变更追踪', confidence: 95 },
-                                                                                'address': { role: 'address', meaning: '地址信息', scenario: '配送/定位', confidence: 85 },
-                                                                                'amount': { role: 'amount', meaning: '金额数值', scenario: '财务统计', confidence: 88 },
-                                                                                'order_id': { role: 'order_id', meaning: '订单标识', scenario: '订单关联', confidence: 95 },
-                                                                            };
-                                                                            // Find matching AI result
-                                                                            const key = Object.keys(aiMappings).find(k => name.includes(k));
-                                                                            if (key) return aiMappings[key];
-                                                                            return { role: 'unknown', meaning: '待识别', scenario: '-', confidence: 0 };
-                                                                        };
                                                                         const aiResult = getAIResult(field.name);
                                                                         const aiRole = field.suggestion || aiResult.role;
 
@@ -2202,7 +3377,7 @@ const DataSemanticUnderstandingView = ({
                                                                         // Check if user has resolved this conflict
                                                                         const override = fieldRoleOverrides[field.name];
                                                                         const isResolved = !!override;
-                                                                        const hasConflict = ruleRole.toLowerCase() !== aiRole.toLowerCase() && aiRole !== 'unknown' && !isResolved;
+                                                                        const hasConflict = showSemanticColumns && ruleRole.toLowerCase() !== aiRole.toLowerCase() && aiRole !== 'unknown' && !isResolved;
                                                                         const displayRole = override?.role || ruleRole; // Unused but kept for logic consistency if needed
 
                                                                         // Sensitivity level inference (with override support)
@@ -2215,6 +3390,7 @@ const DataSemanticUnderstandingView = ({
                                                                         const inferredSensitivity = getInferredSensitivity(field.name);
                                                                         const sensitivity = sensitivityOverrides[field.name] || inferredSensitivity;
                                                                         const isOverridden = !!sensitivityOverrides[field.name];
+                                                                        const fieldGroup = fieldGroupMap.get(field.name) || 'B';
 
                                                                         const sensitivityConfig: Record<string, { bg: string, text: string, label: string }> = {
                                                                             'L1': { bg: 'bg-slate-100', text: 'text-slate-600', label: 'L1 公开' },
@@ -2222,22 +3398,40 @@ const DataSemanticUnderstandingView = ({
                                                                             'L3': { bg: 'bg-orange-50', text: 'text-orange-600', label: 'L3 敏感' },
                                                                             'L4': { bg: 'bg-red-50', text: 'text-red-600', label: 'L4 高敏' },
                                                                         };
+                                                                        const reviewStatus = isTableConfirmed
+                                                                            ? 'confirmed'
+                                                                            : fieldReviewStatus[field.name] || 'suggested';
 
                                                                         return (
-                                                                            <tr key={idx} className={`group hover:bg-slate-50/80 transition-colors ${hasConflict ? 'bg-amber-50/30' : ''}`}>
-                                                                                <td className="px-4 py-3 text-slate-400 text-xs font-mono">{idx + 1}</td>
+                                                                            <tr key={idx} className={`group odd:bg-slate-50/40 hover:bg-slate-50/80 transition-colors ${hasConflict ? 'bg-amber-50/30' : ''} ${selectedFieldSet.has(field.name) ? 'bg-blue-50/40' : ''}`}>
+                                                                                {showSemanticColumns && (
+                                                                                    <td className="px-4 py-4 align-top">
+                                                                                        <input
+                                                                                            type="checkbox"
+                                                                                            checked={selectedFieldSet.has(field.name)}
+                                                                                            onChange={(e) => handleToggleFieldSelection(field.name, e.target.checked)}
+                                                                                            className="w-3.5 h-3.5"
+                                                                                        />
+                                                                                    </td>
+                                                                                )}
+                                                                                <td className="px-5 py-4 align-top text-slate-400 text-xs font-mono">{idx + 1}</td>
                                                                                 {/* Enhanced Physical Field */}
-                                                                                <td className="px-4 py-3">
+                                                                                <td className="px-5 py-4 align-top">
                                                                                     <div className="flex items-center gap-2">
                                                                                         <span className="font-mono text-sm font-bold text-slate-700">{field.name}</span>
                                                                                         {field.key === 'PK' && (
                                                                                             <span title="主键" className="bg-amber-100 text-amber-600 p-1 rounded-md"><Key size={12} className="fill-amber-100" /></span>
                                                                                         )}
+                                                                                        {showSemanticColumns && (
+                                                                                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] border ${groupToneMap[fieldGroup]}`}>
+                                                                                                {groupLabelMap[fieldGroup]}
+                                                                                            </span>
+                                                                                        )}
                                                                                     </div>
                                                                                 </td>
                                                                                 {/* Business Description */}
-                                                                                <td className="px-4 py-3">
-                                                                                    <div className="text-sm text-slate-600 flex items-center gap-1">
+                                                                                <td className="px-5 py-4 align-top">
+                                                                                    <div className="text-sm text-slate-600 flex items-center gap-1 leading-relaxed">
                                                                                         {field.comment ? (
                                                                                             <span>{field.comment}</span>
                                                                                         ) : (
@@ -2246,9 +3440,9 @@ const DataSemanticUnderstandingView = ({
                                                                                     </div>
                                                                                 </td>
                                                                                 {/* Enhanced Type Column */}
-                                                                                <td className="px-4 py-3">
+                                                                                <td className="px-5 py-4 align-top">
                                                                                     <div className="flex items-center gap-2">
-                                                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-medium border ${field.type.toLowerCase().includes('int') || field.type.toLowerCase().includes('long') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                                                                        <span className={`px-2.5 py-1 rounded text-[10px] font-mono font-medium border ${field.type.toLowerCase().includes('int') || field.type.toLowerCase().includes('long') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
                                                                                             field.type.toLowerCase().includes('date') || field.type.toLowerCase().includes('time') ? 'bg-orange-50 text-orange-700 border-orange-100' :
                                                                                                 'bg-blue-50 text-blue-700 border-blue-100'
                                                                                             }`}>
@@ -2262,92 +3456,105 @@ const DataSemanticUnderstandingView = ({
                                                                                     </div>
                                                                                 </td>
                                                                                 {/* Enhanced Rule Judgment Column */}
-                                                                                <td className="px-4 py-2">
-                                                                                    {semanticProfile.analysisStep === 'idle' ? (
-                                                                                        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-100/50 border border-slate-200/50 w-fit">
-                                                                                            <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
-                                                                                            <span className="text-xs text-slate-400">待分析</span>
-                                                                                        </div>
-                                                                                    ) : (
-                                                                                        <div className={`px-2 py-1 rounded w-fit ${override?.source === 'rule' ? 'border-2 border-purple-400 bg-purple-100' : 'bg-purple-50 border border-purple-100'}`}>
-                                                                                            <div className="text-xs font-medium text-purple-700">{ruleRole}</div>
-                                                                                            <div className="text-[10px] text-purple-500/80">{ruleResult.reason}</div>
-                                                                                        </div>
-                                                                                    )}
-                                                                                </td>
+                                                                                {showSemanticColumns && (
+                                                                                    <td className="px-5 py-3 align-top">
+                                                                                        {!isFieldAnalysisReady ? (
+                                                                                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-slate-100/50 border border-slate-200/50 w-fit">
+                                                                                                <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
+                                                                                                <span className="text-xs text-slate-400">待分析</span>
+                                                                                            </div>
+                                                                                        ) : (
+                                                                                            <div className={`px-2.5 py-1.5 rounded w-fit ${override?.source === 'rule' ? 'border-2 border-purple-400 bg-purple-100' : 'bg-purple-50 border border-purple-100'}`}>
+                                                                                                <div className="text-xs font-medium text-purple-700">{ruleRole}</div>
+                                                                                                <div className="text-[10px] text-purple-500/80">{ruleResult.reason}</div>
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </td>
+                                                                                )}
                                                                                 {/* Enhanced AI Semantic Column */}
-                                                                                <td className="px-4 py-2">
-                                                                                    {isAnalyzing ? (
-                                                                                        <div className="animate-pulse bg-slate-100 h-8 w-24 rounded"></div>
-                                                                                    ) : semanticProfile.analysisStep === 'idle' ? (
-                                                                                        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-100/50 border border-slate-200/50 w-fit">
-                                                                                            <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
-                                                                                            <span className="text-xs text-slate-400">待分析</span>
-                                                                                        </div>
-                                                                                    ) : (
-                                                                                        <div className={`px-2 py-1 rounded w-fit ${override?.source === 'ai' ? 'border-2 border-blue-400 bg-blue-100' : 'bg-blue-50 border border-blue-100'}`}>
-                                                                                            <div className="text-xs font-medium text-blue-700">{aiResult.meaning}</div>
-                                                                                            <div className="text-[10px] text-blue-500/80">场景: {aiResult.scenario}</div>
-                                                                                        </div>
-                                                                                    )}
-                                                                                </td>
+                                                                                {showSemanticColumns && (
+                                                                                    <td className="px-5 py-3 align-top">
+                                                                                        {isAnalyzing ? (
+                                                                                            <div className="animate-pulse bg-slate-100 h-8 w-24 rounded"></div>
+                                                                                        ) : !isFieldAnalysisReady ? (
+                                                                                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-slate-100/50 border border-slate-200/50 w-fit">
+                                                                                                <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
+                                                                                                <span className="text-xs text-slate-400">待分析</span>
+                                                                                            </div>
+                                                                                        ) : (
+                                                                                            <div className={`px-2.5 py-1.5 rounded w-fit ${override?.source === 'ai' ? 'border-2 border-blue-400 bg-blue-100' : 'bg-blue-50 border border-blue-100'}`}>
+                                                                                                <div className="text-xs font-medium text-blue-700">{aiResult.meaning}</div>
+                                                                                                <div className="text-[10px] text-blue-500/80">场景: {aiResult.scenario}</div>
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </td>
+                                                                                )}
                                                                                 {/* Sample Values Column */}
-                                                                                <td className="px-4 py-2.5">
-                                                                                    <div className="flex flex-wrap gap-1">
+                                                                                <td className="px-5 py-3 align-top">
+                                                                                    <div className="flex flex-wrap gap-1.5">
                                                                                         {sampleValues.slice(0, 2).map((val, i) => (
-                                                                                            <span key={i} className="px-1.5 py-0.5 bg-slate-50 text-slate-500 border border-slate-100 rounded text-[10px] font-mono truncate max-w-[60px]" title={val}>
+                                                                                            <span key={i} className="px-2 py-1 bg-slate-50 text-slate-500 border border-slate-100 rounded text-[10px] font-mono truncate max-w-[72px]" title={val}>
                                                                                                 {val}
                                                                                             </span>
                                                                                         ))}
                                                                                     </div>
                                                                                 </td>
                                                                                 {/* Sensitivity Column */}
-                                                                                <td className="px-4 py-2.5">
-                                                                                    {semanticProfile.analysisStep === 'idle' ? (
-                                                                                        <span className="text-xs text-slate-300">-</span>
-                                                                                    ) : (
-                                                                                        <select
-                                                                                            value={sensitivity}
-                                                                                            onChange={(e) => setSensitivityOverrides(prev => ({
-                                                                                                ...prev,
-                                                                                                [field.name]: e.target.value as 'L1' | 'L2' | 'L3' | 'L4'
-                                                                                            }))}
-                                                                                            className={`px-2 py-1 rounded text-xs font-medium cursor-pointer outline-none border transition-all w-full appearance-none ${isOverridden ? 'border-2 border-emerald-400' : 'border-transparent'} ${sensitivityConfig[sensitivity].bg} ${sensitivityConfig[sensitivity].text}`}
-                                                                                        >
-                                                                                            <option value="L1" className="bg-white text-slate-600">L1 公开</option>
-                                                                                            <option value="L2" className="bg-white text-blue-600">L2 内部</option>
-                                                                                            <option value="L3" className="bg-white text-orange-600">L3 敏感</option>
-                                                                                            <option value="L4" className="bg-white text-red-600">L4 高敏</option>
-                                                                                        </select>
-                                                                                    )}
-                                                                                </td>
+                                                                                {showSemanticColumns && (
+                                                                                    <td className="px-5 py-3 align-top">
+                                                                                        {!isFieldAnalysisReady ? (
+                                                                                            <span className="text-xs text-slate-400">待识别</span>
+                                                                                        ) : (
+                                                                                            <select
+                                                                                                value={sensitivity}
+                                                                                                onChange={(e) => setSensitivityOverrides(prev => ({
+                                                                                                    ...prev,
+                                                                                                    [field.name]: e.target.value as 'L1' | 'L2' | 'L3' | 'L4'
+                                                                                                }))}
+                                                                                                className={`px-2 py-1 rounded text-xs font-medium cursor-pointer outline-none border transition-all w-full appearance-none ${isOverridden ? 'border-2 border-emerald-400' : 'border-transparent'} ${sensitivityConfig[sensitivity].bg} ${sensitivityConfig[sensitivity].text}`}
+                                                                                            >
+                                                                                                <option value="L1" className="bg-white text-slate-600">L1 公开</option>
+                                                                                                <option value="L2" className="bg-white text-blue-600">L2 内部</option>
+                                                                                                <option value="L3" className="bg-white text-orange-600">L3 敏感</option>
+                                                                                                <option value="L4" className="bg-white text-red-600">L4 高敏</option>
+                                                                                            </select>
+                                                                                        )}
+                                                                                    </td>
+                                                                                )}
                                                                                 {/* Enhanced Merge Result Column */}
-                                                                                <td className="px-4 py-2.5 text-center">
-                                                                                    {semanticProfile.analysisStep === 'idle' ? (
-                                                                                        <span className="text-slate-200">-</span>
-                                                                                    ) : (
-                                                                                        <div className="space-y-1">
-                                                                                            {/* Conflict indicator */}
-                                                                                            {hasConflict && (
-                                                                                                <div className="flex items-center justify-center gap-1 text-amber-600 text-[10px] animate-pulse">
-                                                                                                    <AlertTriangle size={10} /> 待确认
-                                                                                                </div>
-                                                                                            )}
-                                                                                            <div className="flex flex-wrap items-center justify-center gap-1">
-                                                                                                {/* Rule role */}
-                                                                                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-600 border border-purple-100">
-                                                                                                    {ruleRole}
-                                                                                                </span>
-                                                                                                {/* Sensitivity tag for L3/L4 */}
-                                                                                                {(sensitivity === 'L3' || sensitivity === 'L4') && (
-                                                                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${sensitivity === 'L4' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-orange-50 text-orange-600 border border-orange-100'}`}>
-                                                                                                        {sensitivity === 'L4' ? '高敏' : '敏感'}
-                                                                                                    </span>
+                                                                                {showSemanticColumns && (
+                                                                                    <td className="px-5 py-3 align-top text-center">
+                                                                                        {!isFieldAnalysisReady ? (
+                                                                                            <span className="text-slate-300">-</span>
+                                                                                        ) : (
+                                                                                            <div className="space-y-1.5">
+                                                                                                {/* Conflict indicator */}
+                                                                                                {hasConflict && (
+                                                                                                    <div className="flex items-center justify-center gap-1 text-amber-600 text-[10px] animate-pulse">
+                                                                                                        <AlertTriangle size={10} /> 待确认
+                                                                                                    </div>
                                                                                                 )}
+                                                                                                <div className="flex flex-wrap items-center justify-center gap-1">
+                                                                                                    {/* Rule role */}
+                                                                                                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-600 border border-purple-100">
+                                                                                                        {ruleRole}
+                                                                                                    </span>
+                                                                                                    {/* Sensitivity tag for L3/L4 */}
+                                                                                                    {(sensitivity === 'L3' || sensitivity === 'L4') && (
+                                                                                                        <span className={`px-1.5 py-0.5 rounded text-[10px] ${sensitivity === 'L4' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-orange-50 text-orange-600 border border-orange-100'}`}>
+                                                                                                            {sensitivity === 'L4' ? '高敏' : '敏感'}
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                                <div className="flex items-center justify-center">
+                                                                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] border ${reviewStatusToneMap[reviewStatus]}`}>
+                                                                                                        {reviewStatusLabelMap[reviewStatus]}
+                                                                                                    </span>
+                                                                                                </div>
                                                                                             </div>
-                                                                                        </div>
-                                                                                    )}
-                                                                                </td>
+                                                                                        )}
+                                                                                    </td>
+                                                                                )}
                                                                             </tr>
                                                                         );
                                                                     })}
@@ -2362,9 +3569,114 @@ const DataSemanticUnderstandingView = ({
                                 )}
                             </div>
                         </div>
+                        ) : (
+                            <div className="flex flex-col h-full items-center justify-center text-slate-500">
+                                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm text-center">
+                                    <div className="text-sm font-semibold text-slate-700">未找到当前表数据</div>
+                                    <div className="text-xs text-slate-400 mt-2">可能是状态变更导致列表过滤。</div>
+                                    <button
+                                        onClick={handleBackToList}
+                                        className="mt-4 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                                    >
+                                        返回列表
+                                    </button>
+                                </div>
+                            </div>
+                        )
                     )}
                 </div>
             </div>
+
+            {showRunModal && (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 animate-fade-in">
+                    <div className="bg-white rounded-xl shadow-2xl w-[520px] overflow-hidden">
+                        <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                    <Sparkles size={18} className="text-blue-600" />
+                                    生成建议 Run
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-1">本次将生成语义建议，不直接生效。</p>
+                            </div>
+                            <button onClick={() => setShowRunModal(false)} className="text-slate-400 hover:text-slate-600">
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="p-5 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-600 mb-1.5">采样行数</label>
+                                <input
+                                    type="number"
+                                    value={runConfig.sampleRows}
+                                    onChange={(e) => setRunConfig(prev => ({ ...prev, sampleRows: Number(e.target.value) }))}
+                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-600 mb-1.5">规则版本</label>
+                                    <input
+                                        type="text"
+                                        value={runConfig.ruleVersion}
+                                        readOnly
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-sm text-slate-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-600 mb-1.5">模型版本</label>
+                                    <input
+                                        type="text"
+                                        value={runConfig.modelVersion}
+                                        readOnly
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-sm text-slate-500"
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-600 mb-1.5">并发队列</label>
+                                    <input
+                                        type="number"
+                                        value={runConfig.concurrency}
+                                        onChange={(e) => setRunConfig(prev => ({ ...prev, concurrency: Number(e.target.value) }))}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-600 mb-1.5">队列名称</label>
+                                    <input
+                                        type="text"
+                                        value={runConfig.queue}
+                                        onChange={(e) => setRunConfig(prev => ({ ...prev, queue: e.target.value }))}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                                    />
+                                </div>
+                            </div>
+                            <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                                预计耗时 {Math.max(1, Math.ceil(selectedTables.length / Math.max(runConfig.concurrency, 1)) * 2)}~{Math.max(2, Math.ceil(selectedTables.length / Math.max(runConfig.concurrency, 1)) * 2 + 1)} 分钟 · 采样 {runConfig.sampleRows / 1000}k 行/表 · 队列 {Math.min(selectedTables.length, runConfig.concurrency)}/{runConfig.concurrency}
+                            </div>
+                        </div>
+                        <div className="px-5 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2">
+                            <button
+                                onClick={() => setShowRunModal(false)}
+                                className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={handleRunStart}
+                                disabled={selectedTables.length === 0}
+                                className={`px-4 py-2 text-sm rounded-lg transition-colors ${selectedTables.length > 0
+                                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                    }`}
+                            >
+                                生成 Run
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Relationship Edit Modal */}
             {
@@ -2825,13 +4137,13 @@ const DataSemanticUnderstandingView = ({
                                                 if (result.userAction === 'accepted') {
                                                     setScanResults((prev: any[]) => prev.map((item: any) =>
                                                         item.table === result.tableId
-                                                            ? { ...item, status: 'analyzed' }
+                                                            ? { ...item, status: 'analyzed', governanceStatus: 'S3' }
                                                             : item
                                                     ));
                                                 } else {
                                                     setScanResults((prev: any[]) => prev.map((item: any) =>
                                                         item.table === result.tableId
-                                                            ? { ...item, status: 'scanned' }
+                                                            ? { ...item, status: 'scanned', governanceStatus: 'S0', reviewStats: null }
                                                             : item
                                                     ));
                                                 }
@@ -2950,74 +4262,112 @@ const DataSemanticUnderstandingView = ({
             )}
 
             {/* Direct Generation Modal */}
-            {showDirectGenModal && pendingGenData && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
-                    <div className="bg-white rounded-xl shadow-2xl w-[500px] overflow-hidden">
-                        <div className="p-6">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-2 bg-purple-100 text-purple-600 rounded-lg">
-                                    <Sparkles size={24} />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-bold text-slate-800">高置信度识别结果</h3>
-                                    <p className="text-sm text-slate-500">
-                                        基于AI分析，对表
-                                        <span className="font-mono font-medium text-slate-700 mx-1">{pendingGenData.table.table}</span>
-                                        的识别置信度较高
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 mb-6">
-                                <div className="grid grid-cols-2 gap-4 text-sm">
-                                    <div>
-                                        <span className="text-slate-500 block text-xs mb-1">建议业务对象名</span>
-                                        <span className="font-medium text-slate-800">{pendingGenData.profile.businessName}</span>
+            {showDirectGenModal && pendingGenData && (() => {
+                const eligibility = getDirectGenEligibility(pendingGenData.table, pendingGenData.profile);
+                return (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
+                        <div className="bg-white rounded-xl shadow-2xl w-[560px] overflow-hidden">
+                            <div className="p-6">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="p-2 bg-purple-100 text-purple-600 rounded-lg">
+                                        <Sparkles size={24} />
                                     </div>
                                     <div>
-                                        <span className="text-slate-500 block text-xs mb-1">识别置信度</span>
-                                        <span className="font-medium text-emerald-600">{(pendingGenData.profile.aiScore || 0.85) * 100}%</span>
-                                    </div>
-                                    <div className="col-span-2">
-                                        <span className="text-slate-500 block text-xs mb-1">业务描述</span>
-                                        <span className="text-slate-600">{pendingGenData.profile.description || pendingGenData.table.comment || '无描述'}</span>
+                                        <h3 className="text-lg font-bold text-slate-800">高置信度识别结果</h3>
+                                        <p className="text-sm text-slate-500">
+                                            基于AI分析，对表
+                                            <span className="font-mono font-medium text-slate-700 mx-1">{pendingGenData.table.table}</span>
+                                            的识别置信度较高
+                                        </p>
                                     </div>
                                 </div>
-                            </div>
 
-                            <div className="space-y-3">
-                                <button
-                                    onClick={() => executeDirectGenerate(pendingGenData.table, pendingGenData.profile)}
-                                    className="w-full py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 flex items-center justify-center gap-2 transition-colors shadow-sm"
-                                >
-                                    <Box size={18} /> 直接生成业务对象
-                                </button>
-
-                                <div className="relative flex py-1 items-center">
-                                    <div className="flex-grow border-t border-slate-200"></div>
-                                    <span className="flex-shrink-0 mx-4 text-slate-400 text-xs">或者</span>
-                                    <div className="flex-grow border-t border-slate-200"></div>
+                                <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 mb-4">
+                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                        <div>
+                                            <span className="text-slate-500 block text-xs mb-1">建议业务对象名</span>
+                                            <span className="font-medium text-slate-800">{pendingGenData.profile.businessName}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-slate-500 block text-xs mb-1">识别置信度</span>
+                                            <span className="font-medium text-emerald-600">{(pendingGenData.profile.aiScore || 0.85) * 100}%</span>
+                                        </div>
+                                        <div className="col-span-2">
+                                            <span className="text-slate-500 block text-xs mb-1">业务描述</span>
+                                            <span className="text-slate-600">{pendingGenData.profile.description || pendingGenData.table.comment || '无描述'}</span>
+                                        </div>
+                                    </div>
                                 </div>
 
+                                <div className="bg-white rounded-lg border border-slate-200 p-4 mb-4">
+                                    <div className="text-sm font-medium text-slate-700 mb-2">生成前置校验清单</div>
+                                    <div className="space-y-2 text-xs">
+                                        {eligibility.checklist.map(item => (
+                                            <div key={item.key} className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    {item.passed ? (
+                                                        <CheckCircle2 size={14} className="text-emerald-500" />
+                                                    ) : (
+                                                        <XCircle size={14} className="text-red-500" />
+                                                    )}
+                                                    <span className="text-slate-600">{item.label}</span>
+                                                </div>
+                                                <span className={`text-[10px] ${item.passed ? 'text-emerald-600' : 'text-red-600'}`}>
+                                                    {item.detail}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 text-xs text-slate-600 mb-4">
+                                    <div className="font-medium text-slate-700 mb-1">动作差异说明</div>
+                                    <div>直接生成＝写入语义注册表（生效，可回滚）</div>
+                                    <div>加入候选＝草稿对象（不生效，待Review）</div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <button
+                                        onClick={() => eligibility.canGenerate && executeDirectGenerate(pendingGenData.table, pendingGenData.profile)}
+                                        disabled={!eligibility.canGenerate}
+                                        className={`w-full py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors shadow-sm ${eligibility.canGenerate
+                                            ? 'bg-purple-600 text-white hover:bg-purple-700'
+                                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                                    >
+                                        <Box size={18} /> 直接生成业务对象
+                                    </button>
+                                    {!eligibility.canGenerate && (
+                                        <div className="text-[10px] text-red-500 text-center">
+                                            未满足前置条件，仅可加入候选
+                                        </div>
+                                    )}
+
+                                    <div className="relative flex py-1 items-center">
+                                        <div className="flex-grow border-t border-slate-200"></div>
+                                        <span className="flex-shrink-0 mx-4 text-slate-400 text-xs">或者</span>
+                                        <div className="flex-grow border-t border-slate-200"></div>
+                                    </div>
+
+                                    <button
+                                        onClick={() => executeAddToCandidates(pendingGenData.table, pendingGenData.profile)}
+                                        className="w-full py-3 bg-white border border-slate-200 text-slate-700 rounded-lg font-medium hover:bg-slate-50 flex items-center justify-center gap-2 transition-colors"
+                                    >
+                                        <ListPlus size={18} /> 加入候选业务对象
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 flex justify-center">
                                 <button
-                                    onClick={() => executeAddToCandidates(pendingGenData.table, pendingGenData.profile)}
-                                    className="w-full py-3 bg-white border border-slate-200 text-slate-700 rounded-lg font-medium hover:bg-slate-50 flex items-center justify-center gap-2 transition-colors"
+                                    onClick={() => setShowDirectGenModal(false)}
+                                    className="text-sm text-slate-500 hover:text-slate-700"
                                 >
-                                    <ListPlus size={18} /> 加入候选业务对象
+                                    取消操作
                                 </button>
                             </div>
-                        </div>
-                        <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 flex justify-center">
-                            <button
-                                onClick={() => setShowDirectGenModal(false)}
-                                className="text-sm text-slate-500 hover:text-slate-700"
-                            >
-                                取消操作
-                            </button>
                         </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
         </>
     );
 };

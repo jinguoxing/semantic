@@ -118,18 +118,25 @@ export function calculateThreeDimensionalMetrics(fields: any[], profile?: any) {
     }
 
     const stats = calculateFieldStatistics(fields);
+    const gateDetails = profile?.gateResult?.details;
+    const hasGateDetails = gateDetails
+        && typeof gateDetails.primaryKey === 'boolean'
+        && typeof gateDetails.lifecycle === 'boolean'
+        && typeof gateDetails.tableType === 'boolean';
 
     // Dimension 1: Field Recognition Coverage Rate
     const identifiedFields = fields.filter(f => f.role && f.role !== 'Unknown');
     const coverageRate = (identifiedFields.length / fields.length) * 100;
 
     // Dimension 2: Key Element Completeness
-    const hasSemanticPK = stats.identifiers > 0;
-    const hasLifecycle = stats.timeFields > 0;
+    const hasSemanticPK = hasGateDetails ? gateDetails.primaryKey : stats.identifiers > 0;
+    const hasLifecycle = hasGateDetails ? gateDetails.lifecycle : stats.timeFields > 0;
+    const isValidTableType = hasGateDetails ? gateDetails.tableType : true;
 
     const completenessIssues: string[] = [];
-    if (!hasSemanticPK) completenessIssues.push('语义主键缺失');
+    if (!hasSemanticPK) completenessIssues.push('主键缺失');
     if (!hasLifecycle) completenessIssues.push('生命周期字段缺失');
+    if (!isValidTableType) completenessIssues.push('表类型不符合');
 
     // Dimension 3: Risk Item Count
     const sensitiveFields = fields.filter(f => f.sensitivity === 'L3' || f.sensitivity === 'L4');

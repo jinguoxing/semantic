@@ -13,6 +13,7 @@ import BusinessModelPanel from './BusinessModelPanel';
 import SceneTemplateConfigPanel from './SceneTemplateConfigPanel';
 import AnalysisCandidatesPanel from './AnalysisCandidatesPanel';
 import SmartEditor from '../../../components/editor/SmartEditor';
+import DescriptionQualityIndicator from '../../../components/ui/DescriptionQualityIndicator';
 import { useCandidateManager } from './hooks/useCandidateManager';
 import { scenarioStorage } from '../../../services/storage/scenarioStorage';
 import { mockAnalysisResultVNext } from '../../../data/mockAnalysisVNext';
@@ -292,6 +293,14 @@ const ScenarioEditor: React.FC<ScenarioEditorProps> = ({
                             />
                         </div>
 
+                        {/* Description Quality Indicator */}
+                        {!analysisResult && !recognitionRun && (
+                            <DescriptionQualityIndicator
+                                description={description}
+                                className="mt-3"
+                            />
+                        )}
+
                         {analysisError && (
                             <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
                                 <AlertCircle size={12} className="text-red-600 mt-0.5 flex-shrink-0" />
@@ -362,12 +371,25 @@ const ScenarioEditor: React.FC<ScenarioEditorProps> = ({
                         {/* Modeling Tab */}
                         {activeTab === 'modeling' && (analysisResult || workingCopy) && (
                             <BusinessModelPanel
-                                data={(workingCopy || analysisResult) as any} // Temporary cast until Panel refactor
+                                data={(workingCopy || analysisResult) as any}
+                                versions={scenario?.versions || []}
                                 onSave={() => {
                                     onSave({ title, description, analysisResult, workingCopy });
                                     toast.success('业务模型已确认并保存');
                                 }}
                                 onPublish={handlePublish}
+                                onRollback={async (versionId) => {
+                                    if (scenario?.id) {
+                                        try {
+                                            await scenarioStorage.rollbackToVersion(scenario.id, versionId);
+                                            toast.success('已回滚到指定版本，页面即将刷新');
+                                            // Reload to refresh all data including workingCopy from stored state
+                                            setTimeout(() => window.location.reload(), 500);
+                                        } catch (error) {
+                                            toast.error('回滚失败');
+                                        }
+                                    }
+                                }}
                             />
                         )}
                     </div>

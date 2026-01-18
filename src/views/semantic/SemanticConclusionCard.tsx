@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Activity, Bot, ChevronDown, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Activity, Bot, ChevronDown, AlertTriangle, CheckCircle, Clock, Edit3 } from 'lucide-react';
 import { TableSemanticProfile, BUSINESS_DOMAINS, ObjectType } from '../../types/semantic';
 import { TermAutocomplete } from '../../components/TermAutocomplete';
 import { getAllTerms, depositNewTerm } from '../../data/mockData';
@@ -17,6 +17,14 @@ interface SemanticConclusionCardProps {
     onProfileChange: (updates: Partial<TableSemanticProfile>) => void;
     onAccept: () => void;
     onReject: () => void;
+    onConfirmEffective?: () => void;
+    onViewLogs?: () => void;
+    onEvidenceAction?: (payload: {
+        action: 'accept' | 'override' | 'pending';
+        field?: string;
+        source?: 'AI' | '规则' | 'Gate' | '融合';
+        reason?: string;
+    }) => void;
     existingBO?: any;
     onFocusField?: (fieldName: string) => void;
 }
@@ -24,11 +32,12 @@ interface SemanticConclusionCardProps {
 // Object type labels in Chinese
 const OBJECT_TYPE_LABELS: Record<ObjectType, { label: string; desc: string }> = {
     entity: { label: '主体', desc: '核心业务实体' },
-    event: { label: '行为', desc: '业务动作记录' },
+    event: { label: '过程', desc: '业务过程记录' },
     state: { label: '状态', desc: '状态快照' },
     rule: { label: '规则', desc: '业务配置' },
-    attribute: { label: '属性', desc: '派生数据' },
+    attribute: { label: '清单', desc: '业务清单' },
 };
+const OBJECT_TYPE_OPTIONS: ObjectType[] = ['entity', 'event', 'state', 'attribute'];
 
 export const SemanticConclusionCard: React.FC<SemanticConclusionCardProps> = ({
     profile,
@@ -39,6 +48,9 @@ export const SemanticConclusionCard: React.FC<SemanticConclusionCardProps> = ({
     onProfileChange,
     onAccept,
     onReject,
+    onConfirmEffective,
+    onViewLogs,
+    onEvidenceAction,
     existingBO,
     onFocusField
 }) => {
@@ -56,6 +68,54 @@ export const SemanticConclusionCard: React.FC<SemanticConclusionCardProps> = ({
         acc[group] = acc[group] ? [...acc[group], item] : [item];
         return acc;
     }, {});
+    const safeFields = Array.isArray(fields)
+        ? fields.map((field: any) => ({
+            ...field,
+            name: field.name || field.fieldName || field.col || field.field || '',
+            comment: field.comment || field.businessDefinition || field.description || ''
+        }))
+        : [];
+    const aiEvidenceItems = Array.isArray(profile.aiEvidenceItems) ? profile.aiEvidenceItems : [];
+    const ruleEvidenceItems = Array.isArray(profile.ruleEvidence) ? profile.ruleEvidence : [];
+    const aiEvidence = Array.isArray(profile.aiEvidence) ? profile.aiEvidence : [];
+    const gateReasons = Array.isArray(profile.gateResult?.reasons) ? profile.gateResult?.reasons : [];
+    const aiEvidenceFieldSet = new Set(aiEvidenceItems.map(item => item.field.toLowerCase()));
+    const getEvidenceSource = (name: string) => (aiEvidenceFieldSet.has(name.toLowerCase()) ? 'AI' : '规则');
+    const opposePattern = /(未|缺失|冲突|复核|失败|风险|不一致|排除|拦截|低)/;
+    const supportEvidence = [
+        ...aiEvidenceItems.map(item => ({
+            source: 'AI' as const,
+            field: item.field,
+            text: item.reason,
+            weight: item.weight || profile.aiScore || 0.5
+        })),
+        ...ruleEvidenceItems.filter(item => !opposePattern.test(item)).map(item => ({
+            source: '规则' as const,
+            text: item,
+            weight: profile.ruleScore?.total || 0.5
+        }))
+    ];
+    const opposeEvidence = [
+        ...ruleEvidenceItems.filter(item => opposePattern.test(item)).map(item => ({
+            source: '规则' as const,
+            text: item,
+            weight: profile.ruleScore?.total || 0.5
+        })),
+        ...gateReasons.map(item => ({
+            source: 'Gate' as const,
+            text: item,
+            weight: 0.7
+        }))
+    ];
+    const hasConflict = supportEvidence.length > 0 && opposeEvidence.length > 0;
+    const objectTypeTags = [
+        ...(profile.objectType === 'rule' ? ['规则'] : []),
+        ...(profile.objectType === 'attribute' ? ['属性'] : []),
+        ...(profile.tags || [])
+    ];
+    const formattedConfirmAt = profile.confirmedAt
+        ? profile.confirmedAt.replace('T', ' ').split('.')[0]
+        : '-';
 
     // V2.3: Modal states for action buttons
     const [showCommentModal, setShowCommentModal] = useState(false);
@@ -303,7 +363,7 @@ export const SemanticConclusionCard: React.FC<SemanticConclusionCardProps> = ({
                         <div className="mt-4">
                             <label className="block text-xs font-medium text-slate-500 mb-2">对象类型</label>
                             <div className="flex flex-wrap gap-2">
-                                {(Object.keys(OBJECT_TYPE_LABELS) as ObjectType[]).map(type => (
+                                {OBJECT_TYPE_OPTIONS.map(type => (
                                     <label
                                         key={type}
                                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all text-sm ${profile.objectType === type
@@ -324,6 +384,20 @@ export const SemanticConclusionCard: React.FC<SemanticConclusionCardProps> = ({
                                     </label>
                                 ))}
                             </div>
+                            {profile.objectType === 'rule' && (
+                                <p className="mt-2 text-xs text-amber-600">
+                                    当前为“规则”类型，已作为标签展示，不再占用对象类型位。
+                                </p>
+                            )}
+                            {objectTypeTags.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                    {objectTypeTags.map((tag, idx) => (
+                                        <span key={`${tag}-${idx}`} className="px-2 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-600 border border-slate-200">
+                                            {tag}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
                             {profile.objectTypeReason && (
                                 <p className="mt-2 text-xs text-slate-500 flex items-center gap-1">
                                     <Bot size={12} className="text-purple-400" />
@@ -454,8 +528,9 @@ export const SemanticConclusionCard: React.FC<SemanticConclusionCardProps> = ({
                                                 </div>
                                                 <div className="flex flex-wrap gap-1">
                                                     {securityBreakdown.L4.map(f => (
-                                                        <span key={f.name} className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-mono">
+                                                        <span key={f.name} className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-mono flex items-center gap-1">
                                                             {f.name}
+                                                            <span className="text-[9px] text-red-500">{getEvidenceSource(f.name)}</span>
                                                         </span>
                                                     ))}
                                                 </div>
@@ -470,8 +545,9 @@ export const SemanticConclusionCard: React.FC<SemanticConclusionCardProps> = ({
                                                 </div>
                                                 <div className="flex flex-wrap gap-1">
                                                     {securityBreakdown.L3.map(f => (
-                                                        <span key={f.name} className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-[10px] font-mono">
+                                                        <span key={f.name} className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-[10px] font-mono flex items-center gap-1">
                                                             {f.name}
+                                                            <span className="text-[9px] text-orange-500">{getEvidenceSource(f.name)}</span>
                                                         </span>
                                                     ))}
                                                 </div>
@@ -486,8 +562,9 @@ export const SemanticConclusionCard: React.FC<SemanticConclusionCardProps> = ({
                                                 </div>
                                                 <div className="flex flex-wrap gap-1">
                                                     {securityBreakdown.L2.map(f => (
-                                                        <span key={f.name} className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-[10px] font-mono">
+                                                        <span key={f.name} className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-[10px] font-mono flex items-center gap-1">
                                                             {f.name}
+                                                            <span className="text-[9px] text-amber-600">{getEvidenceSource(f.name)}</span>
                                                         </span>
                                                     ))}
                                                 </div>
@@ -525,6 +602,119 @@ export const SemanticConclusionCard: React.FC<SemanticConclusionCardProps> = ({
                                 {showAllEvidence ? '收起' : '展开全部'}
                             </button>
                         </div>
+                        {hasConflict && (
+                            <div className="mb-3 rounded-lg border border-slate-200 bg-white p-3">
+                                <div className="text-xs font-semibold text-slate-700 mb-2">冲突解释与反证</div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div className="rounded-lg border border-emerald-100 bg-emerald-50/40 p-3">
+                                        <div className="text-[10px] font-semibold text-emerald-700 mb-2">支持建议的证据</div>
+                                        <div className="space-y-2">
+                                            {supportEvidence.slice(0, showAllEvidence ? undefined : 3).map((item, idx) => (
+                                                <div key={`support-${idx}`} className="rounded-md border border-emerald-100 bg-white p-2">
+                                                    <div className="flex items-center justify-between text-[10px] text-slate-500">
+                                                        <span>{item.source}</span>
+                                                        <span>{Math.round((item.weight || 0) * 100)}%</span>
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-slate-700">
+                                                        {item.text}{item.field ? `（${item.field}）` : ''}
+                                                    </div>
+                                                    {onEvidenceAction && (
+                                                        <div className="mt-2 flex items-center gap-2 text-[10px]">
+                                                            <button
+                                                                onClick={() => onEvidenceAction({ action: 'accept', field: item.field, source: item.source, reason: item.text })}
+                                                                className="text-emerald-600 hover:underline"
+                                                            >
+                                                                接受建议
+                                                            </button>
+                                                            <button
+                                                                onClick={() => onEvidenceAction({ action: 'override', field: item.field, source: item.source, reason: item.text })}
+                                                                className="text-blue-600 hover:underline flex items-center gap-1"
+                                                            >
+                                                                <Edit3 size={11} /> 改判
+                                                            </button>
+                                                            <button
+                                                                onClick={() => onEvidenceAction({ action: 'pending', field: item.field, source: item.source, reason: item.text })}
+                                                                className="text-amber-600 hover:underline flex items-center gap-1"
+                                                            >
+                                                                <Clock size={11} /> 待定
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                            {supportEvidence.length === 0 && (
+                                                <div className="text-xs text-slate-400">暂无支持证据</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="rounded-lg border border-amber-100 bg-amber-50/40 p-3">
+                                        <div className="text-[10px] font-semibold text-amber-700 mb-2">反对建议的证据</div>
+                                        <div className="space-y-2">
+                                            {opposeEvidence.slice(0, showAllEvidence ? undefined : 3).map((item, idx) => (
+                                                <div key={`oppose-${idx}`} className="rounded-md border border-amber-100 bg-white p-2">
+                                                    <div className="flex items-center justify-between text-[10px] text-slate-500">
+                                                        <span>{item.source}</span>
+                                                        <span>{Math.round((item.weight || 0) * 100)}%</span>
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-slate-700">{item.text}</div>
+                                                    {onEvidenceAction && (
+                                                        <div className="mt-2 flex items-center gap-2 text-[10px]">
+                                                            <button
+                                                                onClick={() => onEvidenceAction({ action: 'accept', source: item.source, reason: item.text })}
+                                                                className="text-emerald-600 hover:underline"
+                                                            >
+                                                                接受建议
+                                                            </button>
+                                                            <button
+                                                                onClick={() => onEvidenceAction({ action: 'override', source: item.source, reason: item.text })}
+                                                                className="text-blue-600 hover:underline flex items-center gap-1"
+                                                            >
+                                                                <Edit3 size={11} /> 改判
+                                                            </button>
+                                                            <button
+                                                                onClick={() => onEvidenceAction({ action: 'pending', source: item.source, reason: item.text })}
+                                                                className="text-amber-600 hover:underline flex items-center gap-1"
+                                                            >
+                                                                <Clock size={11} /> 待定
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                            {opposeEvidence.length === 0 && (
+                                                <div className="text-xs text-slate-400">暂无反证</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                    <div className="text-[10px] font-semibold text-slate-600 mb-2">融合说明（Rule / AI / Final）</div>
+                                    <div className="space-y-2 text-[10px] text-slate-500">
+                                        <div className="flex items-center justify-between">
+                                            <span>Rule Score</span>
+                                            <span>{Math.round((profile.ruleScore?.total || 0) * 100)}%</span>
+                                        </div>
+                                        <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                                            <div className="h-full bg-purple-500" style={{ width: `${Math.round((profile.ruleScore?.total || 0) * 100)}%` }} />
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span>AI Score</span>
+                                            <span>{Math.round((profile.aiScore || 0) * 100)}%</span>
+                                        </div>
+                                        <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                                            <div className="h-full bg-blue-500" style={{ width: `${Math.round((profile.aiScore || 0) * 100)}%` }} />
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span>Final Score</span>
+                                            <span>{Math.round((profile.finalScore || 0) * 100)}%</span>
+                                        </div>
+                                        <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                                            <div className="h-full bg-emerald-500" style={{ width: `${Math.round((profile.finalScore || 0) * 100)}%` }} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div className="bg-white rounded-lg border border-slate-200 p-3">
                                 <div className="flex items-center justify-between mb-2">
@@ -532,25 +722,48 @@ export const SemanticConclusionCard: React.FC<SemanticConclusionCardProps> = ({
                                     <div className="text-[10px] text-slate-400">权重可视化</div>
                                 </div>
                                 <div className="space-y-2">
-                                    {(profile.aiEvidenceItems || []).slice(0, showAllEvidence ? undefined : 3).map((item, index) => {
-                                        const canFocus = fields.some(f => f.name.toLowerCase() === item.field.toLowerCase());
+                                    {aiEvidenceItems.slice(0, showAllEvidence ? undefined : 3).map((item, index) => {
+                                        const canFocus = safeFields.some(f => f.name.toLowerCase() === item.field.toLowerCase());
                                         return (
-                                            <button
-                                                key={`${item.field}-${index}`}
-                                                onClick={() => canFocus && onFocusField?.(item.field)}
-                                                className={`w-full text-xs flex flex-col gap-1 text-left ${canFocus ? 'text-slate-600 hover:text-purple-600' : 'text-slate-400 cursor-default'}`}
-                                            >
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <span className="truncate">{item.reason} ({item.field})</span>
-                                                    <span className="text-[10px] text-slate-400">{Math.round(item.weight * 100)}%</span>
-                                                </div>
-                                                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                                    <div className={`h-full ${canFocus ? 'bg-purple-500' : 'bg-slate-300'}`} style={{ width: `${Math.round(item.weight * 100)}%` }} />
-                                                </div>
-                                            </button>
+                                            <div key={`${item.field}-${index}`} className="rounded-md border border-slate-100 bg-slate-50/40 p-2">
+                                                <button
+                                                    onClick={() => canFocus && onFocusField?.(item.field)}
+                                                    className={`w-full text-xs flex flex-col gap-1 text-left ${canFocus ? 'text-slate-600 hover:text-purple-600' : 'text-slate-400 cursor-default'}`}
+                                                >
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="truncate">{item.reason} ({item.field})</span>
+                                                        <span className="text-[10px] text-slate-400">{Math.round(item.weight * 100)}%</span>
+                                                    </div>
+                                                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                        <div className={`h-full ${canFocus ? 'bg-purple-500' : 'bg-slate-300'}`} style={{ width: `${Math.round(item.weight * 100)}%` }} />
+                                                    </div>
+                                                </button>
+                                                {onEvidenceAction && (
+                                                    <div className="mt-2 flex items-center gap-2 text-[10px]">
+                                                        <button
+                                                            onClick={() => onEvidenceAction({ action: 'accept', field: item.field, source: 'AI', reason: item.reason })}
+                                                            className="text-emerald-600 hover:underline"
+                                                        >
+                                                            接受建议
+                                                        </button>
+                                                        <button
+                                                            onClick={() => onEvidenceAction({ action: 'override', field: item.field, source: 'AI', reason: item.reason })}
+                                                            className="text-blue-600 hover:underline flex items-center gap-1"
+                                                        >
+                                                            <Edit3 size={11} /> 改判
+                                                        </button>
+                                                        <button
+                                                            onClick={() => onEvidenceAction({ action: 'pending', field: item.field, source: 'AI', reason: item.reason })}
+                                                            className="text-amber-600 hover:underline flex items-center gap-1"
+                                                        >
+                                                            <Clock size={11} /> 待定
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
                                         );
                                     })}
-                                    {(!profile.aiEvidenceItems || profile.aiEvidenceItems.length === 0) && (
+                                    {aiEvidenceItems.length === 0 && (
                                         <div className="text-xs text-slate-400">暂无 AI 证据</div>
                                     )}
                                 </div>
@@ -568,13 +781,36 @@ export const SemanticConclusionCard: React.FC<SemanticConclusionCardProps> = ({
                                         const isCollapsed = collapsedRuleGroups[group];
                                         return (
                                             <div key={group} className="border border-slate-100 rounded-md p-2">
-                                                <button
-                                                    onClick={() => setCollapsedRuleGroups(prev => ({ ...prev, [group]: !prev[group] }))}
-                                                    className="w-full flex items-center justify-between text-[10px] font-semibold text-slate-500"
-                                                >
-                                                    <span>{group} ({items.length})</span>
-                                                    <span>{isCollapsed ? '展开' : '收起'}</span>
-                                                </button>
+                                                <div className="flex items-center justify-between">
+                                                    <button
+                                                        onClick={() => setCollapsedRuleGroups(prev => ({ ...prev, [group]: !prev[group] }))}
+                                                        className="text-[10px] font-semibold text-slate-500"
+                                                    >
+                                                        {group} ({items.length})
+                                                    </button>
+                                                    {onEvidenceAction && (
+                                                        <div className="flex items-center gap-2 text-[10px]">
+                                                            <button
+                                                                onClick={() => onEvidenceAction({ action: 'accept', source: '规则', reason: group })}
+                                                                className="text-emerald-600 hover:underline"
+                                                            >
+                                                                接受建议
+                                                            </button>
+                                                            <button
+                                                                onClick={() => onEvidenceAction({ action: 'override', source: '规则', reason: group })}
+                                                                className="text-blue-600 hover:underline flex items-center gap-1"
+                                                            >
+                                                                <Edit3 size={11} /> 改判
+                                                            </button>
+                                                            <button
+                                                                onClick={() => onEvidenceAction({ action: 'pending', source: '规则', reason: group })}
+                                                                className="text-amber-600 hover:underline flex items-center gap-1"
+                                                            >
+                                                                <Clock size={11} /> 待定
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
                                                 {!isCollapsed && (
                                                     <div className="flex flex-wrap gap-1 mt-2">
                                                         {items.map((e, i) => (
@@ -591,7 +827,7 @@ export const SemanticConclusionCard: React.FC<SemanticConclusionCardProps> = ({
                             </div>
                         </div>
                         <div className="mt-2 flex flex-wrap gap-1">
-                            {profile.aiEvidence.slice(0, 2).map((e, i) => (
+                            {aiEvidence.slice(0, 2).map((e, i) => (
                                 <span key={`ai-${i}`} className="bg-white px-2 py-0.5 rounded border border-slate-200 text-xs shadow-sm">
                                     {e}
                                 </span>
@@ -599,11 +835,46 @@ export const SemanticConclusionCard: React.FC<SemanticConclusionCardProps> = ({
                         </div>
                     </div>
 
+                    {/* Confirmation Info */}
+                    <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                        <div className="flex items-center justify-between">
+                            <div className="text-sm font-semibold text-slate-700">确认生效</div>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${profile.confirmedAt ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                                {profile.confirmedAt ? '已确认' : '待确认'}
+                            </span>
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-600">
+                            <div>
+                                <div className="text-[10px] text-slate-400">确认人</div>
+                                <div className="font-medium text-slate-700">{profile.confirmedBy || '-'}</div>
+                            </div>
+                            <div>
+                                <div className="text-[10px] text-slate-400">确认时间</div>
+                                <div className="font-medium text-slate-700">{formattedConfirmAt}</div>
+                            </div>
+                            <div>
+                                <div className="text-[10px] text-slate-400">生效范围</div>
+                                <div className="font-medium text-slate-700">{profile.confirmScope || '当前表'}</div>
+                            </div>
+                        </div>
+                        <div className="mt-3 flex items-center justify-between text-[10px] text-slate-400">
+                            <span>确认生效将写入语义注册表，可追溯版本</span>
+                            {onViewLogs && (
+                                <button onClick={onViewLogs} className="text-blue-600 hover:underline">
+                                    回滚入口
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
                     {/* Action Buttons */}
                     <div className="flex items-center justify-end gap-3 pt-4 border-t border-purple-100">
                         {isGateFailed ? (
-                            <button onClick={onReject} className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-sm font-medium transition-all">
-                                确认排除
+                            <button
+                                onClick={onReject}
+                                className="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg font-medium transition-all"
+                            >
+                                标记为不纳入治理范围（原因/责任人/可恢复）
                             </button>
                         ) : (
                             <>
@@ -615,6 +886,22 @@ export const SemanticConclusionCard: React.FC<SemanticConclusionCardProps> = ({
                                     <button onClick={onSaveEdit} className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-all">
                                         保存修正
                                     </button>
+                                )}
+                                {onConfirmEffective && (
+                                    profile.confirmedAt ? (
+                                        <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 px-3 py-2 rounded-lg text-sm border border-emerald-100">
+                                            <CheckCircle size={14} />
+                                            <span>已确认生效</span>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={onConfirmEffective}
+                                            className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-all shadow-sm"
+                                        >
+                                            <CheckCircle size={18} />
+                                            确认生效
+                                        </button>
+                                    )
                                 )}
                                 {existingBO ? (
                                     <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-3 py-2 rounded-lg text-sm border border-amber-100">

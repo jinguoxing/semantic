@@ -10,6 +10,7 @@ const moduleLabels: Record<string, string> = {
     data_supermarket: '找数',
     td_goals: '业务梳理',
     td_modeling: '业务对象建模',
+    resource_knowledge_network: '资源知识网络',
     bu_semantic: '逻辑视图',
     candidate_confirmation: '候选业务对象',
     scenario_orchestration: '场景编排',

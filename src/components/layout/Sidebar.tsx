@@ -25,15 +25,22 @@ const Sidebar = ({ activeModule, setActiveModule }: SidebarProps) => {
             ]
         },
         {
+            title: '数据应用',
+            color: 'text-teal-400',
+            items: [
+                { id: 'scenario_orchestration', label: '场景编排', icon: Layers }
+            ]
+        },
+        {
             title: '语义建模',
             color: 'text-blue-400',
             items: [
                 { id: 'dashboard', label: '语义协同中心', icon: Activity },
                 { id: 'td_goals', label: '业务梳理', icon: FileText },
                 { id: 'td_modeling', label: '业务对象建模', icon: Layout },
+                { id: 'resource_knowledge_network', label: '资源知识网络', icon: Network },
                 { id: 'bu_semantic', label: '逻辑视图', icon: FileText },
-                { id: 'candidate_confirmation', label: '候选业务对象', icon: CheckSquare },
-                { id: 'scenario_orchestration', label: '场景编排', icon: Layers }
+                { id: 'candidate_confirmation', label: '候选业务对象', icon: CheckSquare }
             ]
         },
         {

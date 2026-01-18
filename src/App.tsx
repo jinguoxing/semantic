@@ -33,8 +33,9 @@ import MappingStudioView from './views/MappingStudioView';
 import BOMappingStudioView from './views/BOMappingStudioView';
 import CandidateConfirmationView from './views/CandidateConfirmationView';
 import ScenarioOrchestrationView from './views/ScenarioOrchestrationView';
-import BusinessGoalsView from './views/BusinessGoalsView';
+import BusinessScenarioView from './views/BusinessScenarioView';
 import BusinessModelingView from './views/BusinessModelingView';
+import ResourceKnowledgeNetworkView from './views/ResourceKnowledgeNetworkView';
 import TechDiscoveryView from './views/TechDiscoveryView';
 import DataSemanticUnderstandingView from './views/DataSemanticUnderstandingView';
 import CandidateGenerationView from './views/CandidateGenerationView';
@@ -47,6 +48,7 @@ import AssetScanningView from './views/AssetScanningView';
 import AskDataView from './views/AskDataView';
 import { DataCatalogView } from './views/DataCatalogView';
 import SemanticAssetManagerView from './views/SemanticAssetManagerView';
+import { useModuleNavigation } from './hooks/useModuleNavigation';
 
 // ==========================================
 // 组件定义
@@ -54,7 +56,7 @@ import SemanticAssetManagerView from './views/SemanticAssetManagerView';
 
 
 export default function SemanticLayerApp() {
-    const [activeModule, setActiveModule] = useState('ask_data');
+    const [activeModule, setActiveModule] = useModuleNavigation('dashboard');
     // 确保 mockBusinessObjects 存在且不为空，避免 undefined 错误
     const [selectedBO, setSelectedBO] = useState(mockBusinessObjects && mockBusinessObjects.length > 0 ? mockBusinessObjects[0] : null);
     const [showRuleEditor, setShowRuleEditor] = useState(null);
@@ -83,7 +85,7 @@ export default function SemanticLayerApp() {
     const renderContent = () => {
         switch (activeModule) {
             case 'dashboard': return <DashboardView setActiveModule={setActiveModule} />;
-            case 'td_goals': return <BusinessGoalsView />; // 新增路由
+            case 'td_goals': return <BusinessScenarioView />;
             case 'mapping': return <MappingStudioView selectedBO={selectedBO} showRuleEditor={showRuleEditor} setShowRuleEditor={setShowRuleEditor} businessObjects={businessObjects} />;
             case 'bo_mapping': return <BOMappingStudioView selectedBO={selectedBO} showRuleEditor={showRuleEditor} setShowRuleEditor={setShowRuleEditor} businessObjects={businessObjects} setBusinessObjects={setBusinessObjects} onBack={() => setActiveModule('td_modeling')} />;
             case 'candidate_confirmation': return <CandidateConfirmationView
@@ -94,6 +96,7 @@ export default function SemanticLayerApp() {
                 setActiveModule={setActiveModule}
             />;
             case 'td_modeling': return <BusinessModelingView businessObjects={businessObjects} setBusinessObjects={setBusinessObjects} onNavigateToMapping={handleNavigateToMapping} />;
+            case 'resource_knowledge_network': return <ResourceKnowledgeNetworkView />;
             case 'scenario_orchestration': return <ScenarioOrchestrationView businessObjects={businessObjects} />;
             case 'bu_connect': return <DataSourceManagementView />;
             case 'bu_scan': return <AssetScanningView onNavigate={setActiveModule} onAddScanResults={(results) => setScanResults(prev => [...prev, ...results])} />;
@@ -135,7 +138,6 @@ export default function SemanticLayerApp() {
         </div>
     );
 }
-
 
 
 

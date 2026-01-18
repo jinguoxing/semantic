@@ -16,6 +16,9 @@ interface DimensionSummaryProps {
 
 export const DimensionSummary: React.FC<DimensionSummaryProps> = ({ profile }) => {
     const [isExpanded, setIsExpanded] = useState(false);
+    const safeRuleScore = profile.ruleScore || { naming: 0, behavior: 0, comment: 0, total: 0 };
+    const gateDetails = profile.gateResult?.details || { primaryKey: false, lifecycle: false, tableType: true };
+    const safeFields = Array.isArray(profile.fields) ? profile.fields : [];
 
     // V2.3F P4: Three-dimensional metrics expansion states
     const [showCoverageDetail, setShowCoverageDetail] = useState(false);
@@ -23,16 +26,16 @@ export const DimensionSummary: React.FC<DimensionSummaryProps> = ({ profile }) =
 
     // Table Dimension Rules - 用户友好的名称
     const tableRules: RuleItem[] = [
-        { code: '命名', name: '表名是否有业务含义', status: 'pass', value: profile.ruleScore.naming > 0.5 ? '语义明确' : '弱语义' },
-        { code: '主键', name: '是否存在主键字段', status: profile.gateResult.details.primaryKey ? 'pass' : 'fail', value: profile.gateResult.details.primaryKey ? '已识别' : '缺失' },
-        { code: '时间', name: '是否有生命周期字段', status: profile.gateResult.details.lifecycle ? 'pass' : 'fail', value: profile.gateResult.details.lifecycle ? '已识别' : '缺失' },
-        { code: '类型', name: '是否为有效业务表', status: profile.gateResult.details.tableType ? 'pass' : 'fail', value: profile.gateResult.details.tableType ? '有效' : '非业务表' },
+        { code: '命名', name: '表名是否有业务含义', status: 'pass', value: safeRuleScore.naming > 0.5 ? '语义明确' : '弱语义' },
+        { code: '主键', name: '是否存在主键字段', status: gateDetails.primaryKey ? 'pass' : 'fail', value: gateDetails.primaryKey ? '已识别' : '缺失' },
+        { code: '时间', name: '是否有生命周期字段', status: gateDetails.lifecycle ? 'pass' : 'fail', value: gateDetails.lifecycle ? '已识别' : '缺失' },
+        { code: '类型', name: '是否为有效业务表', status: gateDetails.tableType ? 'pass' : 'fail', value: gateDetails.tableType ? '有效' : '非业务表' },
     ];
 
     // Field Dimension Rules
-    const fieldCount = profile.fields.length;
-    const keyFields = profile.fields.filter(f => f.role === 'Identifier' || f.role === 'BusAttr').length;
-    const sensitiveFields = profile.fields.filter(f => f.sensitivity !== 'L1').length;
+    const fieldCount = safeFields.length;
+    const keyFields = safeFields.filter(f => f.role === 'Identifier' || f.role === 'BusAttr').length;
+    const sensitiveFields = safeFields.filter(f => f.sensitivity !== 'L1').length;
 
     const fieldRules: RuleItem[] = [
         { code: '核心', name: '核心字段占比', status: 'pass', value: `${keyFields}/${fieldCount} 个` },
@@ -45,12 +48,27 @@ export const DimensionSummary: React.FC<DimensionSummaryProps> = ({ profile }) =
     const fieldPassedCount = fieldRules.filter(r => r.status === 'pass').length;
     const failedRules = tableRules.filter(r => r.status === 'fail');
 
-    const tableScore = profile.ruleScore.total;
+    const tableScore = safeRuleScore.total;
     const fieldScore = profile.fieldScore || 0.85;
-
+    const formatScorePercent = (value: number) => {
+        const normalized = value > 1 ? value : value * 100;
+        return Math.max(0, Math.min(100, Math.round(normalized)));
+    };
+    const tableScorePercent = formatScorePercent(tableScore);
+    const fieldScorePercent = formatScorePercent(fieldScore);
+    const gateResult = profile.gateResult?.result || 'PASS';
+    const gateTone = gateResult === 'PASS'
+        ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+        : gateResult === 'REVIEW'
+            ? 'bg-amber-50 text-amber-700 border-amber-100'
+            : 'bg-red-50 text-red-700 border-red-100';
+    const gateLabel = gateResult === 'PASS' ? '通过' : gateResult === 'REVIEW' ? '需复核' : '不通过';
     // V2.3F P4: Calculate mutually exclusive field statistics
-    const fieldStats = calculateFieldStatistics(profile.fields);
-    const threeDimMetrics = calculateThreeDimensionalMetrics(profile.fields, profile);
+    const fieldStats = calculateFieldStatistics(safeFields);
+    const threeDimMetrics = calculateThreeDimensionalMetrics(safeFields, profile);
+    const gateTasks = (profile.gateResult?.reasons && profile.gateResult.reasons.length > 0)
+        ? profile.gateResult.reasons
+        : threeDimMetrics.completenessIssues;
 
     return (
         <div className="mb-4">
@@ -138,7 +156,10 @@ export const DimensionSummary: React.FC<DimensionSummaryProps> = ({ profile }) =
                                 ) : (
                                     <span className="text-sm text-amber-600 flex items-center gap-1">
                                         <AlertTriangle size={14} />
-                                        {threeDimMetrics.completenessIssues.join('、')}
+                                        缺失（需补齐）
+                                        <span className="text-[10px] text-amber-600/80">
+                                            {threeDimMetrics.completenessIssues.length > 0 ? `：${threeDimMetrics.completenessIssues.join('、')}` : ''}
+                                        </span>
                                     </span>
                                 )}
                             </div>
@@ -222,6 +243,48 @@ export const DimensionSummary: React.FC<DimensionSummaryProps> = ({ profile }) =
                             </div>
                         )}
                     </div>
+
+                    {/* Gate vs Score Summary */}
+                    <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <div className="bg-white rounded-lg border border-slate-200 p-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium text-slate-600">Gate（硬拦截）</span>
+                                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${gateTone}`}>
+                                    {gateLabel}
+                                </span>
+                            </div>
+                            <div className="mt-2 text-xs text-slate-500">
+                                {gateTasks.length > 0 ? (
+                                    <div className="space-y-1">
+                                        {gateTasks.slice(0, 2).map((task, idx) => (
+                                            <div key={idx} className="flex items-start gap-1.5">
+                                                <span className="text-amber-500 mt-0.5">•</span>
+                                                <span>{task}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <span>门槛通过，可继续评分优化。</span>
+                                )}
+                            </div>
+                        </div>
+                        <div className="bg-white rounded-lg border border-slate-200 p-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium text-slate-600">Score（成熟度）</span>
+                                <span className="text-[10px] text-slate-400">用于排序与持续改进</span>
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-3">
+                                <div className="bg-slate-50 rounded-lg px-3 py-2">
+                                    <div className="text-[10px] text-slate-500">表维度得分</div>
+                                    <div className="text-lg font-bold text-slate-800">{tableScorePercent}%</div>
+                                </div>
+                                <div className="bg-slate-50 rounded-lg px-3 py-2">
+                                    <div className="text-[10px] text-slate-500">字段维度得分</div>
+                                    <div className="text-lg font-bold text-slate-800">{fieldScorePercent}%</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -236,7 +299,7 @@ export const DimensionSummary: React.FC<DimensionSummaryProps> = ({ profile }) =
                         <Table size={16} className="text-blue-600" />
                         <span className="text-sm font-medium text-slate-700">表维度:</span>
                         <span className={`text-sm font-bold ${tableScore > 0.5 ? 'text-emerald-600' : 'text-amber-600'}`}>
-                            {tableScore.toFixed(2)}
+                            {tableScorePercent}%
                         </span>
                         <span className="text-xs text-slate-400">
                             ({tablePassedCount}/{tableRules.length}通过)
@@ -250,7 +313,7 @@ export const DimensionSummary: React.FC<DimensionSummaryProps> = ({ profile }) =
                         <Columns size={16} className="text-emerald-600" />
                         <span className="text-sm font-medium text-slate-700">字段维度:</span>
                         <span className={`text-sm font-bold ${fieldScore > 0.5 ? 'text-emerald-600' : 'text-amber-600'}`}>
-                            {fieldScore.toFixed(2)}
+                            {fieldScorePercent}%
                         </span>
                         <span className="text-xs text-slate-400">
                             ({fieldPassedCount}/{fieldRules.length}通过)
@@ -294,7 +357,7 @@ export const DimensionSummary: React.FC<DimensionSummaryProps> = ({ profile }) =
                         <div className="flex items-center gap-2 mb-3">
                             <Table size={16} className="text-blue-600" />
                             <span className="font-medium text-slate-700">表维度分析</span>
-                            <span className="ml-auto text-sm font-bold text-blue-600">{tableScore.toFixed(2)}</span>
+                            <span className="ml-auto text-sm font-bold text-blue-600">{tableScorePercent}%</span>
                         </div>
                         <div className="space-y-2">
                             {tableRules.map((rule, idx) => (
@@ -321,7 +384,7 @@ export const DimensionSummary: React.FC<DimensionSummaryProps> = ({ profile }) =
                         <div className="flex items-center gap-2 mb-3">
                             <Columns size={16} className="text-emerald-600" />
                             <span className="font-medium text-slate-700">字段维度分析</span>
-                            <span className="ml-auto text-sm font-bold text-emerald-600">{fieldScore.toFixed(2)}</span>
+                            <span className="ml-auto text-sm font-bold text-emerald-600">{fieldScorePercent}%</span>
                         </div>
                         <div className="space-y-2">
                             {fieldRules.map((rule, idx) => (
