@@ -42,6 +42,7 @@ export type FieldSemanticStatus =
     | 'SUGGESTED'
     | 'RULE_MATCHED'
     | 'DECIDED'
+    | 'PARTIALLY_DECIDED'
     | 'BLOCKED';
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
@@ -189,17 +190,74 @@ export interface AICandidate {
     previewFields: PreviewField[];
 }
 
+export interface BusinessField {
+    name: string;
+    code?: string; // Added code for physical field mapping
+    type: string;
+    required?: boolean;
+    description?: string;
+    role?: SemanticRole; // e.g., 'Identifier', 'Measure'
+}
+
+export type ObjectStatus = 'candidate' | 'pending' | 'draft' | 'published' | 'deprecated' | 'archived';
+
 export interface BusinessObject {
     id: string;
     name: string;
     code: string;
+    type?: 'CORE_ENTITY' | 'EVENT_ENTITY' | 'RELATION_ENTITY'; // Added
     domain: string;
     owner: string;
-    status: 'draft' | 'published' | 'archived'; // Adjusted to match likely usage
+    status: ObjectStatus;
     version?: string;
     description?: string;
+
+    // Core modeling attributes
+    fields: BusinessField[];
+    mappingProgress?: number; // 0-1
+
+    // Candidate/Conflict attributes
+    confidence?: number; // 0-100
+    conflictFlag?: boolean;
+    conflictType?: ('DUPLICATE_NAME' | 'TypeMismatch')[];
+    source?: 'AI' | 'MANUAL';
+    evidence?: {
+        sourceTables: string[];
+        keyFields: string[];
+        fieldCoverage?: number;
+    };
+
+    // Legacy support (optional)
     sourceTables?: string[];
-    fields?: any[]; // Simplified for now
+}
+
+export interface ObjectSuggestion {
+    objectId: string; // The candidate object ID
+    suggestionId: string;
+    suggestedName: string;
+    suggestedType: 'CORE_ENTITY' | 'EVENT_ENTITY' | 'RELATION_ENTITY';
+    confidence: number;
+    evidence: {
+        sourceTables: string[];
+        keyFields: string[];
+        fieldCoverage?: number;
+    };
+    attributes: {
+        attrName: string;
+        mappedFields: { table: string; field: string }[];
+        semantic?: { termId?: string; role: SemanticRole; tags: string[] };
+        riskHints?: { quality: string; security: string };
+    }[];
+}
+
+export interface Decision {
+    decisionId: string;
+    targetType: 'BUSINESS_OBJECT';
+    targetId: string;
+    action: 'ACCEPT' | 'ACCEPT_WITH_EDIT' | 'REJECT' | 'MERGE' | 'BIND_EXISTING' | 'KEEP_ONE';
+    payload?: any;
+    decidedBy: string;
+    decidedAt: string;
 }
 // Logs and History
 export interface AuditLogEntry {

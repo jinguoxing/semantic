@@ -74,7 +74,9 @@ export const FieldSemanticWorkbenchView = ({ scanResults, onNavigateToField }: F
                     // Derive mock status/risk if not present
                     const status = field.semanticStatus || 'UNANALYZED';
                     const risk = field.riskLevel || (Math.random() > 0.8 ? 'HIGH' : 'LOW');
-                    const confidence = field.confidence || (Math.random() * 100);
+                    const confidence = field.confidence ||
+                        (typeof field.suggestion === 'object' && field.suggestion?.confidence ? field.suggestion.confidence * 100 : undefined) ||
+                        (Math.random() * 100);
 
                     // Mock Tags & Term if missing - just for demo
                     const mockTags = Math.random() > 0.7 ? ['PII', 'Core'] : [];
@@ -87,7 +89,7 @@ export const FieldSemanticWorkbenchView = ({ scanResults, onNavigateToField }: F
                         logicalViewName: logViewName,
                         semanticStatus: status,
                         semanticStage: stage,
-                        suggestedRole: field.suggestion,
+                        suggestedRole: (typeof field.suggestion === 'object' && field.suggestion !== null) ? field.suggestion.term : field.suggestion,
                         term: mockTerm,
                         tags: mockTags,
                         confidence: confidence,
@@ -210,8 +212,8 @@ export const FieldSemanticWorkbenchView = ({ scanResults, onNavigateToField }: F
                         icon={Clock}
                         color="text-orange-500"
                         bg="bg-orange-50"
-                        onClick={() => { setFilterStatus(['PENDING']); setFilterRisk([]); }}
-                        active={filterStatus.includes('PENDING') && filterStatus.length === 1 && filterRisk.length === 0}
+                        onClick={() => { setFilterStatus(['UNANALYZED']); setFilterRisk([]); }}
+                        active={filterStatus.includes('UNANALYZED') && filterStatus.length === 1 && filterRisk.length === 0}
                     />
                     <StatCard
                         label="高风险字段"
@@ -286,7 +288,7 @@ export const FieldSemanticWorkbenchView = ({ scanResults, onNavigateToField }: F
 
                 <div className="flex items-center gap-2">
                     <span className="text-xs font-medium text-slate-500 mr-1">状态:</span>
-                    {['PENDING', 'SUGGESTED', 'BLOCKED', 'DECIDED'].map(status => (
+                    {['UNANALYZED', 'SUGGESTED', 'PARTIALLY_DECIDED', 'BLOCKED', 'DECIDED'].map(status => (
                         <button
                             key={status}
                             onClick={() => toggleFilter('STATUS', status)}
@@ -295,9 +297,10 @@ export const FieldSemanticWorkbenchView = ({ scanResults, onNavigateToField }: F
                                 : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                                 }`}
                         >
-                            {status === 'PENDING' ? '待确认' :
+                            {status === 'UNANALYZED' ? '待确认' :
                                 status === 'SUGGESTED' ? 'AI建议' :
-                                    status === 'BLOCKED' ? '已阻塞' : '已确认'}
+                                    status === 'PARTIALLY_DECIDED' ? '部分确认' :
+                                        status === 'BLOCKED' ? '已阻塞' : '已确认'}
                         </button>
                     ))}
                 </div>
@@ -634,6 +637,7 @@ const StatCard = ({ label, value, icon: Icon, color, bg, onClick, active }: any)
 const SemanticStatusBadge = ({ status }: { status: FieldSemanticStatus }) => {
     switch (status) {
         case 'DECIDED': return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600 border border-emerald-100">已确认</span>;
+        case 'PARTIALLY_DECIDED': return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-600 border border-indigo-100">部分确认</span>;
         case 'SUGGESTED': return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-600 border border-blue-100">AI建议</span>;
         case 'BLOCKED': return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">已阻塞</span>;
         default: return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-50 text-slate-500 border border-slate-200">待分析</span>;

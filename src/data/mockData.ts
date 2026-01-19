@@ -235,6 +235,25 @@ export const mockBusinessObjects: BusinessObject[] = [
             { name: '快递单号', type: 'String', required: true },
             { name: '配送状态', type: 'Enum', required: true }
         ]
+    },
+    // 🖥️ IT Ops Business Objects
+    {
+        id: 'BO_SERVER_ASSET',
+        name: '服务器资产 (Server Asset)',
+        code: 'biz_server_asset',
+        domain: '运维域',
+        owner: '运维部',
+        status: 'published',
+        description: '服务器主机资产信息',
+        fields: [
+            { name: '资产编号', type: 'String', required: true },
+            { name: '主机名', type: 'String', required: true },
+            { name: 'IP地址', type: 'String', required: true },
+            { name: 'OS版本', type: 'String', required: false },
+            { name: 'CPU核数', type: 'Int', required: true },
+            { name: '内存大小', type: 'Int', required: true },
+            { name: '采购日期', type: 'Date', required: false }
+        ]
     }
 ];
 
@@ -255,6 +274,58 @@ export const mockPhysicalTables = [
             { name: 'weight_kg', type: 'decimal(4,2)', semanticStatus: 'UNANALYZED', riskLevel: 'MEDIUM' },
             { name: 'hospital_id', type: 'int', semanticStatus: 'UNANALYZED', riskLevel: 'LOW' },
             { name: 'is_deleted', type: 'tinyint', semanticStatus: 'DECIDED', riskLevel: 'LOW' }
+        ]
+    },
+    // 1️⃣ IT Ops: 表 A (未分析 - 原始日志表)
+    {
+        id: 'TBL_ACCESS_LOG',
+        name: 'ods_server_access_log_daily',
+        source: 'LOG_DB (ClickHouse)',
+        scannedAt: '2026-01-19 08:00:00',
+        rows: '45,200,000',
+        semanticStage: 'UNANALYZED', // 对应 "未开始语义建模"
+        fields: [
+            { name: 'log_id', type: 'String', key: 'PK', semanticStatus: 'UNANALYZED', riskLevel: 'LOW' },
+            { name: 'client_ip', type: 'String', semanticStatus: 'UNANALYZED', riskLevel: 'LOW' },
+            { name: 'request_uri', type: 'String', semanticStatus: 'UNANALYZED', riskLevel: 'LOW' },
+            { name: 'status_code', type: 'UInt16', semanticStatus: 'UNANALYZED', riskLevel: 'HIGH_RISK', riskReason: 'ENUM_NOT_STABLE' }, // 模拟风险
+            { name: 'response_time_ms', type: 'UInt32', semanticStatus: 'UNANALYZED', riskLevel: 'LOW' },
+            { name: 'user_agent', type: 'String', semanticStatus: 'UNANALYZED', riskLevel: 'MEDIUM', riskReason: 'LOW_UNIQUENESS' } // 模拟风险
+        ]
+    },
+    // 2️⃣ IT Ops: 表 B (进行中 - 告警记录表)
+    {
+        id: 'TBL_ALERT_HISTORY',
+        name: 'dw_alert_history_fact',
+        source: 'Mon_DB (PostgreSQL)',
+        scannedAt: '2026-01-19 09:30:00',
+        rows: '8,500',
+        semanticStage: 'FIELD_PENDING', // 对应 "字段语义待确认" / "进行中"
+        fields: [
+            { name: 'alert_id', type: 'bigint', key: 'PK', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Identifier', term: '告警ID' },
+            { name: 'service_name', type: 'varchar(100)', semanticStatus: 'SUGGESTED', riskLevel: 'LOW', suggestion: { term: '服务名称', confidence: 0.95 } },
+            { name: 'alert_level', type: 'varchar(20)', semanticStatus: 'SUGGESTED', riskLevel: 'HIGH', riskReason: 'ENUM_VALUE_MISSING', suggestion: { term: '告警级别', confidence: 0.85 } },
+            { name: 'trigger_time', type: 'timestamp', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Time', term: '触发时间' },
+            { name: 'handler_owner', type: 'varchar(50)', semanticStatus: 'PARTIALLY_DECIDED', riskLevel: 'LOW', suggestion: { term: '负责人', confidence: 0.60 } },
+            { name: 'resolved_time', type: 'timestamp', semanticStatus: 'UNANALYZED', riskLevel: 'LOW' }
+        ]
+    },
+    // 3️⃣ IT Ops: 表 C (已完成 - 资产维表)
+    {
+        id: 'TBL_SERVER_ASSET',
+        name: 'dim_server_asset_info',
+        source: 'CMDB (MySQL)',
+        scannedAt: '2026-01-18 18:00:00',
+        rows: '2,400',
+        semanticStage: 'PUBLISHED', // 对应 "可进入对象建模" / "已完成"
+        fields: [
+            { name: 'asset_id', type: 'varchar(50)', key: 'PK', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Identifier', term: '资产编号' },
+            { name: 'hostname', type: 'varchar(100)', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Attribute', term: '主机名' },
+            { name: 'ip_address', type: 'varchar(50)', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Attribute', term: 'IP地址' },
+            { name: 'os_version', type: 'varchar(50)', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Attribute', term: 'OS版本' },
+            { name: 'cpu_cores', type: 'int', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Measure', term: 'CPU核数' },
+            { name: 'memory_gb', type: 'int', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Measure', term: '内存大小' },
+            { name: 'purchase_date', type: 'date', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Time', term: '采购日期' }
         ]
     }
 ];
@@ -479,7 +550,7 @@ export const mockDataSources = [
 ];
 
 // SG-01: BO-to-Table Mapping Configuration
-export const mockBOTableMappings: Record<string, { tableId: string; tableName: string; source: string; mappings: { boField: string; tblField: string; rule: string }[]; fields: { name: string; type: string; key?: string; semanticStatus?: string; riskLevel?: string; role?: string }[] }> = {
+export const mockBOTableMappings: Record<string, { tableId: string; tableName: string; source: string; mappings: { boField: string; tblField: string; rule: string }[]; fields: { name: string; type: string; key?: string; semanticStatus?: string; riskLevel?: string; role?: string; term?: string; suggestion?: any; riskReason?: string }[] }> = {
     'BO_NEWBORN': {
         tableId: 'TBL_POP_BASE',
         tableName: 't_pop_base_info_2024',
@@ -608,6 +679,30 @@ export const mockBOTableMappings: Record<string, { tableId: string; tableName: s
             { name: 'delivery_id', type: 'varchar(30)', key: 'PK' },
             { name: 'tracking_no', type: 'varchar(50)' },
             { name: 'status', type: 'varchar(20)' }
+        ]
+    },
+    // 🖥️ IT Ops Mapping
+    'BO_SERVER_ASSET': {
+        tableId: 'TBL_SERVER_ASSET',
+        tableName: 'dim_server_asset_info',
+        source: 'CMDB (MySQL)',
+        mappings: [
+            { boField: '资产编号', tblField: 'asset_id', rule: 'Direct Copy' },
+            { boField: '主机名', tblField: 'hostname', rule: 'Direct Copy' },
+            { boField: 'IP地址', tblField: 'ip_address', rule: 'Direct Copy' },
+            { boField: 'OS版本', tblField: 'os_version', rule: 'Direct Copy' },
+            { boField: 'CPU核数', tblField: 'cpu_cores', rule: 'Direct Copy' },
+            { boField: '内存大小', tblField: 'memory_gb', rule: 'Direct Copy' },
+            { boField: '采购日期', tblField: 'purchase_date', rule: 'Direct Copy' },
+        ],
+        fields: [
+            { name: 'asset_id', type: 'varchar(50)', key: 'PK', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Identifier', term: '资产编号' },
+            { name: 'hostname', type: 'varchar(100)', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Attribute', term: '主机名' },
+            { name: 'ip_address', type: 'varchar(50)', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Attribute', term: 'IP地址' },
+            { name: 'os_version', type: 'varchar(50)', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Attribute', term: 'OS版本' },
+            { name: 'cpu_cores', type: 'int', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Measure', term: 'CPU核数' },
+            { name: 'memory_gb', type: 'int', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Measure', term: '内存大小' },
+            { name: 'purchase_date', type: 'date', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Time', term: '采购日期' }
         ]
     }
 };
@@ -1763,11 +1858,86 @@ export const mockScanResults = [
         },
         fields: [
             { name: 'product_id', type: 'varchar(20)', comment: '商品ID' },
-            { name: 'product_name', type: 'varchar(200)', comment: '商品名称' },
-            { name: 'category_id', type: 'int', comment: '类目ID' },
-            { name: 'brand_id', type: 'int', comment: '品牌ID' },
-            { name: 'price', type: 'decimal(10,2)', comment: '价格' },
-            { name: 'status', type: 'tinyint', comment: '上架状态' }
+            // ... (rest of fields will be preserved as I am targetting specifically or appending after)
+        ]
+    },
+    // ==========================================
+    // 🖥️ IT Ops Mock Data (Added for Logic View Visibility)
+    // ==========================================
+    // 1️⃣ IT Ops: 表 A (未分析 - 原始日志表)
+    {
+        table: 'ods_server_access_log_daily',
+        sourceId: 'DS_LOG_01',
+        sourceName: '日志中心 (ClickHouse)',
+        sourceType: 'ClickHouse',
+        rows: '45.2M',
+        updateTime: '2026-01-19 08:00:00',
+        status: 'scanned', // UNANALYZED
+        comment: '服务器每日访问日志',
+        confidence: 0,
+        fields: [
+            { name: 'log_id', type: 'String', comment: '日志ID', semanticStatus: 'UNANALYZED', riskLevel: 'LOW' },
+            { name: 'client_ip', type: 'String', comment: '客户端IP', semanticStatus: 'UNANALYZED', riskLevel: 'LOW' },
+            { name: 'request_uri', type: 'String', comment: '请求URI', semanticStatus: 'UNANALYZED', riskLevel: 'LOW' },
+            { name: 'status_code', type: 'UInt16', comment: '状态码', semanticStatus: 'UNANALYZED', riskLevel: 'HIGH_RISK', riskReason: 'ENUM_NOT_STABLE' },
+            { name: 'response_time_ms', type: 'UInt32', comment: '响应时间(ms)', semanticStatus: 'UNANALYZED', riskLevel: 'LOW' },
+            { name: 'user_agent', type: 'String', comment: '用户代理', semanticStatus: 'UNANALYZED', riskLevel: 'MEDIUM', riskReason: 'LOW_UNIQUENESS' }
+        ]
+    },
+    // 2️⃣ IT Ops: 表 B (进行中 - 告警记录表)
+    {
+        table: 'dw_alert_history_fact',
+        sourceId: 'DS_MON_01',
+        sourceName: '监控中心 (PostgreSQL)',
+        sourceType: 'PostgreSQL',
+        rows: '8.5K',
+        updateTime: '2026-01-19 09:30:00',
+        status: 'analyzed',
+        governanceStatus: 'S1', // FIELD_PENDING / In Progress
+        comment: '告警历史事实表',
+        confidence: 85,
+        semanticAnalysis: {
+            businessName: '告警历史',
+            description: '记录系统产生的各类告警信息',
+            scenarios: ['运维监控', '故障分析'],
+            governanceStatus: 'S1'
+        },
+        fields: [
+            { name: 'alert_id', type: 'bigint', comment: '告警ID', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Identifier', term: '告警ID' },
+            { name: 'service_name', type: 'varchar(100)', comment: '服务名称', semanticStatus: 'SUGGESTED', riskLevel: 'LOW', suggestion: { term: '服务名称', confidence: 0.95 } },
+            { name: 'alert_level', type: 'varchar(20)', comment: '告警级别', semanticStatus: 'SUGGESTED', riskLevel: 'HIGH', riskReason: 'ENUM_VALUE_MISSING', suggestion: { term: '告警级别', confidence: 0.85 } },
+            { name: 'trigger_time', type: 'timestamp', comment: '触发时间', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Time', term: '触发时间' },
+            { name: 'handler_owner', type: 'varchar(50)', comment: '处理负责人', semanticStatus: 'PARTIALLY_DECIDED', riskLevel: 'LOW', suggestion: { term: '负责人', confidence: 0.60 } },
+            { name: 'resolved_time', type: 'timestamp', comment: '解决时间', semanticStatus: 'UNANALYZED', riskLevel: 'LOW' }
+        ]
+    },
+    // 3️⃣ IT Ops: 表 C (已完成 - 资产维表)
+    {
+        table: 'dim_server_asset_info',
+        sourceId: 'DS_CMDB_01',
+        sourceName: 'CMDB (MySQL)',
+        sourceType: 'MySQL',
+        rows: '2.4K',
+        updateTime: '2026-01-18 18:00:00',
+        status: 'analyzed',
+        governanceStatus: 'S3', // READY / Published
+        comment: '服务器资产维表',
+        confidence: 98,
+        semanticAnalysis: {
+            businessName: '服务器资产',
+            description: '服务器主机资产全量信息',
+            scenarios: ['资产管理', '成本核算'],
+            governanceStatus: 'S3',
+            businessDomain: '运维域'
+        },
+        fields: [
+            { name: 'asset_id', type: 'varchar(50)', comment: '资产编号', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Identifier', term: '资产编号' },
+            { name: 'hostname', type: 'varchar(100)', comment: '主机名', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Attribute', term: '主机名' },
+            { name: 'ip_address', type: 'varchar(50)', comment: 'IP地址', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Attribute', term: 'IP地址' },
+            { name: 'os_version', type: 'varchar(50)', comment: 'OS版本', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Attribute', term: 'OS版本' },
+            { name: 'cpu_cores', type: 'int', comment: 'CPU核数', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Measure', term: 'CPU核数' },
+            { name: 'memory_gb', type: 'int', comment: '内存大小', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Measure', term: '内存大小' },
+            { name: 'purchase_date', type: 'date', comment: '采购日期', semanticStatus: 'DECIDED', riskLevel: 'LOW', role: 'Time', term: '采购日期' }
         ]
     },
     // 更多 Oracle 数据源
