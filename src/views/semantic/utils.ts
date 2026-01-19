@@ -85,10 +85,10 @@ export const runStatusToneMap: Record<RunSummary['status'], string> = {
 
 // Semantic Stage Configuration
 export const semanticStageLabelMap: Record<string, string> = {
-    'NOT_STARTED': '未开始语义建模',
-    'FIELD_PENDING': '字段语义待确认',
+    'NOT_STARTED': '未开始',
+    'FIELD_PENDING': '语义待确认',
     'MODELING_IN_PROGRESS': '语义建模进行中',
-    'READY_FOR_OBJECT': '可进入对象建模'
+    'READY_FOR_OBJECT': '可对象建模'
 };
 
 export const semanticStageToneMap: Record<string, string> = {

@@ -95,7 +95,8 @@ const DataSemanticUnderstandingView = ({
     const [listFilters, setListFilters] = useState({
         review: false,
         gate: false,
-        risk: false
+        risk: false,
+        stage: null as string | null // New: null means no filter, otherwise filter by specific stage
     });
     const [sortField, setSortField] = useState<'pendingReviewFields' | 'gateFailedItems' | 'riskItems' | 'updateTime' | null>(null);
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -227,7 +228,8 @@ const DataSemanticUnderstandingView = ({
             const matchesReview = !listFilters.review || (stats?.pendingReviewFields || 0) > 0;
             const matchesGate = !listFilters.gate || (stats?.gateFailedItems || 0) > 0;
             const matchesRisk = !listFilters.risk || (stats?.riskItems || 0) > 0;
-            return matchesSource && matchesSearch && matchesReview && matchesGate && matchesRisk;
+            const matchesStage = !listFilters.stage || asset.semanticStage === listFilters.stage;
+            return matchesSource && matchesSearch && matchesReview && matchesGate && matchesRisk && matchesStage;
         });
 
         if (!sortField) return filtered;
@@ -808,9 +810,27 @@ const DataSemanticUnderstandingView = ({
                                         {item.label}
                                     </button>
                                 ))}
-                                {(listFilters.review || listFilters.gate || listFilters.risk) && (
+
+                                <div className="h-4 w-px bg-slate-200 mx-1"></div>
+
+                                <select
+                                    value={listFilters.stage || ''}
+                                    onChange={(e) => setListFilters(prev => ({ ...prev, stage: e.target.value || null }))}
+                                    className={`px-2 py-1 rounded-full border text-xs transition-colors ${listFilters.stage
+                                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                        : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                                        }`}
+                                >
+                                    <option value="">状态：全部</option>
+                                    <option value="NOT_STARTED">未开始</option>
+                                    <option value="FIELD_PENDING">语义待确认</option>
+                                    <option value="MODELING_IN_PROGRESS">语义建模进行中</option>
+                                    <option value="READY_FOR_OBJECT">可对象建模</option>
+                                </select>
+
+                                {(listFilters.review || listFilters.gate || listFilters.risk || listFilters.stage) && (
                                     <button
-                                        onClick={() => setListFilters({ review: false, gate: false, risk: false })}
+                                        onClick={() => setListFilters({ review: false, gate: false, risk: false, stage: null })}
                                         className="px-2 py-1 rounded-full border border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50"
                                     >
                                         清除筛选
@@ -974,16 +994,15 @@ const DataSemanticUnderstandingView = ({
                                     </div>
                                 </div>
                                 <table className="w-full text-sm">
-                                    <thead className="bg-gradient-to-r from-slate-50 to-slate-100/50 text-slate-500 border-b border-slate-200 sticky top-0 z-10">
+                                    <thead className="bg-gradient-to-r from-slate-50 to-slate-100/50 text-slate-600 border-b-2 border-slate-200 sticky top-0 z-20 backdrop-blur-sm bg-white/95">
                                         <tr>
-                                            <th className="px-3 py-3.5 w-12"></th>
-                                            <th className="px-4 py-3.5 font-medium text-left min-w-[200px]">逻辑视图名称</th>
-                                            <th className="px-4 py-3.5 font-medium text-left min-w-[140px]">业务名称</th>
-                                            <th className="px-4 py-3.5 font-medium text-left min-w-[160px]">所属数据源</th>
-                                            <th className="px-4 py-3.5 font-medium text-right w-24">行数</th>
-                                            <th className="px-4 py-3.5 font-medium text-center w-32">更新时间</th>
-                                            <th className="px-4 py-3.5 font-medium text-center w-32">语义建模阶段</th>
-                                            <th className="px-4 py-3.5 font-medium text-center w-28">
+                                            <th className="px-3 py-4 w-12 align-middle"></th>
+                                            <th className="px-4 py-4 font-semibold text-left min-w-[160px] align-middle">逻辑视图名称</th>
+                                            <th className="px-4 py-4 font-semibold text-left min-w-[120px] align-middle">业务名称</th>
+                                            <th className="px-4 py-4 font-semibold text-center w-28 align-middle">语义建模阶段</th>
+                                            <th className="px-4 py-4 font-semibold text-left min-w-[120px] align-middle">所属数据源</th>
+                                            <th className="px-4 py-4 font-semibold text-right w-24 align-middle">行数</th>
+                                            <th className="px-4 py-4 font-semibold text-center w-24 align-middle">
                                                 <button
                                                     onClick={() => {
                                                         setSortField(prev => {
@@ -995,16 +1014,16 @@ const DataSemanticUnderstandingView = ({
                                                             return 'pendingReviewFields';
                                                         });
                                                     }}
-                                                    className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
+                                                    className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-800 font-semibold"
                                                 >
-                                                    待Review字段
+                                                    待Review
                                                     <ChevronDown
                                                         size={12}
-                                                        className={`transition-transform ${sortField === 'pendingReviewFields' && sortOrder === 'asc' ? 'rotate-180' : ''} ${sortField === 'pendingReviewFields' ? 'text-slate-600' : 'text-slate-300'}`}
+                                                        className={`transition-transform ${sortField === 'pendingReviewFields' && sortOrder === 'asc' ? 'rotate-180' : ''} ${sortField === 'pendingReviewFields' ? 'text-slate-700' : 'text-slate-400'}`}
                                                     />
                                                 </button>
                                             </th>
-                                            <th className="px-4 py-3.5 font-medium text-center w-28">
+                                            <th className="px-4 py-4 font-semibold text-center w-20 align-middle">
                                                 <button
                                                     onClick={() => {
                                                         setSortField(prev => {
@@ -1016,16 +1035,16 @@ const DataSemanticUnderstandingView = ({
                                                             return 'gateFailedItems';
                                                         });
                                                     }}
-                                                    className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
+                                                    className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-800 font-semibold"
                                                 >
-                                                    Gate未通过
+                                                    Gate未过
                                                     <ChevronDown
                                                         size={12}
-                                                        className={`transition-transform ${sortField === 'gateFailedItems' && sortOrder === 'asc' ? 'rotate-180' : ''} ${sortField === 'gateFailedItems' ? 'text-slate-600' : 'text-slate-300'}`}
+                                                        className={`transition-transform ${sortField === 'gateFailedItems' && sortOrder === 'asc' ? 'rotate-180' : ''} ${sortField === 'gateFailedItems' ? 'text-slate-700' : 'text-slate-400'}`}
                                                     />
                                                 </button>
                                             </th>
-                                            <th className="px-4 py-3.5 font-medium text-center w-24">
+                                            <th className="px-4 py-4 font-semibold text-center w-20 align-middle">
                                                 <button
                                                     onClick={() => {
                                                         setSortField(prev => {
@@ -1037,16 +1056,17 @@ const DataSemanticUnderstandingView = ({
                                                             return 'riskItems';
                                                         });
                                                     }}
-                                                    className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
+                                                    className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-800 font-semibold"
                                                 >
                                                     风险项
                                                     <ChevronDown
                                                         size={12}
-                                                        className={`transition-transform ${sortField === 'riskItems' && sortOrder === 'asc' ? 'rotate-180' : ''} ${sortField === 'riskItems' ? 'text-slate-600' : 'text-slate-300'}`}
+                                                        className={`transition-transform ${sortField === 'riskItems' && sortOrder === 'asc' ? 'rotate-180' : ''} ${sortField === 'riskItems' ? 'text-slate-700' : 'text-slate-400'}`}
                                                     />
                                                 </button>
                                             </th>
-                                            <th className="px-4 py-3.5 font-medium text-center w-32">操作</th>
+                                            <th className="px-4 py-4 font-semibold text-center w-28 align-middle">更新时间</th>
+                                            <th className="px-4 py-4 font-semibold text-center w-32 align-middle">操作</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
@@ -1116,6 +1136,24 @@ const DataSemanticUnderstandingView = ({
                                                             <span className="text-slate-300 italic text-xs">- 未定义 -</span>
                                                         )}
                                                     </td>
+                                                    <td className="px-4 py-4 text-center">
+                                                        {(() => {
+                                                            const semanticStage = asset.semanticStage || 'NOT_STARTED';
+                                                            const runSummary = asset.lastRun as RunSummary | null;
+                                                            return (
+                                                                <div className="flex flex-col items-center gap-1">
+                                                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${semanticStageToneMap[semanticStage]}`}>
+                                                                        {semanticStageLabelMap[semanticStage]}
+                                                                    </span>
+                                                                    {runSummary && (
+                                                                        <span className={`text-[10px] ${runStatusToneMap[runSummary.status]}`}>
+                                                                            Run {runSummary.runId} · {runStatusLabelMap[runSummary.status]}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                    </td>
                                                     <td className="px-4 py-4">
                                                         <div className="flex items-center gap-2">
                                                             <span className="px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
@@ -1132,32 +1170,6 @@ const DataSemanticUnderstandingView = ({
                                                                         : asset.rows.toLocaleString()
                                                                 : asset.rows || '-'}
                                                         </span>
-                                                    </td>
-                                                    <td className="px-4 py-4 text-center">
-                                                        <div className="flex items-center justify-center gap-1 text-slate-500 text-xs">
-                                                            <Clock size={12} className="text-slate-400" />
-                                                            {asset.updateTime?.split(' ')[0] || 'N/A'}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-4 text-center">
-                                                        {(() => {
-                                                            const semanticStage = asset.semanticStage || 'NOT_STARTED';
-                                                            const runSummary = asset.lastRun as RunSummary | null;
-                                                            return (
-                                                                <div className="flex flex-col items-center gap-1">
-                                                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${semanticStageToneMap[semanticStage]}`}>
-                                                                        {semanticStageLabelMap[semanticStage]}
-                                                                    </span>
-                                                                    {runSummary ? (
-                                                                        <span className={`text-[10px] ${runStatusToneMap[runSummary.status]}`}>
-                                                                            Run {runSummary.runId} · {runStatusLabelMap[runSummary.status]}
-                                                                        </span>
-                                                                    ) : (
-                                                                        <span className="text-[10px] text-slate-400">未运行</span>
-                                                                    )}
-                                                                </div>
-                                                            );
-                                                        })()}
                                                     </td>
                                                     <td className="px-4 py-4 text-center">
                                                         {(() => {
@@ -1199,6 +1211,12 @@ const DataSemanticUnderstandingView = ({
                                                         })()}
                                                     </td>
                                                     <td className="px-4 py-4 text-center">
+                                                        <div className="flex items-center justify-center gap-1 text-slate-500 text-xs">
+                                                            <Clock size={12} className="text-slate-400" />
+                                                            {asset.updateTime?.split(' ')[0] || 'N/A'}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-4 text-center">
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
@@ -1210,7 +1228,7 @@ const DataSemanticUnderstandingView = ({
                                                                     setPageMode('SEMANTIC');
                                                                 }
                                                             }}
-                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1 mx-auto ${asset.semanticStage === 'READY_FOR_OBJECT'
+                                                            className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1 mx-auto ${asset.semanticStage === 'READY_FOR_OBJECT'
                                                                 ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                                                 : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
                                                                 }`}
@@ -1218,12 +1236,12 @@ const DataSemanticUnderstandingView = ({
                                                             {asset.semanticStage === 'READY_FOR_OBJECT' ? (
                                                                 <>
                                                                     <Share2 size={12} />
-                                                                    查看语义结果
+                                                                    查看结果
                                                                 </>
                                                             ) : (
                                                                 <>
                                                                     {asset.semanticStage === 'NOT_STARTED' && <Wand2 size={12} />}
-                                                                    {asset.semanticStage === 'NOT_STARTED' ? '开始字段语义理解' : '继续字段语义理解'}
+                                                                    {asset.semanticStage === 'NOT_STARTED' ? '开始理解' : '继续理解'}
                                                                 </>
                                                             )}
                                                         </button>
@@ -1344,7 +1362,7 @@ const DataSemanticUnderstandingView = ({
                                             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
                                                 <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 font-medium text-slate-700 flex items-center gap-2 text-sm">
                                                     <FileText size={16} className="text-blue-600" />
-                                                    {focusField ? `字段详情: ${focusField}` : '字段详情上下文'}
+                                                    {focusField ? `🔍 字段语义分析: ${focusField}` : '💡 整表语义概览'}
                                                 </div>
                                                 <div className="flex-1 overflow-y-auto relative">
                                                     {focusField ? (
@@ -1358,10 +1376,162 @@ const DataSemanticUnderstandingView = ({
                                                             />
                                                         </div>
                                                     ) : (
-                                                        <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                                                            <ArrowLeft size={24} className="mb-2 opacity-20" />
-                                                            <span className="text-xs">请从左侧选择一个字段查看详情</span>
-                                                        </div>
+                                                        (() => {
+                                                            // Calculate statistics
+                                                            const totalFields = selectedTableFields.length;
+                                                            const confirmedFields = semanticProfile.fields?.filter(f => f.semanticStatus === 'DECIDED') || [];
+                                                            const confirmedCount = confirmedFields.length;
+                                                            const pendingCount = totalFields - confirmedCount;
+                                                            const stats = semanticProfile.reviewStats as any;
+                                                            const highRiskCount = stats?.riskItems || 0;
+
+                                                            // AI field grouping by pattern
+                                                            const coreFields = selectedTableFields.filter(f =>
+                                                                /^(id|code|name|title|key|uid|uuid)$/i.test(f.fieldName) ||
+                                                                /_id$|_code$|_name$/i.test(f.fieldName)
+                                                            );
+                                                            const auditFields = selectedTableFields.filter(f =>
+                                                                /(create|update|delete|modify|insert)_(time|date|at|by|user)/i.test(f.fieldName) ||
+                                                                /^(created_at|updated_at|deleted_at|creator|updater|modifier)$/i.test(f.fieldName)
+                                                            );
+                                                            const statusFields = selectedTableFields.filter(f =>
+                                                                /(status|state|flag|enabled|disabled|active|deleted|is_)/i.test(f.fieldName)
+                                                            );
+
+                                                            return (
+                                                                <div className="p-6 space-y-5">
+                                                                    {/* Statistics Cards */}
+                                                                    <div className="grid grid-cols-3 gap-3">
+                                                                        <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-lg p-4 border border-blue-200">
+                                                                            <div className="text-xs text-blue-600 font-medium mb-1">字段总数</div>
+                                                                            <div className="text-2xl font-bold text-blue-900">{totalFields}</div>
+                                                                        </div>
+                                                                        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-lg p-4 border border-emerald-200">
+                                                                            <div className="text-xs text-emerald-600 font-medium mb-1">已确认</div>
+                                                                            <div className="text-2xl font-bold text-emerald-900">{confirmedCount}</div>
+                                                                            <div className="text-xs text-emerald-600 mt-1">{totalFields > 0 ? Math.round((confirmedCount / totalFields) * 100) : 0}%</div>
+                                                                        </div>
+                                                                        <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 rounded-lg p-4 border border-amber-200">
+                                                                            <div className="text-xs text-amber-600 font-medium mb-1">待确认</div>
+                                                                            <div className="text-2xl font-bold text-amber-900">{pendingCount}</div>
+                                                                            <div className="text-xs text-amber-600 mt-1">{totalFields > 0 ? Math.round((pendingCount / totalFields) * 100) : 0}%</div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* High Risk Alert */}
+                                                                    {highRiskCount > 0 && (
+                                                                        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+                                                                            <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                                                                <span className="text-red-600 text-sm font-bold">!</span>
+                                                                            </div>
+                                                                            <div className="flex-1">
+                                                                                <div className="text-sm font-semibold text-red-900 mb-1">
+                                                                                    发现 {highRiskCount} 个高风险字段
+                                                                                </div>
+                                                                                <div className="text-xs text-red-700">
+                                                                                    建议优先处理高风险字段，确保数据质量
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {/* AI Field Grouping */}
+                                                                    <div className="space-y-3">
+                                                                        <div className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                                                                            <Wand2 size={16} className="text-purple-600" />
+                                                                            AI 推荐字段分组
+                                                                        </div>
+
+                                                                        {/* Core Fields */}
+                                                                        {coreFields.length > 0 && (
+                                                                            <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                                                                                <div className="text-xs font-medium text-slate-700 mb-2 flex items-center justify-between">
+                                                                                    <span>🔑 业务核心字段</span>
+                                                                                    <span className="text-slate-500">{coreFields.length}</span>
+                                                                                </div>
+                                                                                <div className="flex flex-wrap gap-1.5">
+                                                                                    {coreFields.slice(0, 8).map(field => (
+                                                                                        <button
+                                                                                            key={field.fieldName}
+                                                                                            onClick={() => setFocusField(field.fieldName)}
+                                                                                            className="px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                                                                                        >
+                                                                                            {field.fieldName}
+                                                                                        </button>
+                                                                                    ))}
+                                                                                    {coreFields.length > 8 && (
+                                                                                        <span className="px-2 py-1 text-xs text-slate-400">+{coreFields.length - 8}</span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Audit Fields */}
+                                                                        {auditFields.length > 0 && (
+                                                                            <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                                                                                <div className="text-xs font-medium text-slate-700 mb-2 flex items-center justify-between">
+                                                                                    <span>📝 审计字段</span>
+                                                                                    <span className="text-slate-500">{auditFields.length}</span>
+                                                                                </div>
+                                                                                <div className="flex flex-wrap gap-1.5">
+                                                                                    {auditFields.slice(0, 6).map(field => (
+                                                                                        <button
+                                                                                            key={field.fieldName}
+                                                                                            onClick={() => setFocusField(field.fieldName)}
+                                                                                            className="px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                                                                                        >
+                                                                                            {field.fieldName}
+                                                                                        </button>
+                                                                                    ))}
+                                                                                    {auditFields.length > 6 && (
+                                                                                        <span className="px-2 py-1 text-xs text-slate-400">+{auditFields.length - 6}</span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Status Fields */}
+                                                                        {statusFields.length > 0 && (
+                                                                            <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                                                                                <div className="text-xs font-medium text-slate-700 mb-2 flex items-center justify-between">
+                                                                                    <span>🔄 状态字段</span>
+                                                                                    <span className="text-slate-500">{statusFields.length}</span>
+                                                                                </div>
+                                                                                <div className="flex flex-wrap gap-1.5">
+                                                                                    {statusFields.slice(0, 6).map(field => (
+                                                                                        <button
+                                                                                            key={field.fieldName}
+                                                                                            onClick={() => setFocusField(field.fieldName)}
+                                                                                            className="px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                                                                                        >
+                                                                                            {field.fieldName}
+                                                                                        </button>
+                                                                                    ))}
+                                                                                    {statusFields.length > 6 && (
+                                                                                        <span className="px-2 py-1 text-xs text-slate-400">+{statusFields.length - 6}</span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* No groups found */}
+                                                                        {coreFields.length === 0 && auditFields.length === 0 && statusFields.length === 0 && (
+                                                                            <div className="bg-slate-50 rounded-lg p-4 text-center text-slate-400 text-sm">
+                                                                                未识别出推荐字段分组
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+
+                                                                    {/* Quick Action Hint */}
+                                                                    <div className="pt-4 border-t border-slate-100">
+                                                                        <div className="flex items-center gap-2 text-xs text-slate-400">
+                                                                            <ArrowLeft size={14} />
+                                                                            <span>从左侧字段列表或上方分组中选择字段开始语义判定</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })()
                                                     )}
                                                 </div>
                                             </div>
