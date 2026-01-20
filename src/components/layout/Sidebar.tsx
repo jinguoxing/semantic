@@ -5,7 +5,7 @@ import {
     RefreshCw, ChevronRight, Shield, CheckSquare,
     Plus, Upload, FileCheck, TrendingUp, MoreHorizontal, X, AlertTriangle, Users, Clock, MessageCircle, Send,
     Book, Tag, CheckCircle, ArrowRight, Sparkles, Box, Edit, XCircle, ZoomIn, ZoomOut, Eye, Share2, Network, GitBranch, Table, Globe, ChevronDown, Check,
-    ScanText, Verified, Lock, History, Bookmark
+    ScanText, Verified, Lock, History, Bookmark, LayoutGrid, Building2, UserCog
 } from 'lucide-react';
 
 interface MenuItem {
@@ -73,7 +73,7 @@ const Sidebar = ({ activeModule, setActiveModule }: SidebarProps) => {
                         { id: 'td_goals', label: '业务梳理', icon: FileText },
                         { id: 'bu_semantic', label: '逻辑视图', icon: FileText },
                         { id: 'field_semantic', label: '字段语义理解', icon: ScanText },
-                        { id: 'candidate_confirmation', label: '候选业务对象', icon: CheckSquare },
+
                         { id: 'td_modeling', label: '业务对象建模', icon: Layout }
                     ]
                 },
@@ -128,7 +128,10 @@ const Sidebar = ({ activeModule, setActiveModule }: SidebarProps) => {
             title: '平台管理',
             color: 'text-slate-400',
             items: [
-                { id: 'user_permission', label: '用户与权限', icon: Users },
+                { id: 'user_permission', label: '角色与权限', icon: Users },
+                { id: 'menu_mgmt', label: '菜单管理', icon: LayoutGrid },
+                { id: 'org_mgmt', label: '组织架构管理', icon: Building2 },
+                { id: 'user_mgmt', label: '用户管理', icon: UserCog },
                 { id: 'workflow_mgmt', label: '工作流管理', icon: GitBranch },
                 { id: 'approval_policy', label: '审批策略', icon: FileCheck },
                 { id: 'audit_log', label: '审计日志', icon: FileText }

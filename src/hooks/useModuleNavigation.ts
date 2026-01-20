@@ -8,7 +8,8 @@ export type ModuleId =
     | 'governance' | 'smart_data' | 'data_supermarket' | 'term_mgmt' | 'tag_mgmt' | 'ask_data' | 'data_standard'
     | 'field_semantic' | 'data_quality' | 'data_security' | 'semantic_version'
     | 'user_permission' | 'workflow_mgmt' | 'approval_policy' | 'audit_log'
-    | 'ee_api' | 'ee_cache';
+    | 'ee_api' | 'ee_cache'
+    | 'auth' | 'menu_mgmt' | 'org_mgmt' | 'user_mgmt';
 
 const DEFAULT_MODULE: ModuleId = 'dashboard';
 

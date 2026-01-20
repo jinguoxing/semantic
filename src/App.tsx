@@ -13,6 +13,7 @@ import {
 import {
     mockBusinessGoals,
     mockBusinessObjects,
+    mockAICandidates, // Imported
     mockPhysicalTables,
     mockMappings,
     mockDataSources,
@@ -21,6 +22,7 @@ import {
     mockCatalogItems,
     mockScanResults
 } from './data/mockData';
+import { BusinessObject } from './types/semantic';
 
 
 import Sidebar from './components/layout/Sidebar';
@@ -52,6 +54,14 @@ import { DataCatalogView } from './views/DataCatalogView';
 import SemanticAssetManagerView from './views/SemanticAssetManagerView';
 import { FieldSemanticWorkbenchView } from './views/FieldSemanticWorkbenchView';
 import { useModuleNavigation } from './hooks/useModuleNavigation';
+import AuthView from './views/AuthView';
+import UserPermissionView from './views/UserPermissionView';
+import WorkflowManagementView from './views/WorkflowManagementView';
+import ApprovalPolicyView from './views/ApprovalPolicyView';
+import AuditLogView from './views/AuditLogView';
+import MenuManagementView from './views/MenuManagementView';
+import OrgManagementView from './views/OrgManagementView';
+import UserManagementView from './views/UserManagementView';
 
 // ==========================================
 // 组件定义
@@ -71,7 +81,35 @@ export default function SemanticLayerApp() {
     };
 
     // Lifted State: Business Objects
-    const [businessObjects, setBusinessObjects] = useState(mockBusinessObjects);
+    const [businessObjects, setBusinessObjects] = useState(() => {
+        // Map AI Candidates to Business Objects
+        const mappedCandidates = mockAICandidates.map(c => ({
+            id: c.id,
+            name: c.suggestedName,
+            code: c.sourceTable.toUpperCase(),
+            type: 'CORE_ENTITY',
+            domain: '待分类',
+            owner: 'AI',
+            status: 'candidate',
+            description: c.reason,
+            confidence: Math.round(c.confidence * 100),
+            source: 'AI',
+            evidence: {
+                sourceTables: [c.sourceTable],
+                score: c.scores,
+                keyFields: []
+            },
+            fields: c.previewFields?.map((f: any) => ({
+                id: crypto.randomUUID(),
+                name: f.attr,
+                code: f.col,
+                type: f.type,
+                description: `Confidence: ${f.conf}`
+            })) || []
+        } as BusinessObject));
+
+        return [...mockBusinessObjects, ...mappedCandidates];
+    });
 
     // Lifted State: Scan Results (Shared between BU-02 and BU-04)
     // Lifted State: Scan Results (Shared between BU-02 and BU-04)
@@ -135,9 +173,20 @@ export default function SemanticLayerApp() {
             case 'ask_data': return <AskDataView />;
             case 'ee_api': return <ApiGatewayView businessObjects={businessObjects} />;
             case 'ee_cache': return <CacheStrategyView />;
+            case 'user_permission': return <UserPermissionView />;
+            case 'workflow_mgmt': return <WorkflowManagementView />;
+            case 'approval_policy': return <ApprovalPolicyView />;
+            case 'audit_log': return <AuditLogView />;
+            case 'menu_mgmt': return <MenuManagementView />;
+            case 'org_mgmt': return <OrgManagementView />;
+            case 'user_mgmt': return <UserManagementView />;
             default: return <DashboardView setActiveModule={setActiveModule} />;
         }
     };
+
+    if (activeModule === 'auth') {
+        return <AuthView onContinue={() => setActiveModule('dashboard')} />;
+    }
 
     return (
         <div className="flex h-screen bg-slate-50 text-slate-800 font-sans overflow-hidden">
@@ -154,5 +203,3 @@ export default function SemanticLayerApp() {
         </div>
     );
 }
-
-

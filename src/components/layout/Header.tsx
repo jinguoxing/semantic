@@ -30,7 +30,10 @@ const moduleLabels: Record<string, string> = {
     smart_data: '智能数据中心',
     ee_api: 'API 网关',
     ee_cache: '缓存策略',
-    user_permission: '用户与权限',
+    user_permission: '角色与权限',
+    menu_mgmt: '菜单管理',
+    org_mgmt: '组织架构管理',
+    user_mgmt: '用户管理',
     workflow_mgmt: '工作流管理',
     approval_policy: '审批策略',
     audit_log: '审计日志'
