@@ -11,6 +11,8 @@ import { GateFailureAlertCard } from './semantic/components/GateFailureAlertCard
 import { SemanticHeader, PageMode } from './semantic/components/SemanticHeader';
 import { GovernanceFieldList } from './semantic/components/GovernanceFieldList';
 import { SemanticDecisionPanel } from './semantic/components/SemanticDecisionPanel';
+import { GovernanceTopBar } from './semantic/components/GovernanceTopBar';
+import { SemanticContextPanel } from './semantic/components/SemanticContextPanel';
 import { typeConfig, getGovernanceDisplay, GovernanceDisplay, runStatusLabelMap, runStatusToneMap, semanticStageLabelMap, semanticStageToneMap } from './semantic/utils';
 import { UpgradeSuggestionCard, generateUpgradeSuggestion } from './semantic/UpgradeSuggestionCard';
 import { OverviewTab } from './semantic/tabs/OverviewTab';
@@ -22,6 +24,14 @@ import { StreamingProgressPanel } from './semantic/StreamingProgressPanel';
 import { mockBOTableMappings } from '../data/mockData';
 import { useSemanticProfile, emptyProfile } from './semantic/hooks/useSemanticProfile';
 import { useBatchOperations } from './semantic/hooks/useBatchOperations';
+import { BatchSemanticConfigModal, BatchSemanticConfig } from './semantic/components/BatchSemanticConfigModal';
+import { BatchSemanticRunningModal } from './semantic/components/BatchSemanticRunningModal';
+import { BatchSemanticResultModal } from './semantic/components/BatchSemanticResultModal';
+import { SemanticAssistBatchModal } from './semantic/components/SemanticAssistBatchModal';
+import { SemanticAssistBatchRunConfig, DEFAULT_SEMANTIC_ASSIST, SemanticAssist } from '../types/semanticAssist';
+import { SemanticAssistBar } from './semantic/components/SemanticAssistBar';
+import { SemanticAssistTemplateInfo } from './semantic/components/SemanticAssistTemplateInfo';
+
 
 interface DataSemanticUnderstandingViewProps {
     scanResults: any[];
@@ -110,12 +120,22 @@ const DataSemanticUnderstandingView = ({
 
     // Batch Analysis State (refactored to hook)
     const [showRunModal, setShowRunModal] = useState(false);
+    const [showTemplateInfo, setShowTemplateInfo] = useState(false);
     const [runConfig, setRunConfig] = useState({
         sampleRows: 10000,
         ruleVersion: 'v2.4',
         modelVersion: 'model-v1',
         concurrency: 3,
         queue: 'default'
+    });
+
+    // Semantic Assist State (Moved from GovernanceTopBar)
+    const [isAssistEnabled, setIsAssistEnabled] = useState(true);
+    const [assistSettings, setAssistSettings] = useState({
+        template: 'SEMANTIC_MIN',
+        sampleRatio: 0.01,
+        maxRows: 200000,
+        ttl: '24h'
     });
 
     const [expandedReviewItems, setExpandedReviewItems] = useState<string[]>([]);
@@ -155,8 +175,18 @@ const DataSemanticUnderstandingView = ({
     const [sensitivityOverrides, setSensitivityOverrides] = useState<Record<string, 'L1' | 'L2' | 'L3' | 'L4'>>({});
     const [isTreeCollapsed, setIsTreeCollapsed] = useState(false);
 
+    // Batch Semantic Generation States (additional to useBatchOperations)
+    const [showBatchSemanticModal, setShowBatchSemanticModal] = useState(false);
+    const [batchSemanticStep, setBatchSemanticStep] = useState<'config' | 'running' | 'result'>('config');
+    const [batchConfig, setBatchConfig] = useState<BatchSemanticConfig | null>(null);
+    const [batchSemanticProgress, setBatchSemanticProgress] = useState({ completed: 0, total: 0, current: '' });
+    const [batchResult, setBatchResult] = useState<any>(null);
+
     // Mapping Details Modal State
     const [viewMappingBO, setViewMappingBO] = useState<string | null>(null);
+
+    // V2.4: Analysis Simulation
+    const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
 
     // Relationship editing state
     const [showRelModal, setShowRelModal] = useState(false);
@@ -321,33 +351,59 @@ const DataSemanticUnderstandingView = ({
         handleIgnore,
         handleSave
     } = useSemanticProfile(selectedTable, selectedTableFields, setScanResults);
+    const [governanceMode, setGovernanceMode] = useState<'BROWSE' | 'SEMANTIC'>('BROWSE');
     const hasFieldAnalysis = Array.isArray(semanticProfile.fields) && semanticProfile.fields.length > 0;
 
     const handleSemanticDecision = (fieldName: string, decision: any) => {
         if (isReadOnly) return;
         setSemanticProfile(prev => {
-            const newFields = prev.fields.map(f => {
-                // FieldSemanticProfile has fieldName.
-                const fName = f.fieldName;
-                if (fName === fieldName) {
-                    return {
-                        ...f,
+            // Check if field exists in profile
+            const existingFieldIndex = prev.fields.findIndex(f =>
+                (f.fieldName || f.name) === fieldName
+            );
+
+            let newFields;
+            if (existingFieldIndex !== -1) {
+                // Update existing field
+                newFields = prev.fields.map(f => {
+                    const fName = f.fieldName || f.name;
+                    if (fName === fieldName) {
+                        return {
+                            ...f,
+                            role: decision.role,
+                            aiSuggestion: decision.term || f.aiSuggestion,
+                            tags: decision.tags,
+                            semanticStatus: (decision.action === 'REJECT' ? 'BLOCKED' : 'DECIDED') as FieldSemanticStatus,
+                        };
+                    }
+                    return f;
+                });
+            } else {
+                // Add new field entry
+                newFields = [
+                    ...prev.fields,
+                    {
+                        fieldName: fieldName,
+                        name: fieldName,
                         role: decision.role,
-                        aiSuggestion: decision.term || f.aiSuggestion,
-                        tags: decision.tags,
+                        aiSuggestion: decision.term || '',
+                        tags: decision.tags || [],
                         semanticStatus: (decision.action === 'REJECT' ? 'BLOCKED' : 'DECIDED') as FieldSemanticStatus,
-                    };
-                }
-                return f;
-            });
+                    }
+                ];
+            }
+
             return { ...prev, fields: newFields };
         });
 
-        // Auto-select next field
-        const currentFields = semanticProfile.fields || [];
-        const currentIndex = currentFields.findIndex(f => f.fieldName === fieldName); // fields have fieldName
-        // If not found in semanticProfile, check selectedTableFields?
-        // But semanticProfile.fields should encompass selectedTableFields.
+        // Auto-select next field for efficient workflow
+        if (decision.action === 'ACCEPT_AI' || decision.action === 'ACCEPT_RULE' || decision.action === 'MODIFY' || decision.action === 'REJECT') {
+            const currentIndex = selectedTableFields.findIndex(f => (f.name || f.fieldName) === fieldName);
+            if (currentIndex !== -1 && currentIndex < selectedTableFields.length - 1) {
+                const nextField = selectedTableFields[currentIndex + 1];
+                setFocusField(nextField.name || nextField.fieldName);
+            }
+        }
     };
 
     const rolledBackTableIds = useMemo(() => {
@@ -465,6 +521,7 @@ const DataSemanticUnderstandingView = ({
             setSemanticProfile({
                 ...emptyProfile,
                 ...asset.semanticAnalysis,
+                tableName: asset.table || asset.semanticAnalysis?.tableName || tableId, // Ensure tableName is present
                 analysisStep: governanceStatus === 'S0' ? (asset.semanticAnalysis.analysisStep || 'idle') : 'done',
                 governanceStatus,
                 reviewStats: asset.reviewStats
@@ -492,6 +549,7 @@ const DataSemanticUnderstandingView = ({
     const handleBackToList = () => {
         setViewMode('list');
         setSelectedTableId(null);
+        setPageMode('BROWSE'); // 重置为浏览模式，确保左侧树可见
     };
 
     const handleFocusField = (fieldName: string) => {
@@ -649,6 +707,83 @@ const DataSemanticUnderstandingView = ({
         if (setActiveModule) setActiveModule('candidate_confirmation');
     };
 
+    // Batch Semantic Generation Handlers
+    const handleBatchSemanticStart = (config: BatchSemanticConfig) => {
+        setBatchConfig(config);
+        setBatchSemanticStep('running');
+        setBatchSemanticProgress({ completed: 0, total: selectedTables.length, current: selectedTables[0] || '' });
+
+        // Simulate batch processing
+        simulateBatchSemanticGeneration(config);
+    };
+
+    const simulateBatchSemanticGeneration = (config: BatchSemanticConfig) => {
+        const tables = selectedTables;
+        let completed = 0;
+
+        const processNext = () => {
+            if (completed >= tables.length) {
+                // All done - show result
+                const mockResult = {
+                    success: Math.floor(tables.length * 0.8),
+                    partialSuccess: Math.floor(tables.length * 0.15),
+                    failed: Math.floor(tables.length * 0.05),
+                    details: tables.map((table, idx) => ({
+                        table,
+                        status: idx < tables.length * 0.8 ? 'success' as const :
+                            idx < tables.length * 0.95 ? 'partial' as const :
+                                'failed' as const,
+                        failedFields: idx >= tables.length * 0.8 ? Math.floor(Math.random() * 3) + 1 : undefined,
+                        reason: idx >= tables.length * 0.95 ? '数据采样不足' : undefined
+                    }))
+                };
+                setBatchResult(mockResult);
+                setBatchSemanticStep('result');
+                return;
+            }
+
+            setBatchSemanticProgress({ completed, total: tables.length, current: tables[completed] });
+            completed++;
+            setTimeout(processNext, 1500); // 模拟每张表1.5秒
+        };
+
+        processNext();
+    };
+
+    const handleBatchBackground = () => {
+        setShowBatchSemanticModal(false);
+        // 任务继续在后台运行
+    };
+
+    const handleBatchViewWorkbench = () => {
+        setShowBatchSemanticModal(false);
+        if (setActiveModule) {
+            setActiveModule('sg_field_workbench');
+        }
+    };
+
+    const handleBatchBackToList = () => {
+        setShowBatchSemanticModal(false);
+        setSelectedTables([]);
+        setBatchSemanticStep('config');
+    };
+
+    // P1 Enhancement: Navigate to table detail from batch result
+    const handleViewTableDetail = (tableId: string, mode: 'BROWSE' | 'SEMANTIC') => {
+        setShowBatchSemanticModal(false);
+        setSelectedTableId(tableId);
+        setViewMode('detail');
+        setPageMode(mode);
+    };
+
+    const handleTableSelect = (tableId: string) => {
+        setSelectedTables(prev =>
+            prev.includes(tableId)
+                ? prev.filter(id => id !== tableId)
+                : [...prev, tableId]
+        );
+    };
+
     const executeDirectGenerate = (table: any, profile: any) => {
         if (isReadOnly) return;
         const eligibility = getDirectGenEligibility(table, profile);
@@ -781,7 +916,7 @@ const DataSemanticUnderstandingView = ({
                                     }`}
                             >
                                 <Sparkles size={14} />
-                                生成建议 Run
+                                批量语义理解
                             </button>
                             <button
                                 onClick={() => setIsListHeaderCollapsed(prev => !prev)}
@@ -980,6 +1115,10 @@ const DataSemanticUnderstandingView = ({
                                                 isAnalyzing={batchAnalyzing}
                                                 runConfig={runConfig}
                                                 onOpenRunModal={handleShowRunModal}
+                                                onBatchSemanticGen={() => {
+                                                    setShowBatchSemanticModal(true);
+                                                    setBatchSemanticStep('config');
+                                                }}
                                                 progressProps={{
                                                     currentAnalyzing,
                                                     completedResults,
@@ -997,10 +1136,10 @@ const DataSemanticUnderstandingView = ({
                                     <thead className="bg-gradient-to-r from-slate-50 to-slate-100/50 text-slate-600 border-b-2 border-slate-200 sticky top-0 z-20 backdrop-blur-sm bg-white/95">
                                         <tr>
                                             <th className="px-3 py-4 w-12 align-middle"></th>
-                                            <th className="px-4 py-4 font-semibold text-left min-w-[160px] align-middle">逻辑视图名称</th>
+                                            <th className="px-4 py-4 font-semibold text-left min-w-[160px] align-middle">视图名称</th>
                                             <th className="px-4 py-4 font-semibold text-left min-w-[120px] align-middle">业务名称</th>
-                                            <th className="px-4 py-4 font-semibold text-center w-28 align-middle">语义建模阶段</th>
-                                            <th className="px-4 py-4 font-semibold text-left min-w-[120px] align-middle">所属数据源</th>
+                                            <th className="px-4 py-4 font-semibold text-center w-28 align-middle">建模状态</th>
+                                            <th className="px-4 py-4 font-semibold text-left min-w-[120px] align-middle">数据源</th>
                                             <th className="px-4 py-4 font-semibold text-right w-24 align-middle">行数</th>
                                             <th className="px-4 py-4 font-semibold text-center w-24 align-middle">
                                                 <button
@@ -1080,7 +1219,10 @@ const DataSemanticUnderstandingView = ({
 
                                             return paginatedAssets.map((asset, index) => (
                                                 <tr key={asset.table}
-                                                    onClick={() => handleTableClick(asset.table)}
+                                                    onClick={() => {
+                                                        handleTableClick(asset.table);
+                                                        setPageMode('BROWSE'); // 行点击进入浏览模式
+                                                    }}
                                                     className={`hover:bg-purple-50/30 cursor-pointer group transition-all duration-150 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'} ${selectedTables.includes(asset.table) ? '!bg-purple-50' : ''}`}
                                                 >
                                                     <td className="px-3 py-4" onClick={(e) => e.stopPropagation()}>
@@ -1133,7 +1275,7 @@ const DataSemanticUnderstandingView = ({
                                                                 })()}
                                                             </div>
                                                         ) : (
-                                                            <span className="text-slate-300 italic text-xs">- 未定义 -</span>
+                                                            <span className="text-slate-300">—</span>
                                                         )}
                                                     </td>
                                                     <td className="px-4 py-4 text-center">
@@ -1221,12 +1363,8 @@ const DataSemanticUnderstandingView = ({
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 handleTableClick(asset.table);
-                                                                // Pre-set mode based on stage
-                                                                if (asset.semanticStage === 'READY_FOR_OBJECT') {
-                                                                    setPageMode('BROWSE'); // Or OBJECT view if available
-                                                                } else {
-                                                                    setPageMode('SEMANTIC');
-                                                                }
+                                                                // CTA 统一进入语义理解模式
+                                                                setPageMode('SEMANTIC');
                                                             }}
                                                             className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1 mx-auto ${asset.semanticStage === 'READY_FOR_OBJECT'
                                                                 ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -1323,32 +1461,93 @@ const DataSemanticUnderstandingView = ({
                         selectedTable ? (
                             <div className="flex flex-col h-full animate-slide-in-right">
                                 {/* Detail Header */}
-                                {/* Detail Header */}
-                                <SemanticHeader
-                                    table={{
-                                        table: selectedTable.table,
-                                        sourceType: selectedTable.sourceType,
-                                        comment: selectedTable.comment
+                                {/* V2.4: Governance Top Bar */}
+                                <GovernanceTopBar
+                                    profile={semanticProfile}
+                                    mode={governanceMode}
+                                    onModeChange={(mode) => {
+                                        if (mode === 'SEMANTIC' && governanceMode === 'BROWSE') {
+                                            // Trigger Simulation
+                                            setIsAnalysisLoading(true);
+                                        } else {
+                                            setGovernanceMode(mode);
+                                        }
                                     }}
-                                    governanceStatus={semanticProfile.governanceStatus || 'S0'}
-                                    rolledBack={rolledBackTableIds.has(selectedTable.table)}
-                                    isAnalyzing={isAnalyzing}
-                                    analysisStep={semanticProfile.analysisStep}
-                                    pageMode={pageMode}
-                                    onModeChange={isReadOnly ? () => { } : setPageMode}
-                                    semanticProgress={{
-                                        confirmed: semanticProfile.fields?.filter(f => f.semanticStatus === 'DECIDED').length || 0,
-                                        total: semanticProfile.fields?.length || selectedTableFields.length || 0
-                                    }}
+                                    fields={selectedTableFields}
                                     onBack={handleBackToList}
-                                    onAnalyze={isReadOnly ? () => { } : handleAnalyze}
-                                    readOnly={isReadOnly}
-                                    versionLabel={effectiveVersionId}
+                                    onFinish={() => {
+                                        setGovernanceMode('BROWSE');
+                                        // Update status to S3 (Governance Complete)
+                                        setSemanticProfile(prev => ({
+                                            ...prev,
+                                            governanceStatus: 'S3',
+                                            analysisStep: 'done'
+                                        }));
+                                    }}
                                 />
+                                {/* V2.4: Semantic Assist Bar - 语义理解辅助检测状态条 */}
+                                <div className="px-4 pt-2">
+                                    <SemanticAssistBar
+                                        assist={{
+                                            ...DEFAULT_SEMANTIC_ASSIST,
+                                            enabled: isAssistEnabled,
+                                            template: assistSettings.template,
+                                            runtimeConfig: {
+                                                ...DEFAULT_SEMANTIC_ASSIST.runtimeConfig,
+                                                sampleRatio: assistSettings.sampleRatio * 100
+                                            },
+                                            scope: 'TABLE',
+                                            status: semanticProfile.governanceStatus === 'S1' ? 'SUCCESS' : 'IDLE',
+                                        }}
+                                        onToggle={(enabled) => {
+                                            setIsAssistEnabled(enabled);
+                                        }}
+                                        onOpenConfig={() => {
+                                            // Open settings popover/modal if needed, currently just log or we can re-implement SemanticSettingsPopover here
+                                            console.log('Open config panel');
+                                        }}
+                                        onOpenTemplateInfo={() => {
+                                            setShowTemplateInfo(true);
+                                        }}
+                                        onRefresh={() => {
+                                            // Handle refresh logic similar to handleRunProfile
+                                            setIsAnalysisLoading(true);
+                                            // Simulation
+                                            setTimeout(() => {
+                                                setIsAnalysisLoading(false);
+                                                // Update last time?
+                                            }, 2000);
+                                        }}
+                                    />
+                                </div>
 
-                                <div className={`flex-1 ${pageMode === 'BROWSE' ? 'overflow-y-auto p-6 bg-slate-50/50' : 'overflow-hidden bg-slate-50 p-4'}`}>
-                                    {pageMode === 'SEMANTIC' ? (
-                                        <div className="grid grid-cols-[300px_1fr_350px] gap-4 h-full">
+                                {isAnalysisLoading && (
+                                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+                                        <div className="w-[600px] animate-in zoom-in-95 duration-200">
+                                            <AnalysisProgressPanel
+                                                tableName={selectedTableId || 'Unknown Table'}
+                                                onComplete={(result) => {
+                                                    setIsAnalysisLoading(false);
+                                                    setGovernanceMode('SEMANTIC');
+                                                    // Update profile with mock result and set status to S1 (AI Suggested)
+                                                    setSemanticProfile(prev => ({
+                                                        ...prev,
+                                                        ...result,
+                                                        governanceStatus: 'S1', // Mark as AI Suggested
+                                                        analysisStep: 'done'
+                                                    }));
+                                                }}
+                                                onCancel={() => setIsAnalysisLoading(false)}
+                                                mockAnalysisResult={{ ...semanticProfile, finalScore: 0.92 }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className={`flex-1 ${governanceMode === 'BROWSE' ? 'overflow-y-auto p-6 bg-slate-50/50' : 'overflow-hidden bg-slate-50 p-4'}`}>
+                                    {/* Map governanceMode to display logic */}
+                                    {governanceMode === 'SEMANTIC' ? (
+                                        <div className="grid grid-cols-[240px_1fr_350px] gap-4 h-full">
                                             {/* LEFT: Field List */}
                                             <GovernanceFieldList
                                                 fields={selectedTableFields}
@@ -1367,12 +1566,10 @@ const DataSemanticUnderstandingView = ({
                                                 <div className="flex-1 overflow-y-auto relative">
                                                     {focusField ? (
                                                         <div className="absolute inset-0">
-                                                            <DeepAnalysisTabs
+                                                            <SemanticContextPanel
                                                                 profile={semanticProfile}
-                                                                fields={selectedTableFields.filter(f => f.fieldName === focusField)}
-                                                                onProfileChange={isReadOnly ? () => { } : (updates) => setSemanticProfile(prev => ({ ...prev, ...updates }))}
-                                                                activeTabOverride="fields"
                                                                 focusField={focusField}
+                                                                fields={selectedTableFields}
                                                             />
                                                         </div>
                                                     ) : (
@@ -1548,7 +1745,49 @@ const DataSemanticUnderstandingView = ({
                                                 ) : (
                                                     <SemanticDecisionPanel
                                                         fieldName={focusField}
-                                                        fieldProfile={semanticProfile.fields?.find(f => f.fieldName === focusField) || { fieldName: focusField } as any}
+                                                        fieldProfile={(() => {
+                                                            // Get existing profile or create with AI suggestions
+                                                            const existingProfile = semanticProfile.fields?.find(f => f.fieldName === focusField || f.name === focusField);
+                                                            if (existingProfile) return existingProfile;
+
+                                                            // Generate AI suggestions for new fields
+                                                            const fieldNameLower = focusField.toLowerCase();
+                                                            let aiRole = 'BusAttr';
+                                                            let aiConfidence = 70;
+                                                            let aiSuggestion = '';
+
+                                                            if (fieldNameLower.endsWith('_id') || fieldNameLower === 'id') {
+                                                                aiRole = 'Identifier';
+                                                                aiConfidence = 95;
+                                                                aiSuggestion = focusField.replace(/_id$/i, '').replace(/_/g, ' ') + '编号';
+                                                            } else if (fieldNameLower.includes('status') || fieldNameLower.includes('state')) {
+                                                                aiRole = 'Status';
+                                                                aiConfidence = 90;
+                                                                aiSuggestion = '状态';
+                                                            } else if (fieldNameLower.includes('time') || fieldNameLower.includes('date') || fieldNameLower.includes('created') || fieldNameLower.includes('updated')) {
+                                                                aiRole = 'EventHint';
+                                                                aiConfidence = 92;
+                                                                aiSuggestion = fieldNameLower.includes('created') ? '创建时间' : fieldNameLower.includes('updated') ? '更新时间' : '时间';
+                                                            } else if (fieldNameLower.includes('name')) {
+                                                                aiRole = 'BusAttr';
+                                                                aiConfidence = 85;
+                                                                aiSuggestion = '名称';
+                                                            } else if (fieldNameLower.includes('amount') || fieldNameLower.includes('price') || fieldNameLower.includes('count')) {
+                                                                aiRole = 'Measure';
+                                                                aiConfidence = 88;
+                                                                aiSuggestion = fieldNameLower.includes('amount') ? '金额' : fieldNameLower.includes('price') ? '价格' : '数量';
+                                                            }
+
+                                                            return {
+                                                                fieldName: focusField,
+                                                                name: focusField,
+                                                                role: aiRole,
+                                                                roleConfidence: aiConfidence,
+                                                                aiSuggestion: aiSuggestion,
+                                                                tags: [aiRole === 'Identifier' ? '主键' : aiRole === 'Status' ? '状态' : '业务'],
+                                                                semanticStatus: 'SUGGESTED'
+                                                            } as any;
+                                                        })()}
                                                         onDecision={(decision) => handleSemanticDecision(focusField, decision)}
                                                         className="border-slate-200 shadow-sm"
                                                     />
@@ -1580,6 +1819,7 @@ const DataSemanticUnderstandingView = ({
                                                     <AnalysisProgressPanel
                                                         tableName={selectedTable.table}
                                                         mockAnalysisResult={pendingAnalysisResult}
+                                                        onCancel={() => setIsAnalyzing(false)}
                                                         onComplete={(result) => {
                                                             setSemanticProfile({
                                                                 ...result,
@@ -3336,97 +3576,25 @@ const DataSemanticUnderstandingView = ({
                 </div>
             </div>
 
-            {showRunModal && (
-                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 animate-fade-in">
-                    <div className="bg-white rounded-xl shadow-2xl w-[520px] overflow-hidden">
-                        <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-                            <div>
-                                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                    <Sparkles size={18} className="text-blue-600" />
-                                    生成建议 Run
-                                </h3>
-                                <p className="text-xs text-slate-500 mt-1">本次将生成语义建议，不直接生效。</p>
-                            </div>
-                            <button onClick={() => setShowRunModal(false)} className="text-slate-400 hover:text-slate-600">
-                                <X size={18} />
-                            </button>
-                        </div>
-                        <div className="p-5 space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-600 mb-1.5">采样行数</label>
-                                <input
-                                    type="number"
-                                    value={runConfig.sampleRows}
-                                    onChange={(e) => setRunConfig(prev => ({ ...prev, sampleRows: Number(e.target.value) }))}
-                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                                />
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-600 mb-1.5">规则版本</label>
-                                    <input
-                                        type="text"
-                                        value={runConfig.ruleVersion}
-                                        readOnly
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-sm text-slate-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-600 mb-1.5">模型版本</label>
-                                    <input
-                                        type="text"
-                                        value={runConfig.modelVersion}
-                                        readOnly
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-sm text-slate-500"
-                                    />
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-600 mb-1.5">并发队列</label>
-                                    <input
-                                        type="number"
-                                        value={runConfig.concurrency}
-                                        onChange={(e) => setRunConfig(prev => ({ ...prev, concurrency: Number(e.target.value) }))}
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-600 mb-1.5">队列名称</label>
-                                    <input
-                                        type="text"
-                                        value={runConfig.queue}
-                                        onChange={(e) => setRunConfig(prev => ({ ...prev, queue: e.target.value }))}
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                                    />
-                                </div>
-                            </div>
-                            <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                                预计耗时 {Math.max(1, Math.ceil(selectedTables.length / Math.max(runConfig.concurrency, 1)) * 2)}~{Math.max(2, Math.ceil(selectedTables.length / Math.max(runConfig.concurrency, 1)) * 2 + 1)} 分钟 · 采样 {runConfig.sampleRows / 1000}k 行/表 · 队列 {Math.min(selectedTables.length, runConfig.concurrency)}/{runConfig.concurrency}
-                            </div>
-                        </div>
-                        <div className="px-5 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2">
-                            <button
-                                onClick={() => setShowRunModal(false)}
-                                className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
-                            >
-                                取消
-                            </button>
-                            <button
-                                onClick={handleRunStart}
-                                disabled={selectedTables.length === 0}
-                                className={`px-4 py-2 text-sm rounded-lg transition-colors ${selectedTables.length > 0
-                                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                    }`}
-                            >
-                                生成 Run
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* 批量语义理解弹窗 - 使用统一组件 */}
+            <SemanticAssistBatchModal
+                open={showRunModal}
+                selectedTables={selectedTables}
+                defaultAssist={DEFAULT_SEMANTIC_ASSIST}
+                onClose={() => setShowRunModal(false)}
+                onStart={(config) => {
+                    // 处理批量运行配置
+                    handleRunStart();
+                }}
+                viewInfo={selectedDataSourceId ? (dataSources.find((d: any) => d.id === selectedDataSourceId) as any)?.name || '多个数据源' : '多个数据源'}
+            />
 
+            {/* 模板说明抽屉 */}
+            <SemanticAssistTemplateInfo
+                template="SEMANTIC_MIN"
+                open={showTemplateInfo}
+                onClose={() => setShowTemplateInfo(false)}
+            />
             {/* Relationship Edit Modal */}
             {
                 showRelModal && (
@@ -4118,6 +4286,37 @@ const DataSemanticUnderstandingView = ({
                     </div>
                 );
             })()}
+
+            {/* Batch Semantic Generation Modals */}
+            {showBatchSemanticModal && batchSemanticStep === 'config' && (
+                <BatchSemanticConfigModal
+                    open={true}
+                    selectedTables={selectedTables}
+                    onClose={() => setShowBatchSemanticModal(false)}
+                    onStart={handleBatchSemanticStart}
+                />
+            )}
+
+            {showBatchSemanticModal && batchSemanticStep === 'running' && batchConfig && (
+                <BatchSemanticRunningModal
+                    open={true}
+                    totalTables={batchSemanticProgress.total}
+                    completedTables={batchSemanticProgress.completed}
+                    currentTable={batchSemanticProgress.current}
+                    config={batchConfig}
+                    onBackground={handleBatchBackground}
+                />
+            )}
+
+            {showBatchSemanticModal && batchSemanticStep === 'result' && batchResult && (
+                <BatchSemanticResultModal
+                    open={true}
+                    result={batchResult}
+                    onViewWorkbench={handleBatchViewWorkbench}
+                    onBackToList={handleBatchBackToList}
+                    onViewTableDetail={handleViewTableDetail}
+                />
+            )}
         </>
     );
 };

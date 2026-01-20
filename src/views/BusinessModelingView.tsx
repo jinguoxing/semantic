@@ -3,13 +3,28 @@ import {
     Layout, Database, Search, CheckCircle, Plus, X,
     FileText, Settings, Layers, Trash2, ChevronDown, ChevronRight,
     Folder, FolderOpen, Box, Grid, PanelLeftClose, PanelLeftOpen,
-    ChevronsDown, ChevronsUp, History, Upload, User, Zap, Tag, Link2, Sparkles, Table2, MessageSquare, Wand2
+    ChevronsDown, ChevronsUp, History, Upload, User, Zap, Tag, Link2, Sparkles, Table2, MessageSquare, Wand2, ArrowRight, Edit
 } from 'lucide-react';
 import SemanticVersionPanel from './components/semantic-version/SemanticVersionPanel';
 import PublishVersionDialog from './components/semantic-version/PublishVersionDialog';
 import { semanticVersionService } from '../services/semantic/semanticVersionService';
 import { ReadOnlyBadge } from '../components/common/ReadOnlyBadge';
+import CandidateSummaryBar from '../components/business-modeling/CandidateSummaryBar';
+import BatchOperationBar from '../components/business-modeling/BatchOperationBar';
+import SuggestionDrawer from '../components/business-modeling/SuggestionDrawer';
+import ConflictDrawer from '../components/business-modeling/ConflictDrawer';
+import { BusinessObject, Decision, ObjectStatus } from '../types/semantic';
 import { useVersionContext } from '../contexts/VersionContext';
+
+// Tabs Configuration
+const TABS = [
+    { id: 'all', label: '全部' },
+    { id: 'candidate', label: '候选中' },
+    { id: 'pending', label: '待确认' },
+    { id: 'published', label: '已发布' }
+] as const;
+
+type TabId = typeof TABS[number]['id'];
 
 // Object Type Configuration
 type ObjectType = 'entity' | 'event' | 'rule' | 'state';
@@ -88,6 +103,13 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
     const [aiPrompt, setAiPrompt] = useState('');
     const [aiGenerating, setAiGenerating] = useState(false);
 
+    // Business Object Merger State
+    const [activeTab, setActiveTab] = useState<TabId>('all');
+    const [suggestionDrawerOpen, setSuggestionDrawerOpen] = useState(false);
+    const [conflictDrawerOpen, setConflictDrawerOpen] = useState(false);
+    const [activeSuggestion, setActiveSuggestion] = useState<any>(null);
+    const [activeConflict, setActiveConflict] = useState<any>(null);
+
     // Load active version on mount
     useState(() => {
         semanticVersionService.getActiveVersion().then(v => {
@@ -99,6 +121,7 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
     const initialBoState = {
         name: '',
         code: '',
+        type: 'entity',
         domain: '',
         owner: '',
         status: 'draft',
@@ -247,6 +270,43 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
         setSelectedBoIds([]);
     };
 
+    // Merger Handlers
+    const handleDecision = (decision: Decision) => {
+        console.log('Decision made:', decision);
+        // Implement state updates based on decision
+        setBusinessObjects(prev => prev.map(bo => {
+            if (bo.id !== decision.targetId) return bo;
+
+            if (decision.action === 'ACCEPT' || decision.action === 'ACCEPT_WITH_EDIT') {
+                return { ...bo, status: 'pending', ...decision.payload };
+            } else if (decision.action === 'REJECT') {
+                return { ...bo, status: 'deprecated' };
+            }
+            return bo;
+        }));
+    };
+
+    const handleResolveConflict = (decision: Decision) => {
+        console.log('Conflict resolved:', decision);
+        // Logic to resolve conflict (e.g., merge or keep one)
+        setBusinessObjects(prev => prev.map(bo => {
+            if (bo.id === decision.targetId) {
+                return { ...bo, status: 'pending', conflictFlag: false };
+            }
+            return bo;
+        }));
+    };
+
+    const handleOpenSuggestion = (bo: any) => {
+        setActiveSuggestion(bo);
+        setSuggestionDrawerOpen(true);
+    };
+
+    const handleOpenConflict = (bo: any) => {
+        setActiveConflict(bo);
+        setConflictDrawerOpen(true);
+    };
+
     const uniqueDomains = Array.from(new Set(businessObjects.map(bo => bo.domain).filter(Boolean)));
     const normalizedDomainSearch = domainSearch.trim().toLowerCase();
     const showDomainList = (!collapseAllDomains || normalizedDomainSearch.length > 0) && !collapseDomainPanel;
@@ -262,7 +322,17 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
         const matchesSearch = bo.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             bo.code.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesDomain = selectedDomain === 'ALL' || bo.domain === selectedDomain;
-        const matchesStatus = filterStatus === 'all' || bo.status === filterStatus;
+
+        // Status Filter Logic (merged with Tabs)
+        let matchesStatus = true;
+        if (activeTab === 'all') {
+            // In 'all' tab, respect the dropdown filter
+            matchesStatus = filterStatus === 'all' || bo.status === filterStatus;
+        } else {
+            // In specific tabs, hard filter by status
+            matchesStatus = bo.status === activeTab;
+        }
+
         const matchesOwner = filterOwner === 'all' || (bo.owner || '未设置') === filterOwner;
 
         // Mapping status filter
@@ -289,16 +359,27 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
         }
         return 0;
     });
+
     const boCards = filteredBOs.map(bo => {
         const typeConfig = getObjectTypeConfig(bo.objectType || bo.type);
         const TypeIcon = typeConfig.icon;
+
+        // Status Configurations
+        const isCandidate = bo.status === 'candidate';
+        const isPending = bo.status === 'pending';
+        const isPublished = bo.status === 'published';
+        const hasConflict = bo.conflictFlag;
+
         return (
             <div
                 key={bo.id}
                 className={`bg-white rounded-xl border p-5 hover:shadow-lg transition-all group relative overflow-hidden ${selectedBoIds.includes(bo.id) ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-50/10' : typeConfig.border} ${isReadOnly ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                 onClick={() => {
                     if (isReadOnly) return;
-                    onNavigateToMapping(bo);
+                    // Navigate to appropriate view based on status
+                    if (isCandidate) handleOpenSuggestion(bo);
+                    else if (isPending && hasConflict) handleOpenConflict(bo);
+                    else onNavigateToMapping(bo);
                 }}
             >
                 {/* Type Color Bar */}
@@ -311,137 +392,147 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
                         </div>
                     </div>
                 )}
+
+                {/* Header Section */}
                 <div className="flex justify-between items-start mb-3 pl-8 pt-1">
                     <div className={`w-9 h-9 rounded-lg ${typeConfig.bg} flex items-center justify-center ${typeConfig.text}`}>
                         <TypeIcon size={18} />
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end max-w-[140px]">
                         <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${typeConfig.bg} ${typeConfig.text}`}>
                             {typeConfig.label}
                         </span>
-                        {/* Version difference indicator */}
-                        {bo.status === 'published' && bo.hasUnpublishedChanges && (
-                            <div className="group/version relative">
-                                <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-100 text-amber-700 animate-pulse">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                    待发布
-                                </span>
-                                <div className="absolute top-full right-0 mt-1 hidden group-hover/version:block z-20">
-                                    <div className="bg-slate-800 text-white text-[10px] rounded-lg px-3 py-2 shadow-lg whitespace-nowrap">
-                                        此对象已修改但尚未发布新版本
-                                        <br />
-                                        <span className="text-amber-400">问数/AI 仍在使用旧版本</span>
-                                    </div>
-                                </div>
+
+                        {/* Status Tag */}
+                        {isCandidate ? (
+                            <div className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-purple-100 text-purple-700 flex items-center gap-1">
+                                {bo.confidence && <span className="text-[9px] opacity-80">{bo.confidence}%</span>}
+                                <span>候选中</span>
+                            </div>
+                        ) : isPending ? (
+                            <div className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-orange-100 text-orange-700">
+                                待确认
+                            </div>
+                        ) : isPublished ? (
+                            <div className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-emerald-100 text-emerald-700">
+                                已发布
+                            </div>
+                        ) : (
+                            <div className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-slate-100 text-slate-600">
+                                {bo.status}
                             </div>
                         )}
-                        <div className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${bo.status === 'published' ? 'bg-emerald-100 text-emerald-700' : bo.status === 'archived' ? 'bg-slate-200 text-slate-600' : 'bg-slate-100 text-slate-600'}`}>
-                            {bo.status === 'published' ? '已发布' : (bo.status === 'draft' ? '草稿' : bo.status === 'archived' ? '归档' : bo.status)}
-                        </div>
+
+                        {/* Conflict Badge */}
+                        {hasConflict && (
+                            <div className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-red-100 text-red-600 flex items-center gap-0.5 animate-pulse">
+                                <span className="scale-75">⚠️</span> 冲突
+                            </div>
+                        )}
                     </div>
                 </div>
-                <h3 className="font-bold text-base text-slate-800 mb-1">{bo.name}</h3>
-                <p className="text-xs font-mono text-slate-500 mb-3 bg-slate-50 inline-block px-1.5 py-0.5 rounded border border-slate-100">{bo.code}</p>
+
+                <div className="mb-3">
+                    <h3 className="font-bold text-base text-slate-800 mb-0.5 line-clamp-1" title={bo.name}>{bo.name}</h3>
+                    <p className="text-xs font-mono text-slate-500 bg-slate-50 inline-block px-1.5 py-0.5 rounded border border-slate-100 max-w-full truncate">{bo.code}</p>
+                </div>
+
                 <p className="text-xs text-slate-500 line-clamp-2 mb-3 h-8 leading-relaxed">{bo.description || '暂无描述'}</p>
 
+                {/* Evidence / Stats Row */}
                 <div className="flex items-center justify-between text-xs text-slate-500 mb-3">
                     <span className="flex items-center gap-1"><Layers size={12} /> {bo.domain}</span>
                     <span className="flex items-center gap-1"><CheckCircle size={12} /> {bo.fields?.length || 0} 字段</span>
                 </div>
 
-                {/* Mapping Status - Enhanced with table info */}
-                {(() => {
-                    const mappedTables = bo.mappedTables || bo.mapping?.tables || [];
-                    const tableCount = mappedTables.length;
-                    const isMapped = tableCount > 0 || bo.status === 'published';
-
-                    return (
-                        <div className="mb-3">
-                            {isMapped ? (
-                                <div className="group/mapping relative">
-                                    <div className="flex items-center justify-between text-xs">
-                                        <span className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">
-                                            <Link2 size={12} />
-                                            已映射 {tableCount || 1} 张物理表
-                                        </span>
-                                        <span className="text-slate-400 text-[10px]">{getMappingProgress(bo)}%</span>
-                                    </div>
-                                    <div className="h-1 bg-slate-100 rounded-full overflow-hidden mt-1.5">
-                                        <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${getMappingProgress(bo)}%` }} />
-                                    </div>
-                                    {/* Hover Tooltip */}
-                                    {tableCount > 0 && (
-                                        <div className="absolute bottom-full left-0 mb-2 hidden group-hover/mapping:block z-20">
-                                            <div className="bg-slate-800 text-white text-[10px] rounded-lg px-3 py-2 shadow-lg">
-                                                <div className="font-medium mb-1 text-slate-300">映射的物理表:</div>
-                                                {mappedTables.slice(0, 5).map((table: string, idx: number) => (
-                                                    <div key={idx} className="flex items-center gap-1 py-0.5">
-                                                        <Database size={10} className="text-slate-400" />
-                                                        <span className="font-mono">{table}</span>
-                                                    </div>
-                                                ))}
-                                                {tableCount > 5 && (
-                                                    <div className="text-slate-400 mt-1">还有 {tableCount - 5} 张...</div>
-                                                )}
-                                            </div>
-                                            <div className="absolute top-full left-4 w-2 h-2 bg-slate-800 transform rotate-45 -mt-1" />
-                                        </div>
-                                    )}
-                                </div>
-                            ) : (
-                                <div className="flex items-center justify-between">
-                                    <span className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-slate-100 text-slate-500 text-xs">
-                                        <Link2 size={12} className="text-slate-400" />
-                                        未映射
-                                    </span>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (isReadOnly) return;
-                                            /* TODO: AI auto-find */
-                                        }}
-                                        disabled={isReadOnly}
-                                        className={`flex items-center gap-1 px-2 py-1 text-[10px] rounded-full transition-colors font-medium ${isReadOnly
-                                                ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
-                                                : 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100'
-                                            }`}
-                                        title="使用 AI 自动寻找匹配的物理表"
-                                    >
-                                        <Sparkles size={10} />
-                                        AI 自动寻找
-                                    </button>
-                                </div>
-                            )}
+                {/* Content based on Status */}
+                {isCandidate ? (
+                    // Candidate: Show Source/Evidence
+                    <div className="mb-3 bg-slate-50 rounded-lg p-2 border border-slate-100 text-xs">
+                        <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-slate-500">来源: {bo.source || 'AI 识别'}</span>
+                            <span className="font-medium text-slate-700 flex items-center gap-1">
+                                <Database size={10} /> {bo.evidence?.sourceTables?.[0] || 'Unknown'}
+                            </span>
                         </div>
-                    );
-                })()}
+                        <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                            <div
+                                className={`h-full rounded-full ${bo.confidence > 80 ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                                style={{ width: `${bo.confidence || 0}%` }}
+                            />
+                        </div>
+                    </div>
+                ) : (
+                    // Pending/Published: Show Mapping Progress
+                    <div className="mb-3">
+                        <div className="group/mapping relative">
+                            <div className="flex items-center justify-between text-xs mb-1.5">
+                                <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full ${getMappingProgress(bo) > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                    <Link2 size={12} />
+                                    {getMappingProgress(bo) > 0 ? '已映射' : '未映射'}
+                                </span>
+                                <span className="text-slate-400 text-[10px]">{getMappingProgress(bo)}%</span>
+                            </div>
+                            <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${getMappingProgress(bo)}%` }} />
+                            </div>
+                        </div>
+                    </div>
+                )}
 
-                <div className="flex items-center justify-between pt-3 border-t border-slate-50 mt-3">
+                <div className="flex items-center justify-between pt-3 border-t border-slate-50 mt-auto">
+                    {/* Primary Action Button */}
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
                             if (isReadOnly) return;
-                            onNavigateToMapping(bo);
+
+                            if (isCandidate) handleOpenSuggestion(bo);
+                            else if (isPending && hasConflict) handleOpenConflict(bo);
+                            else onNavigateToMapping(bo);
                         }}
                         disabled={isReadOnly}
-                        className={`text-xs flex items-center gap-1 font-medium px-2 py-1 -ml-2 rounded transition-colors ${isReadOnly
-                                ? 'text-slate-400 cursor-not-allowed'
-                                : 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'
-                            }`}
+                        className={`text-xs flex items-center gap-1 font-medium px-2 py-1 -ml-2 rounded transition-colors ${isCandidate ? 'text-purple-600 hover:bg-purple-50' :
+                            (isPending && hasConflict) ? 'text-red-600 hover:bg-red-50' :
+                                'text-blue-600 hover:bg-blue-50'
+                            } ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                        去映射
-                        <ChevronRight size={12} />
+                        {isCandidate ? (
+                            <>查看建议 <Sparkles size={12} /></>
+                        ) : (isPending && hasConflict) ? (
+                            <>解决冲突 <ArrowRight size={12} /></>
+                        ) : (
+                            <>查看详情 <ChevronRight size={12} /></>
+                        )}
                     </button>
+
                     {!isReadOnly && (
                         <div className="hidden group-hover:flex items-center gap-1 transition-opacity">
+                            {isCandidate && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDecision({
+                                            decisionId: crypto.randomUUID(),
+                                            targetType: 'BUSINESS_OBJECT',
+                                            targetId: bo.id,
+                                            action: 'ACCEPT',
+                                            decidedBy: 'currentUser',
+                                            decidedAt: new Date().toISOString()
+                                        });
+                                    }}
+                                    className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                    title="快速接受"
+                                >
+                                    <CheckCircle size={14} />
+                                </button>
+                            )}
                             <button onClick={(e) => { e.stopPropagation(); handleEditBO(bo); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="编辑">
                                 <Settings size={14} />
                             </button>
-                            {bo.status !== 'published' && (
-                                <button onClick={(e) => { e.stopPropagation(); handleDeleteBO(bo.id); }} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="删除">
-                                    <Trash2 size={14} />
-                                </button>
-                            )}
+                            <button onClick={(e) => { e.stopPropagation(); handleDeleteBO(bo.id); }} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="删除">
+                                <Trash2 size={14} />
+                            </button>
                         </div>
                     )}
                 </div>
@@ -569,8 +660,44 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
                 </div>
             </div>
 
+            {/* Merger Tabs */}
+            <div className="px-6 border-b border-slate-200 bg-white sticky top-0 z-10">
+                <div className="flex items-center gap-8">
+                    {TABS.map(tab => {
+                        const count = businessObjects.filter(bo =>
+                            tab.id === 'all' ? true : bo.status === tab.id
+                        ).length;
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`relative py-3 text-sm font-medium transition-colors ${activeTab === tab.id
+                                    ? 'text-blue-600'
+                                    : 'text-slate-500 hover:text-slate-700'
+                                    }`}
+                            >
+                                {tab.label}
+                                <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${activeTab === tab.id ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'
+                                    }`}>{count}</span>
+                                {activeTab === tab.id && (
+                                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-t-full" />
+                                )}
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* Summary Bar (Conditional) */}
+            {(activeTab === 'candidate' || activeTab === 'pending') && (
+                <CandidateSummaryBar
+                    objects={businessObjects.filter(bo => bo.status === activeTab)}
+                    onRefresh={() => console.log('Refreshed')}
+                />
+            )}
+
             {/* Filter Row */}
-            <div className="flex items-center gap-3 flex-shrink-0 bg-slate-50/50 -mx-6 px-6 py-3 border-y border-slate-100">
+            <div className="flex items-center gap-3 flex-shrink-0 bg-slate-50/50 -mx-6 px-6 py-3 border-b border-slate-100">
                 {/* Search */}
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -591,9 +718,12 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
                     <select
                         value={filterStatus}
                         onChange={(e) => setFilterStatus(e.target.value)}
-                        className="px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 bg-white"
+                        disabled={activeTab !== 'all'}
+                        className={`px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 bg-white ${activeTab !== 'all' ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
                     >
                         <option value="all">全部状态</option>
+                        <option value="candidate">候选中</option>
+                        <option value="pending">待确认</option>
                         <option value="published">已发布</option>
                         <option value="draft">草稿</option>
                         <option value="archived">归档</option>
@@ -1283,7 +1413,312 @@ const BusinessModelingView = ({ businessObjects, setBusinessObjects, onNavigateT
                     </div>
                 </div>
             )}
-        </div>
+
+            {/* Drawers */}
+            <SuggestionDrawer
+                isOpen={suggestionDrawerOpen}
+                onClose={() => setSuggestionDrawerOpen(false)}
+                suggestion={activeSuggestion}
+                onDecision={handleDecision}
+            />
+
+            <ConflictDrawer
+                isOpen={conflictDrawerOpen}
+                onClose={() => setConflictDrawerOpen(false)}
+                conflictObject={activeConflict}
+                allObjects={businessObjects}
+                onResolve={handleResolveConflict}
+            />
+
+            <BatchOperationBar
+                selectedObjects={businessObjects.filter(bo => selectedBoIds.includes(bo.id))}
+                onClearSelection={() => setSelectedBoIds([])}
+                onBatchAccept={(ids) => {
+                    handleDecision({
+                        decisionId: crypto.randomUUID(),
+                        targetType: 'BUSINESS_OBJECT',
+                        targetId: 'BATCH',
+                        action: 'ACCEPT',
+                        payload: { ids },
+                        decidedBy: 'currentUser',
+                        decidedAt: new Date().toISOString()
+                    });
+                    setSelectedBoIds([]);
+                }}
+                onBatchReject={(ids) => {
+                    // Implement Batch Reject
+                    setSelectedBoIds([]);
+                }}
+            />
+
+            {/* Modals */}
+            {
+                isModalOpen && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden animate-scale-in">
+                            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                                <h3 className="font-bold text-lg text-slate-800">{editingBO ? '编辑业务对象' : '新建业务对象'}</h3>
+                                <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">名称</label>
+                                    <input
+                                        type="text"
+                                        value={boFormData.name}
+                                        onChange={(e) => setBoFormData({ ...boFormData, name: e.target.value })}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                        placeholder="例如：客户"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">编码</label>
+                                    <input
+                                        type="text"
+                                        value={boFormData.code}
+                                        onChange={(e) => setBoFormData({ ...boFormData, code: e.target.value })}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-mono text-sm"
+                                        placeholder="例如：Customer"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">类型</label>
+                                    <select
+                                        value={boFormData.type || 'entity'}
+                                        onChange={(e) => setBoFormData({ ...boFormData, type: e.target.value as any })}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                    >
+                                        <option value="entity">主体 (Entity)</option>
+                                        <option value="event">行为 (Event)</option>
+                                        <option value="rule">规则 (Rule)</option>
+                                        <option value="state">状态 (State)</option>
+                                    </select>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">业务域</label>
+                                        <select
+                                            value={boFormData.domain}
+                                            onChange={(e) => setBoFormData({ ...boFormData, domain: e.target.value })}
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                        >
+                                            <option value="">选择业务域...</option>
+                                            {DOMAIN_GROUPS.flatMap(g => g.domains).map(d => (
+                                                <option key={d} value={d}>{d}</option>
+                                            ))}
+                                            {uniqueDomains.map(d => (
+                                                !DOMAIN_GROUPS.flatMap(g => g.domains).includes(d) && <option key={d} value={d}>{d}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">负责人</label>
+                                        <input
+                                            type="text"
+                                            value={boFormData.owner}
+                                            onChange={(e) => setBoFormData({ ...boFormData, owner: e.target.value })}
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                            placeholder="例如：张三"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">描述</label>
+                                    <textarea
+                                        value={boFormData.description}
+                                        onChange={(e) => setBoFormData({ ...boFormData, description: e.target.value })}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 min-h-[100px]"
+                                        placeholder="描述此业务对象的定义和用途..."
+                                    />
+                                </div>
+
+                                {editingBO && (
+                                    <div className="pt-4 border-t border-slate-100">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <label className="block text-sm font-medium text-slate-700">业务属性 ({boFormData.fields.length})</label>
+                                            <button
+                                                onClick={handleAddField}
+                                                className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+                                            >
+                                                <Plus size={12} /> 添加属性
+                                            </button>
+                                        </div>
+                                        <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar p-1">
+                                            {boFormData.fields.map((field: any, idx: number) => (
+                                                <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded border border-slate-200 text-sm group">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-medium text-slate-700">{field.name}</span>
+                                                        <span className="text-slate-400 text-xs">{field.type}</span>
+                                                        {field.required && <span className="text-red-500 text-xs">*</span>}
+                                                    </div>
+                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button onClick={() => handleEditField(field, idx)} className="p-1 hover:bg-slate-200 rounded text-slate-500">
+                                                            <Edit size={12} />
+                                                        </button>
+                                                        <button onClick={() => handleDeleteField(idx)} className="p-1 hover:bg-red-100 rounded text-red-500">
+                                                            <X size={12} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {boFormData.fields.length === 0 && (
+                                                <div className="text-center py-4 text-slate-400 text-xs border border-dashed border-slate-200 rounded">
+                                                    暂无属性
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-3">
+                                <button
+                                    onClick={() => setIsModalOpen(false)}
+                                    className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg text-sm font-medium transition-colors"
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    onClick={handleSaveBO}
+                                    className="px-6 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-sm font-medium shadow-sm shadow-blue-200 transition-all"
+                                >
+                                    保存
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* Field Modal */}
+            {
+                showFieldModal && (
+                    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+                        <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden animate-scale-in">
+                            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                                <h3 className="font-bold text-lg text-slate-800">{currentField ? '编辑属性' : '添加属性'}</h3>
+                                <button onClick={() => setShowFieldModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">属性名称</label>
+                                    <input
+                                        type="text"
+                                        value={fieldFormData.name}
+                                        onChange={e => setFieldFormData({ ...fieldFormData, name: e.target.value })}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                        placeholder="例如：客户ID"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">数据类型</label>
+                                    <select
+                                        value={fieldFormData.type}
+                                        onChange={e => setFieldFormData({ ...fieldFormData, type: e.target.value })}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                    >
+                                        <option value="String">String</option>
+                                        <option value="Integer">Integer</option>
+                                        <option value="Boolean">Boolean</option>
+                                        <option value="Date">Date</option>
+                                        <option value="Decimal">Decimal</option>
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        id="field-required"
+                                        checked={fieldFormData.required}
+                                        onChange={e => setFieldFormData({ ...fieldFormData, required: e.target.checked })}
+                                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <label htmlFor="field-required" className="text-sm text-slate-700">必填属性</label>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">描述</label>
+                                    <textarea
+                                        value={fieldFormData.description}
+                                        onChange={e => setFieldFormData({ ...fieldFormData, description: e.target.value })}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 h-20"
+                                    />
+                                </div>
+                            </div>
+                            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-3">
+                                <button
+                                    onClick={() => setShowFieldModal(false)}
+                                    className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg text-sm font-medium transition-colors"
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    onClick={handleSaveField}
+                                    className="px-6 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-sm font-medium shadow-sm shadow-blue-200 transition-all"
+                                >
+                                    保存
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* Confirm Dialogs */}
+            {
+                showPublishConfirm && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-scale-in">
+                            <div className="p-6 text-center">
+                                <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <CheckCircle size={24} />
+                                </div>
+                                <h3 className="font-bold text-lg text-slate-800 mb-2">确认发布?</h3>
+                                <p className="text-slate-500 text-sm mb-6">
+                                    即将发布 {selectedBoIds.length} 个业务对象。发布后，这些对象将对所有用户可见，并可用于后续的数据映射。
+                                </p>
+                                <div className="flex gap-3 justify-center">
+                                    <button
+                                        onClick={() => setShowPublishConfirm(false)}
+                                        className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium transition-colors"
+                                    >
+                                        取消
+                                    </button>
+                                    <button
+                                        onClick={confirmBatchPublish}
+                                        className="px-6 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg text-sm font-medium shadow-sm shadow-emerald-200 transition-all"
+                                    >
+                                        确认发布
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* Version Panel */}
+            <SemanticVersionPanel
+                isOpen={showVersionPanel}
+                onClose={() => setShowVersionPanel(false)}
+            />
+
+            {/* Publish Version Dialog */}
+            {
+                showPublishDialog && (
+                    <PublishVersionDialog
+                        isOpen={showPublishDialog}
+                        onClose={() => setShowPublishDialog(false)}
+                        businessObjects={businessObjects}
+                        onPublished={(version) => {
+                            setActiveSemanticVersion(version.version);
+                            // TODO: Refresh data
+                        }}
+                    />
+                )
+            }
+        </div >
     );
 };
 

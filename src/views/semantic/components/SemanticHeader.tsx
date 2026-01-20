@@ -29,6 +29,10 @@ interface SemanticHeaderProps {
     onAnalyze: () => void;
     readOnly?: boolean;
     versionLabel?: string;
+
+    // P1 Optimization: BROWSE -> SEMANTIC switch
+    onSwitchToSemantic?: () => void;
+    showSwitchButton?: boolean;
 }
 
 export const SemanticHeader: React.FC<SemanticHeaderProps> = ({
@@ -43,7 +47,9 @@ export const SemanticHeader: React.FC<SemanticHeaderProps> = ({
     onBack,
     onAnalyze,
     readOnly,
-    versionLabel
+    versionLabel,
+    onSwitchToSemantic,
+    showSwitchButton = false
 }) => {
     // Determine status display
     const effectiveStatus = (governanceStatus || (analysisStep === 'done' ? 'S1' : 'S0')) as GovernanceStatus;
@@ -89,22 +95,43 @@ export const SemanticHeader: React.FC<SemanticHeaderProps> = ({
                         >
                             返回列表
                         </button>
-                        <button
-                            onClick={onAnalyze}
-                            disabled={isAnalyzing || readOnly}
-                            className={`px-4 py-1.5 rounded-lg text-sm shadow-sm flex items-center gap-2 text-white transition-all disabled:opacity-60 disabled:cursor-not-allowed ${isAnalyzing ? 'bg-slate-400 cursor-not-allowed' :
-                                readOnly ? 'bg-slate-200 text-slate-400 cursor-not-allowed' :
-                                analysisStep === 'done' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600'
-                                }`}
-                        >
-                            {isAnalyzing ? (
-                                <><RefreshCw size={14} className="animate-spin" /> 语义理解中...</>
-                            ) : analysisStep === 'done' ? (
-                                <><RefreshCw size={14} /> 重新理解</>
-                            ) : (
-                                <><Sparkles size={14} /> 开始语义理解</>
-                            )}
-                        </button>
+
+                        {/* P1 Optimization: Switch to SEMANTIC mode button (only in BROWSE mode) */}
+                        {showSwitchButton && onSwitchToSemantic && (
+                            <button
+                                onClick={onSwitchToSemantic}
+                                disabled={readOnly}
+                                className={`px-4 py-1.5 rounded-lg text-sm flex items-center gap-2 transition-all ${readOnly
+                                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                        : analysisStep === 'done'
+                                            ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+                                            : 'bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 text-white shadow-sm'
+                                    }`}
+                            >
+                                <Sparkles size={14} />
+                                {analysisStep === 'done' ? '继续语义理解' : '开始语义理解'}
+                            </button>
+                        )}
+
+                        {/* Original analyze button (shown in SEMANTIC mode or when switch button not shown) */}
+                        {!showSwitchButton && (
+                            <button
+                                onClick={onAnalyze}
+                                disabled={isAnalyzing || readOnly}
+                                className={`px-4 py-1.5 rounded-lg text-sm shadow-sm flex items-center gap-2 text-white transition-all disabled:opacity-60 disabled:cursor-not-allowed ${isAnalyzing ? 'bg-slate-400 cursor-not-allowed' :
+                                        readOnly ? 'bg-slate-200 text-slate-400 cursor-not-allowed' :
+                                            analysisStep === 'done' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600'
+                                    }`}
+                            >
+                                {isAnalyzing ? (
+                                    <><RefreshCw size={14} className="animate-spin" /> 语义理解中...</>
+                                ) : analysisStep === 'done' ? (
+                                    <><RefreshCw size={14} /> 重新理解</>
+                                ) : (
+                                    <><Sparkles size={14} /> 开始语义理解</>
+                                )}
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -116,8 +143,8 @@ export const SemanticHeader: React.FC<SemanticHeaderProps> = ({
                         onClick={() => onModeChange('BROWSE')}
                         disabled={readOnly}
                         className={`px-3 py-1.5 text-xs font-medium rounded-md flex items-center gap-2 transition-all disabled:opacity-60 disabled:cursor-not-allowed ${pageMode === 'BROWSE'
-                                ? 'bg-white text-slate-700 shadow-sm'
-                                : 'text-slate-500 hover:text-slate-700'
+                            ? 'bg-white text-slate-700 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
                             }`}
                     >
                         <Layout size={14} /> 浏览模式
@@ -126,8 +153,8 @@ export const SemanticHeader: React.FC<SemanticHeaderProps> = ({
                         onClick={() => onModeChange('SEMANTIC')}
                         disabled={readOnly}
                         className={`px-3 py-1.5 text-xs font-medium rounded-md flex items-center gap-2 transition-all disabled:opacity-60 disabled:cursor-not-allowed ${pageMode === 'SEMANTIC'
-                                ? 'bg-white text-blue-600 shadow-sm'
-                                : 'text-slate-500 hover:text-slate-700'
+                            ? 'bg-white text-blue-600 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
                             }`}
                     >
                         <Wand2 size={14} /> 语义治理模式

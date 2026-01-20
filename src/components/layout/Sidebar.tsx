@@ -128,10 +128,10 @@ const Sidebar = ({ activeModule, setActiveModule }: SidebarProps) => {
             title: '平台管理',
             color: 'text-slate-400',
             items: [
-                { id: 'user_permission', label: '角色与权限', icon: Users },
-                { id: 'menu_mgmt', label: '菜单管理', icon: LayoutGrid },
                 { id: 'org_mgmt', label: '组织架构管理', icon: Building2 },
                 { id: 'user_mgmt', label: '用户管理', icon: UserCog },
+                { id: 'menu_mgmt', label: '菜单管理', icon: LayoutGrid },
+                { id: 'user_permission', label: '角色与权限', icon: Users },
                 { id: 'workflow_mgmt', label: '工作流管理', icon: GitBranch },
                 { id: 'approval_policy', label: '审批策略', icon: FileCheck },
                 { id: 'audit_log', label: '审计日志', icon: FileText }
